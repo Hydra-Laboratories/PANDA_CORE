@@ -24,16 +24,21 @@ def main():
     config = DeckConfig.from_yaml(str(config_path))
     print("Deck Config loaded.")
     
-    # 2. Define Experiment Sequence
-    # Move to 'imaging_station' (defined in default config), Capture, Move Home
-    actions = [
-        MoveAction(target_location="home", tool="center"), # Start by ensuring we are at home (safely)
-        MoveAction(target_location="imaging_station", tool="center"),
-        ImageAction(target_location="imaging_station", label="verification_test"),
-        MoveAction(target_location="home", tool="center")
-    ]
-    
-    sequence = ExperimentSequence(name="Verification Protocol", actions=actions)
+    # 2. Define Experiment Sequence (Load from YAML)
+    experiment_path = Path("experiments/simple_imaging_protocol.yaml")
+    if len(sys.argv) > 1:
+        experiment_path = Path(sys.argv[1])
+        
+    if not experiment_path.exists():
+         print(f"Error: Experiment file not found at {experiment_path}")
+         return
+
+    try:
+        sequence = ExperimentSequence.from_yaml(str(experiment_path))
+    except Exception as e:
+        print(f"Error validating experiment sequence: {e}")
+        return
+        
     print(f"Sequence defined: {sequence.name} with {len(sequence.actions)} actions.")
     
     # 3. Compile

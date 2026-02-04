@@ -17,6 +17,6 @@ locations:
     y: 0.0
     z: 0.0
   imaging_station:
-    x: -50.0
-    y: -50.0
-    z: -20.0
+    x: -150.0
+    y: -100.0
+    z: -35.0

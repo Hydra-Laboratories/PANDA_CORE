@@ -1,3 +1,4 @@
+import yaml
 from typing import List, Union, Literal
 from pydantic import BaseModel, Field
 
@@ -24,3 +25,10 @@ class ExperimentSequence(BaseModel):
     """
     name: str
     actions: List[Union[MoveAction, ImageAction]] = Field(..., description="List of actions to execute")
+
+    @classmethod
+    def from_yaml(cls, path: str) -> "ExperimentSequence":
+        """Load experiment sequence from a YAML file."""
+        with open(path, "r") as f:
+            data = yaml.safe_load(f)
+        return cls(**data)
