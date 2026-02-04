@@ -145,3 +145,11 @@ cython_debug/
 runs/
 
 *.jpg
+
+*.log
+src/cnc_control/logs/
+src/web_server/__pycache__/
+__pycache__/
+.pytest_cache/
+src/cnc_control/__pycache__/
+src/protocol_engine/__pycache__/
