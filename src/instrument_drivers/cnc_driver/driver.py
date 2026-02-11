@@ -116,7 +116,14 @@ class Mill:
         self.logger = set_up_mill_logger(self.logger_location)
         self.port = port
         self.config = self.read_mill_config_file("_configuration.json")
+        self._clean_config()
         self.ser_mill: serial.Serial = None
+
+    def _clean_config(self):
+        """Strip comments from config values"""
+        for key, value in self.config.items():
+            if isinstance(value, str) and "(" in value:
+                self.config[key] = value.split("(", 1)[0].strip()
         self.homed = False
         self.auto_home = True
         self.active_connection = False
@@ -209,11 +216,12 @@ class Mill:
         timeout = 2 # Reduced timeout for faster scanning
         
         # Priority port requested by user
-        priority_port = "/dev/cu.usbserial-2130"
+        priority_port = port  # None if not provided
         
-        # Create a list starting with the priority port if it exists, roughly speaking
-        # Actually, we can just forcefully check this port first or only this port if found.
-        ports = [priority_port]
+        # Create a list starting with the priority port if it exists
+        ports = []
+        if priority_port:
+            ports.append(priority_port)
 
         # Add others just in case, but after the priority one
         for p in get_ports():
@@ -354,6 +362,8 @@ class Mill:
 
         self.check_for_alarm_state()
         self.clear_buffers()
+        # Set a default feed rate to prevent error:22 on first move
+        self.set_feed_rate(2000)
         return self.ser_mill
 
     def check_for_alarm_state(self):
@@ -543,6 +553,9 @@ class Mill:
                         
                     try:
                         key, value = setting.split("=", 1) # Split only on first =
+                        # Strip comments from the value (e.g., "0 (soft limits,bool)" -> "0")
+                        if "(" in value:
+                            value = value.split("(", 1)[0]
                         settings_dict[key.strip()] = value.strip()
                     except ValueError:
                          self.logger.error(f"Failed to parse setting line: {setting}")
@@ -771,9 +784,7 @@ class Mill:
                 y_coord = round(float(match.group(2)), 3)
                 z_coord = round(float(match.group(3)), 3)
                 if coord_type == "MPos":
-                    x_coord += homing_pull_off
-                    y_coord += homing_pull_off
-                    z_coord += homing_pull_off
+                    pass # Offset removed
                 self.logger.info(
                     "%s coordinates: X = %s, Y = %s, Z = %s",
                     coord_type,
@@ -910,28 +921,12 @@ class Mill:
                 )
                 continue
 
-            if safe_move_required:
-                # Check if we need to move to safe height first
-                if self.__should_move_to_safe_position_first(
-                    current_coordinates, target_coordinates, self.max_z_height
-                ):
-                    commands.append(f"G01 Z{self.max_z_height}")
-                    move_to_zero = True
-                else:
-                    move_to_zero = False
-
-                commands.extend(
-                    self._generate_movement_commands(
-                        current_coordinates, target_coordinates, move_to_zero
-                    )
+            # Safe move logic disabled by request
+            commands.extend(
+                self._generate_movement_commands(
+                    current_coordinates, target_coordinates
                 )
-            else:
-                # Original direct movement behavior
-                commands.extend(
-                    self._generate_movement_commands(
-                        current_coordinates, target_coordinates
-                    )
-                )
+            )
 
             current_coordinates = target_coordinates
 
@@ -1061,9 +1056,7 @@ class Mill:
         return Coordinates(
             x=goto.x + offsets.x,
             y=goto.y + offsets.y,
-            z=max(
-                self.working_volume.z + 3, min(goto.z + offsets.z, self.max_z_height)
-            ),
+            z=goto.z + offsets.z,
         )
 
     def _log_target_coordinates(self, target_coordinates: Coordinates):
@@ -1075,20 +1068,22 @@ class Mill:
         )
 
     def _validate_target_coordinates(self, target_coordinates: Coordinates):
-        if (
-            not self.working_volume.x <= target_coordinates.x <= 0
-        ):  # TODO remove the <=0 check after verifying that new offsets work
-            # TODO move to overall travel from 0 to working volume as the check
-            self.logger.error("x coordinate out of range")
-            raise ValueError("x coordinate out of range")
-        if not self.working_volume.y <= target_coordinates.y <= 0:
-            # If the target y is not between the working volume and 0, raise an error
-            self.logger.error("y coordinate out of range")
-            raise ValueError("y coordinate out of range")
-        if not self.working_volume.z <= target_coordinates.z <= self.max_z_height:
-            # If the target z is not between the working volume and the max z height, raise an error
-            self.logger.error("z coordinate out of range")
-            raise ValueError("z coordinate out of range")
+        # Validation disabled by request
+        pass
+        # if (
+        #     not self.working_volume.x <= target_coordinates.x <= 0
+        # ):  # TODO remove the <=0 check after verifying that new offsets work
+        #     # TODO move to overall travel from 0 to working volume as the check
+        #     self.logger.error("x coordinate out of range")
+        #     raise ValueError("x coordinate out of range")
+        # if not self.working_volume.y <= target_coordinates.y <= 0:
+        #     # If the target y is not between the working volume and 0, raise an error
+        #     self.logger.error("y coordinate out of range")
+        #     raise ValueError("y coordinate out of range")
+        # if not self.working_volume.z <= target_coordinates.z <= self.max_z_height:
+        #     # If the target z is not between the working volume and the max z height, raise an error
+        #     self.logger.error("z coordinate out of range")
+        #     raise ValueError("z coordinate out of range")
 
     def _generate_movement_commands(
         self,

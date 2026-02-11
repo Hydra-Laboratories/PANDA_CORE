@@ -1,11 +1,7 @@
-machine_bounds:
-  x_min: -280.0
-  x_max: 0.0
-  y_min: -170.0
-  y_max: 0.0
-  z_min: -40.0
-  z_max: 0.0
+serial_port: /dev/cu.usbserial-140
 
-safe_z_height: -5.0
-homing_enabled: true
-serial_port: /dev/cu.usbserial-130
+locations:
+  home:
+    x: 14.8
+    y: -5.37
+    z: 18.0

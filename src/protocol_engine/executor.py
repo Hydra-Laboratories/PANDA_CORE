@@ -30,10 +30,10 @@ class ProtocolExecutor:
         for step in protocol.steps:
             if step.type == "move":
                 params = step.parameters
-                self.mill.move_to_position(
-                    x_coordinate=params["x"],
-                    y_coordinate=params["y"],
-                    z_coordinate=params["z"]
+                self.mill.move_to(
+                    x=params["x"],
+                    y=params["y"],
+                    z=params["z"]
                 )
             elif step.type == "image":
                 params = step.parameters
