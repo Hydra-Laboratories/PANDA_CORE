@@ -156,3 +156,4 @@ src/protocol_engine/__pycache__/
 
 .env
 architecture.md
+test_scripts/
