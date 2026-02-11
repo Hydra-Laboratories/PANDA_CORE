@@ -41,13 +41,19 @@ from .logger import set_up_command_logger, set_up_mill_logger
 from .tools import Coordinates, ToolManager
 
 # Formatted strings for the mill commands
-MILL_MOVE = (
-    "G01 X{} Y{} Z{}"  # Move to specified coordinates at the specified feed rate
-)
+MILL_MOVE = "G01 X{} Y{} Z{}"  # Move to specified coordinates at the specified feed rate
 MILL_MOVE_Z = "G01 Z{}"  # Move to specified Z coordinate at the specified feed rate
-RAPID_MILL_MOVE = (
-    "G00 X{} Y{} Z{}"  # Move to specified coordinates at the maximum feed rate
-)
+RAPID_MILL_MOVE = "G00 X{} Y{} Z{}"  # Move to specified coordinates at the maximum feed rate
+
+# Constants
+DEFAULT_FEED_RATE = 2000
+HOMING_FEED_RATE = 5000
+HOMING_TIMEOUT = 90
+MAX_TRAVEL_LIMIT = 320.0  # mm
+HOMING_BACKOFF = 2.0      # mm
+HOMING_FAST_FEED = 500
+HOMING_STEP_SIZE = 10.0   # mm
+
 # Compile regex patterns for extracting coordinates from the mill status
 wpos_pattern = re.compile(r"WPos:([\d.-]+),([\d.-]+),([\d.-]+)")
 mpos_pattern = re.compile(r"MPos:([\d.-]+),([\d.-]+),([\d.-]+)")
@@ -116,7 +122,14 @@ class Mill:
         self.logger = set_up_mill_logger(self.logger_location)
         self.port = port
         self.config = self.read_mill_config_file("_configuration.json")
+        self._clean_config()
         self.ser_mill: serial.Serial = None
+
+    def _clean_config(self):
+        """Strip comments from config values"""
+        for key, value in self.config.items():
+            if isinstance(value, str) and "(" in value:
+                self.config[key] = value.split("(", 1)[0].strip()
         self.homed = False
         self.auto_home = True
         self.active_connection = False
@@ -177,46 +190,20 @@ class Mill:
 
         If the response does not begin with a $, scan for connected devices and attempt to connect to each one until a valid response is received.
         """
-
-        def get_ports():
-            """List all available ports"""
-            if os.name == "posix":
-                # Search for ttyUSB, usbmodem, and usbserial
-                ports = list(serial.tools.list_ports.grep("ttyUSB|usbmodem|usbserial"))
-            elif os.name == "nt":
-                ports = list(serial.tools.list_ports.grep("COM"))
-            else:
-                raise OSError("Unsupported OS")
-            return ports
-
-        def read_past_found_on_port() -> str:
-            """Read past the found on port"""
-            if not os.path.exists(Path(__file__).parent / "mill_port.txt"):
-                # Make a file if it doesn't exist
-                with open(Path(__file__).parent / "mill_port.txt", "w") as file:
-                    file.write("")
-
-            with open(Path(__file__).parent / "mill_port.txt", "r") as file:
-                found_on = file.read()
-
-            if not found_on or found_on == "":
-                return []
-
-            return [found_on]
-
         ser_mill = serial.Serial()
         baudrates = [115200, 9600]
         timeout = 2 # Reduced timeout for faster scanning
         
         # Priority port requested by user
-        priority_port = "/dev/cu.usbserial-2130"
+        priority_port = port  # None if not provided
         
-        # Create a list starting with the priority port if it exists, roughly speaking
-        # Actually, we can just forcefully check this port first or only this port if found.
-        ports = [priority_port]
+        # Create a list starting with the priority port if it exists
+        ports = []
+        if priority_port:
+            ports.append(priority_port)
 
         # Add others just in case, but after the priority one
-        for p in get_ports():
+        for p in self._get_available_ports():
              if p.device != priority_port:
                  ports.append(p.device)
 
@@ -240,48 +227,7 @@ class Mill:
                             timeout=timeout,
                         )
                         
-                        # Soft reset behavior: some boards reset on DTR toggle, but it can cause issues.
-                        # We will try a simple flush first.
-                        ser_mill.flushInput()
-                        ser_mill.flushOutput()
-                        time.sleep(0.1) # Reduced from 1s
-
-                        if not ser_mill.is_open:
-                            ser_mill.open()
-                            time.sleep(0.5) # Reduced from 1s
-                        
-                        if not ser_mill.is_open:
-                             self.logger.warning("Could not open port %s", port)
-                             continue
-                        
-                        self.logger.info("Querying the mill for status")
-                        
-                        # Try to wake it up
-                        ser_mill.write(b"\r\n")
-                        time.sleep(0.1) # Reduced from 0.5
-                        ser_mill.write(b"\x18") # Soft reset Ctrl-X
-                        time.sleep(0.1) # Reduced from 0.5
-                        ser_mill.flushInput()
-                        
-                        # Now ask for status
-                        ser_mill.write(b"?") 
-                        time.sleep(0.1) # Reduced from 0.5
-                        
-                        # Also send $$ as before, but ? is safer for status
-                        ser_mill.write(b"$$\n")
-                        time.sleep(0.2) # Reduced from 1s
-
-                        statuses = ser_mill.readlines()
-                        self.logger.info(f"Raw response: {statuses}")
-                        
-                        valid_response = False
-                        for line in statuses:
-                            decoded = line.decode(errors='ignore').rstrip()
-                            if "Grbl" in decoded or "ok" in decoded or "error" in decoded or "Idle" in decoded:
-                                valid_response = True
-                                break
-                        
-                        if valid_response:
+                        if self._verify_connection(ser_mill):
                              self.logger.info(f"Connected successfully to {port} at {baudrate}")
                              found = True
                              found_on = port
@@ -300,10 +246,66 @@ class Mill:
                     break
 
         # Write the port to a file for future use
-        with open(Path(__file__).parent / "mill_port.txt", "w") as file:
-            file.write(found_on)
+        self._cache_port(found_on)
 
         return ser_mill, found_on
+
+    def _get_available_ports(self):
+        """List all available ports"""
+        if os.name == "posix":
+            # Search for ttyUSB, usbmodem, and usbserial
+            ports = list(serial.tools.list_ports.grep("ttyUSB|usbmodem|usbserial"))
+        elif os.name == "nt":
+            ports = list(serial.tools.list_ports.grep("COM"))
+        else:
+            raise OSError("Unsupported OS")
+        return ports
+
+    def _verify_connection(self, ser_mill: serial.Serial) -> bool:
+        """Verify that the connected device is a GRBL mill"""
+        # Soft reset behavior: some boards reset on DTR toggle, but it can cause issues.
+        # We will try a simple flush first.
+        ser_mill.flushInput()
+        ser_mill.flushOutput()
+        time.sleep(0.1) # Reduced from 1s
+
+        if not ser_mill.is_open:
+            ser_mill.open()
+            time.sleep(0.5) # Reduced from 1s
+        
+        if not ser_mill.is_open:
+             return False
+        
+        self.logger.info("Querying the mill for status")
+        
+        # Try to wake it up
+        ser_mill.write(b"\r\n")
+        time.sleep(0.1) # Reduced from 0.5
+        ser_mill.write(b"\x18") # Soft reset Ctrl-X
+        time.sleep(0.1) # Reduced from 0.5
+        ser_mill.flushInput()
+        
+        # Now ask for status
+        ser_mill.write(b"?") 
+        time.sleep(0.1) # Reduced from 0.5
+        
+        # Also send $$ as before, but ? is safer for status
+        ser_mill.write(b"$$\n")
+        time.sleep(0.2) # Reduced from 1s
+
+        statuses = ser_mill.readlines()
+        self.logger.info(f"Raw response: {statuses}")
+        
+        for line in statuses:
+            decoded = line.decode(errors='ignore').rstrip()
+            if "Grbl" in decoded or "ok" in decoded or "error" in decoded or "Idle" in decoded:
+                return True
+        return False
+
+    def _cache_port(self, port: str):
+         """Cache the port to a file"""
+         with open(Path(__file__).parent / "mill_port.txt", "w") as file:
+            file.write(port)
 
     def connect_to_mill(
         self,
@@ -354,6 +356,8 @@ class Mill:
 
         self.check_for_alarm_state()
         self.clear_buffers()
+        # Set a default feed rate to prevent error:22 on first move
+        self.set_feed_rate(DEFAULT_FEED_RATE)
         return self.ser_mill
 
     def check_for_alarm_state(self):
@@ -429,16 +433,20 @@ class Mill:
         #     self.logger.debug("Mill was homed, resting electrode")
         #     self.rest_electrode()
 
-        self.ser_mill.close()
-        time.sleep(2)
-        self.logger.info("Mill connected: %s", self.ser_mill.is_open)
-        if self.ser_mill.is_open:
-            self.logger.error("Failed to close the serial connection to the mill")
-            raise MillConnectionError("Error closing serial connection to mill")
+        if self.ser_mill:
+            self.ser_mill.close()
+            time.sleep(2)
+            # self.logger.info("Mill connected: %s", self.ser_mill.is_open) 
+            # is_open check on closed port might be valid or not depending on impl, but let's be safe
+            if self.ser_mill.is_open:
+                self.logger.error("Failed to close the serial connection to the mill")
+                raise MillConnectionError("Error closing serial connection to mill")
+            else:
+                self.logger.info("Serial connection to mill closed successfully")
+                self.active_connection = False
+                self.ser_mill = None
         else:
-            self.logger.info("Serial connection to mill closed successfully")
-            self.active_connection = False
-            self.ser_mill = None
+             self.logger.info("Serial connection was already closed or never opened.")
         return
 
     def read_mill_config_file(self, config_file: str = "_configuration.json"):
@@ -506,7 +514,7 @@ class Mill:
             self.logger.error("Error writing mill config to file: %s", str(exep))
             raise MillConfigError("Error writing mill config to file") from exep
 
-    def execute_command(self, command: str):
+    def execute_command(self, command: str, suppress_errors: bool = False):
         """Encodes and sends commands to the mill and returns the response"""
         try:
             self.logger.debug("Command sent: %s", command)
@@ -543,6 +551,9 @@ class Mill:
                         
                     try:
                         key, value = setting.split("=", 1) # Split only on first =
+                        # Strip comments from the value (e.g., "0 (soft limits,bool)" -> "0")
+                        if "(" in value:
+                            value = value.split("(", 1)[0]
                         settings_dict[key.strip()] = value.strip()
                     except ValueError:
                          self.logger.error(f"Failed to parse setting line: {setting}")
@@ -553,7 +564,7 @@ class Mill:
             mill_response = self.read().lower()
             if not command.startswith("$"):
                 # self.logger.debug("Initially %s", mill_response)
-                mill_response = self.__wait_for_completion(mill_response)
+                mill_response = self.__wait_for_completion(mill_response, suppress_errors=suppress_errors)
                 self.logger.debug("Returned %s", mill_response)
             else:
                 self.logger.debug("Returned %s", mill_response)
@@ -563,16 +574,18 @@ class Mill:
                     # This is a GRBL error that occurs when the feed rate isn't set before moving with G01 command
                     self.logger.error("Error in status: %s", mill_response)
                     # Try setting the feed rate and executing the command again
-                    self.set_feed_rate(2000)
-                    mill_response = self.execute_command(command)
+                    self.set_feed_rate(DEFAULT_FEED_RATE)
+                    mill_response = self.execute_command(command, suppress_errors=suppress_errors)
                 else:
-                    self.logger.error(
-                        "current_status: Error in status: %s", mill_response
-                    )
+                    if not suppress_errors:
+                        self.logger.error(
+                            "current_status: Error in status: %s", mill_response
+                        )
                     raise StatusReturnError(f"Error in status: {mill_response}")
 
         except Exception as exep:
-            self.logger.error("Error executing command %s: %s", command, str(exep))
+            if not suppress_errors:
+                self.logger.error("Error executing command %s: %s", command, str(exep))
             raise CommandExecutionError(
                 f"Error executing command {command}: {str(exep)}"
             ) from exep
@@ -591,7 +604,7 @@ class Mill:
         """Soft reset the mill"""
         self.execute_command("^X")
 
-    def home(self, timeout=90):
+    def home(self, timeout=HOMING_TIMEOUT):
         """Home the mill with a timeout"""
         self.execute_command("$H")
         # replaced 15s sleep with a polling wait
@@ -618,7 +631,104 @@ class Mill:
 
             time.sleep(0.5)
 
-    def __wait_for_completion(self, incoming_status, timeout=5):
+    def home_xy_hard_limits(self):
+        """
+        Custom homing strategy for machines without valid Z homing.
+        Homes X and Y axes independently using hard limits.
+        """
+        self.logger.info("Starting Custom XY Hard Limit Homing...")
+        
+        # Helper to home a single axis
+        def home_axis(axis: str, direction: int):
+            self.logger.info(f"Homing Axis: {axis}, Direction: {direction}")
+            
+            # Ensure relative mode
+            self.execute_command("G91")
+            
+            dist_moved = 0.0
+            switch_hit = False
+            
+            while dist_moved < MAX_TRAVEL_LIMIT:
+                # Move
+                move_cmd = f"G1 {axis}{HOMING_STEP_SIZE * direction} F{HOMING_FAST_FEED}"
+                is_hit = False
+                
+                try:
+                    self.execute_command(move_cmd, suppress_errors=True)
+                    dist_moved += HOMING_STEP_SIZE
+                except Exception as e:
+                    # Check for alarm or error indicative of hard limit
+                    err_msg = str(e)
+                    if "error:9" in err_msg or "Alarm" in err_msg:
+                        is_hit = True
+                        self.logger.info(f"Hit detected via exception: {err_msg}")
+                
+                # Check Status for Pn: trigger or Alarm
+                status = ""
+                try:
+                    status = self.current_status()
+                except Exception as e:
+                    # If current_status raises (due to Alarm), check the exception message
+                    status_err = str(e)
+                    if "Alarm" in status_err or "Pn:" in status_err:
+                         # We can try to extract the status from the error message if needed
+                         # But knowing we have an alarm is usually enough if we were moving
+                         status = status_err
+                         is_hit = True
+                
+                # GRBL triggers an Alarm (often error:9) upon hard limit
+                # Status string might show <Alarm|...|Pn:X>
+                if "Alarm" in status:
+                    is_hit = True
+                if "Pn:" in status:
+                     # Check if specific axis triggered
+                     triggered_pins = status.split("Pn:")[1].split("|")[0]
+                     if axis in triggered_pins:
+                         is_hit = True
+                
+                if is_hit:
+                    self.logger.info(f"Hard limit hit for {axis}!")
+                    switch_hit = True
+                    
+                    # Clear Alarm
+                    self.logger.info("Clearing Alarm ($X)...")
+                    try:
+                        self.execute_command("$X")
+                    except:
+                        pass
+                    time.sleep(1)
+                    break
+                
+            if not switch_hit:
+                self.logger.error(f"Failed to home {axis}: Max travel reached without hitting switch.")
+                raise MillConnectionError(f"Homing failed for {axis}")
+
+            # Back off
+            self.logger.info(f"Backing off {axis}...")
+            self.execute_command("G91")
+            self.execute_command(f"G0 {axis}{-HOMING_BACKOFF * direction}")
+            
+            # Set Zero
+            # For 3018, usually:
+            # X Limit is RIGHT (Max X). If we want X=0 at RIGHT, we set X=0. 
+            # If we want X=0 at LEFT, we set X=MAX_TRAVEL (and soft limits work).
+            # The custom script sets X=0 at the switch.
+            self.logger.info(f"Setting {axis} Zero...")
+            self.execute_command(f"G10 L20 P1 {axis}0")
+            
+            # Reset to Absolute
+            self.execute_command("G90")
+
+        # Home X (Right/Positive)
+        home_axis("X", 1)
+        
+        # Home Y (Back/Positive)
+        home_axis("Y", 1)
+        
+        self.homed = True
+        self.logger.info("Custom XY Homing Complete.")
+
+    def __wait_for_completion(self, incoming_status, suppress_errors: bool = False, timeout=5):
         """Wait for the mill to complete the previous command"""
         status = incoming_status
         start_time = time.time()
@@ -626,10 +736,12 @@ class Mill:
             if "<Run" in status:
                 start_time = time.time()
             if "error" in status:
-                self.logger.error("Error in status: %s", status)
+                if not suppress_errors:
+                    self.logger.error("Error in status: %s", status)
                 raise StatusReturnError(f"Error in status: {status}")
             if "alarm" in status:
-                self.logger.error("Alarm in status: %s", status)
+                if not suppress_errors:
+                    self.logger.error("Alarm in status: %s", status)
                 raise StatusReturnError(f"Alarm in status: {status}")
             if time.time() - start_time > timeout:
                 self.logger.warning("Command execution timed out")
@@ -771,9 +883,7 @@ class Mill:
                 y_coord = round(float(match.group(2)), 3)
                 z_coord = round(float(match.group(3)), 3)
                 if coord_type == "MPos":
-                    x_coord += homing_pull_off
-                    y_coord += homing_pull_off
-                    z_coord += homing_pull_off
+                    pass # Offset removed
                 self.logger.info(
                     "%s coordinates: X = %s, Y = %s, Z = %s",
                     coord_type,
@@ -910,28 +1020,12 @@ class Mill:
                 )
                 continue
 
-            if safe_move_required:
-                # Check if we need to move to safe height first
-                if self.__should_move_to_safe_position_first(
-                    current_coordinates, target_coordinates, self.max_z_height
-                ):
-                    commands.append(f"G01 Z{self.max_z_height}")
-                    move_to_zero = True
-                else:
-                    move_to_zero = False
-
-                commands.extend(
-                    self._generate_movement_commands(
-                        current_coordinates, target_coordinates, move_to_zero
-                    )
+            # Safe move logic disabled by request
+            commands.extend(
+                self._generate_movement_commands(
+                    current_coordinates, target_coordinates
                 )
-            else:
-                # Original direct movement behavior
-                commands.extend(
-                    self._generate_movement_commands(
-                        current_coordinates, target_coordinates
-                    )
-                )
+            )
 
             current_coordinates = target_coordinates
 
@@ -1031,7 +1125,7 @@ class Mill:
             # Add the movement to the second z coordinate and feed rate
             commands.append(f"G01 Z{second_z_cord} F{second_z_cord_feed}")
             # Restore the feed rate to the default of 2000
-            commands.append("F2000")
+            commands.append(f"F{DEFAULT_FEED_RATE}")
         # Form the individual movement commands into a block seperated by \n
         command_str = "\n".join(commands)
         self.execute_command(command_str)
@@ -1061,9 +1155,7 @@ class Mill:
         return Coordinates(
             x=goto.x + offsets.x,
             y=goto.y + offsets.y,
-            z=max(
-                self.working_volume.z + 3, min(goto.z + offsets.z, self.max_z_height)
-            ),
+            z=goto.z + offsets.z,
         )
 
     def _log_target_coordinates(self, target_coordinates: Coordinates):
@@ -1075,20 +1167,8 @@ class Mill:
         )
 
     def _validate_target_coordinates(self, target_coordinates: Coordinates):
-        if (
-            not self.working_volume.x <= target_coordinates.x <= 0
-        ):  # TODO remove the <=0 check after verifying that new offsets work
-            # TODO move to overall travel from 0 to working volume as the check
-            self.logger.error("x coordinate out of range")
-            raise ValueError("x coordinate out of range")
-        if not self.working_volume.y <= target_coordinates.y <= 0:
-            # If the target y is not between the working volume and 0, raise an error
-            self.logger.error("y coordinate out of range")
-            raise ValueError("y coordinate out of range")
-        if not self.working_volume.z <= target_coordinates.z <= self.max_z_height:
-            # If the target z is not between the working volume and the max z height, raise an error
-            self.logger.error("z coordinate out of range")
-            raise ValueError("z coordinate out of range")
+        # Validation disabled by request
+        pass
 
     def _generate_movement_commands(
         self,

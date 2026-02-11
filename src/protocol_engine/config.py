@@ -18,9 +18,13 @@ class MachineBounds(BaseModel):
     z_max: float
 
 class DeckConfig(BaseModel):
-    machine_bounds: MachineBounds
-    safe_z_height: float
-    locations: Dict[str, CoordinateModel]
+    machine_bounds: Optional[MachineBounds] = MachineBounds(
+        x_min=-300.0, x_max=0.0,
+        y_min=-180.0, y_max=0.0,
+        z_min=-40.0, z_max=0.0
+    )
+    safe_z_height: float = -5.0
+    locations: Dict[str, CoordinateModel] = {}
     homing_enabled: bool = True
     camera_source: int = 0
     serial_port: Optional[str] = None
