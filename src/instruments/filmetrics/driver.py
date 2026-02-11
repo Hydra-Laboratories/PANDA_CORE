@@ -10,7 +10,8 @@ from src.instruments.filmetrics.exceptions import (
 )
 from src.instruments.filmetrics.models import MeasurementResult
 
-_COMPLETION_SENTINELS = ("complete", "successfully")
+_SUCCESS_SENTINELS = ("complete", "successfully")
+_ERROR_SENTINELS = ("error", "exception")
 
 
 class Filmetrics(BaseInstrument):
@@ -118,7 +119,12 @@ class Filmetrics(BaseInstrument):
         raise FilmetricsConnectionError("Timed out waiting for init")
 
     def _send_command(self, command: str) -> list[str]:
-        """Send a command string and collect output until a completion sentinel."""
+        """Send a command string and collect output until a sentinel.
+
+        Returns lines on success. Raises FilmetricsCommandError if the C#
+        app responds with an error/exception message, times out, or the
+        process exits.
+        """
         self._process.stdin.write(command + "\n")
         self._process.stdin.flush()
 
@@ -132,8 +138,13 @@ class Filmetrics(BaseInstrument):
                 )
             stripped = line.strip()
             lines.append(stripped)
-            if any(s in stripped.lower() for s in _COMPLETION_SENTINELS):
+            low = stripped.lower()
+            if any(s in low for s in _SUCCESS_SENTINELS):
                 return lines
+            if any(s in low for s in _ERROR_SENTINELS):
+                raise FilmetricsCommandError(
+                    f"Command '{command}' failed: {stripped}"
+                )
 
         raise FilmetricsCommandError(
             f"Timed out ({self._command_timeout}s) waiting for '{command}' to complete"

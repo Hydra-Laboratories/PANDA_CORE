@@ -299,16 +299,22 @@ class TestFilmetricsCommands:
         assert result.is_valid is True
 
     @patch("subprocess.Popen")
-    def test_measure_with_no_data(self, mock_popen):
+    def test_measure_error_raises(self, mock_popen):
+        """C# error responses should raise FilmetricsCommandError."""
         fm, proc = self._make_connected_filmetrics(mock_popen, [
-            "Starting measurement...",
-            "Error: some acquisition error",
-            "Measurement Complete",
+            "Error: Invalid acquisition settings. Verify that a valid baseline has been established.",
         ])
-        result = fm.measure()
-        assert result.thickness_nm is None
-        assert result.goodness_of_fit is None
-        assert result.is_valid is False
+        with pytest.raises(FilmetricsCommandError, match="Invalid acquisition settings"):
+            fm.measure()
+
+    @patch("subprocess.Popen")
+    def test_exception_response_raises(self, mock_popen):
+        """C# exception responses should also raise FilmetricsCommandError."""
+        fm, proc = self._make_connected_filmetrics(mock_popen, [
+            "General exception caught: something went wrong",
+        ])
+        with pytest.raises(FilmetricsCommandError, match="exception"):
+            fm.acquire_sample()
 
     @patch("subprocess.Popen")
     def test_save_spectrum_placeholder(self, mock_popen):
