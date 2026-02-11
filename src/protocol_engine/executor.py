@@ -4,20 +4,20 @@ from src.protocol_engine.compiler import CompiledProtocol
 from src.protocol_engine.camera import Camera
 # Assuming Mill interface is duck-typed for now as passed in execution
 # Or import type checking if available.
-# from src.cnc_control.driver import Mill
+from src.hardware.gantry import Gantry
 
 class ProtocolExecutor:
     """Executes a compiled protocol on the hardware."""
     
-    def __init__(self, mill, camera: Camera):
+    def __init__(self, gantry: Gantry, camera: Camera):
         """
         Initialize the executor.
         
         Args:
-            mill: The Mill controller instance.
+            gantry: The Gantry instance.
             camera: The Camera instance.
         """
-        self.mill = mill
+        self.gantry = gantry
         self.camera = camera
         
     def execute(self, protocol: CompiledProtocol):
@@ -30,7 +30,7 @@ class ProtocolExecutor:
         for step in protocol.steps:
             if step.type == "move":
                 params = step.parameters
-                self.mill.move_to(
+                self.gantry.move_to(
                     x=params["x"],
                     y=params["y"],
                     z=params["z"]

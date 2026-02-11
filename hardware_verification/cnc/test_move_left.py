@@ -7,7 +7,7 @@ import time
 project_root = Path(__file__).parent.parent.parent
 sys.path.append(str(project_root))
 
-from src.core.instruments.cnc import CNC
+from src.hardware.gantry import Gantry
 from src.protocol_engine.config import DeckConfig
 
 def main():
@@ -34,7 +34,7 @@ def main():
     # 2. Initialize CNC Wrapper
     print("\nInitializing CNC Driver...")
     driver_config = {"cnc": {"serial_port": config.serial_port}}
-    cnc = CNC(config=driver_config)
+    cnc = Gantry(config=driver_config)
 
     # 3. Connect
     print("Attempting to connect...")

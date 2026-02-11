@@ -1,15 +1,20 @@
-from typing import Optional, Dict, Any
-from src.core.base_instrument import BaseInstrument, InstrumentError
+from typing import Optional, Dict, Any, Tuple
+import logging
 from src.instrument_drivers.cnc_driver.driver import Mill
 
-class CNC(BaseInstrument):
+logger = logging.getLogger(__name__)
+
+class Gantry:
     """
-    Driver for the CNC Mill, wrapping the legacy Mill class.
-    Implements the BaseInstrument interface.
+    Hardware interface for the CNC Gantry / Motion Controller.
+    
+    This class wraps the low-level Mill driver to provide a high-level
+    interface for moving the gantry. It is NOT an Instrument and does
+    not inherit from BaseInstrument.
     """
     def __init__(self, config: Optional[Dict[str, Any]] = None):
-        super().__init__()
         self.config = config or {}
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         # partial initialization of Mill without port 
         # (port is late-bound in connect())
         self._mill = Mill() 
@@ -24,27 +29,24 @@ class CNC(BaseInstrument):
         """
         try:
             # User requested to prioritize auto-scan.
-            # We will ignore the config port by default and pass None to trigger detection.
-            # Original logic:
-            # port = self.config.get("cnc", {}).get("serial_port")
-            # if not port:
-            #     port = self.config.get("serial_port")
-            
             port = None  # Force auto-scan
             
-            self.logger.info(f"Connecting to mill with port: {port} (None=Auto-scan)")
+            self.logger.info(f"Connecting to gantry with port: {port} (None=Auto-scan)")
             self._mill.connect_to_mill(port=port)
             
         except Exception as e:
-            self.handle_error(e, "connect")
+            self.logger.error(f"Error connecting to gantry: {e}")
+            raise
 
     def disconnect(self) -> None:
         try:
             self._mill.disconnect()
         except Exception as e:
-            self.handle_error(e, "disconnect")
+            self.logger.error(f"Error disconnecting gantry: {e}")
+            # We don't necessarily raise here as disconnect is often cleanup
 
-    def health_check(self) -> bool:
+    def is_healthy(self) -> bool:
+        """Check if the gantry is connected and healthy."""
         if not self._mill.active_connection:
             return False
             
@@ -55,7 +57,6 @@ class CNC(BaseInstrument):
 
             status = self._mill.current_status()
             # Simple check for error/alarm/unknown in status string
-            # Mill.current_status returns string like "<Idle|MPos:0.000,0.000,0.000|FS:0,0>"
             if "Alarm" in status or "Error" in status:
                 return False
                 
@@ -64,32 +65,38 @@ class CNC(BaseInstrument):
             return False
 
     def home(self) -> None:
+        """Home the gantry."""
         try:
             strategy = self.config.get("cnc", {}).get("homing_strategy")
+            # Default to None or check if strategy is specifically set
+            # The mill driver now handles standard homing efficiently
             if strategy == "xy_hard_limits":
                 self.logger.info("Using custom XY hard limit homing strategy")
                 self._mill.home_xy_hard_limits()
             else:
                 self._mill.home()
         except Exception as e:
-            self.handle_error(e, "home")
+            self.logger.error(f"Error homing gantry: {e}")
+            raise
 
     def move_to(self, x: float, y: float, z: float) -> None:
         """
         Move to absolute coordinates (x, y, z).
-        Delegates to Mill.safe_move().
+        Delegates to Mill.safe_move() (which now checks for safe Z logic if enabled/refactored, 
+        but currently in driver.py acts as a direct move wrapper with improved readability).
         """
         try:
             self._mill.safe_move(x_coord=x, y_coord=y, z_coord=z)
         except Exception as e:
-            self.handle_error(e, "move_to")
+            self.logger.error(f"Error moving gantry to ({x}, {y}, {z}): {e}")
+            raise
 
     def get_status(self) -> str:
         """Return the current status string of the mill."""
         try:
             return self._mill.current_status()
         except Exception as e:
-            self.handle_error(e, "get_status")
+            self.logger.error(f"Error getting status: {e}")
             return "Error"
 
     def get_coordinates(self) -> Dict[str, float]:
@@ -98,5 +105,5 @@ class CNC(BaseInstrument):
             coords = self._mill.current_coordinates()
             return {"x": coords.x, "y": coords.y, "z": coords.z}
         except Exception as e:
-            self.handle_error(e, "get_coordinates")
+            self.logger.error(f"Error getting coordinates: {e}")
             return {"x": 0.0, "y": 0.0, "z": 0.0}

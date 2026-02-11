@@ -5,7 +5,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from src.core.instruments.cnc import CNC
+from src.hardware.gantry import Gantry
 from src.protocol_engine.config import DeckConfig
 
 def main():
@@ -47,12 +47,12 @@ def main():
         print(f"Config not found at {config_path}")
         return
 
-    cnc = CNC(config=driver_config)
+    cnc = Gantry(config=driver_config)
     
     try:
         print("Connecting to CNC...")
         cnc.connect()
-        if not cnc.health_check():
+        if not cnc.is_healthy():
              print("Warning: Health check failed (possibly alarm state), attempting to proceed with homing anyway...")
         
         print("Starting Homing Sequence...")

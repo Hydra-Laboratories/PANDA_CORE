@@ -6,7 +6,7 @@ import time
 project_root = Path(__file__).parent.parent.parent
 sys.path.append(str(project_root))
 
-from src.core.instruments.cnc import CNC
+from src.hardware.gantry import Gantry
 from src.protocol_engine.config import DeckConfig
 
 def main():
@@ -36,7 +36,7 @@ def main():
     print("\nInitializing CNC Driver...")
     # Inject config in the format CNC expects
     driver_config = {"cnc": {"serial_port": config.serial_port}}
-    cnc = CNC(config=driver_config)
+    cnc = Gantry(config=driver_config)
 
     # 3. Connect
     print("Attempting to connect...")
@@ -49,7 +49,7 @@ def main():
 
     # 4. Check Health & Status
     print("\nChecking Instrument Health...")
-    is_healthy = cnc.health_check()
+    is_healthy = cnc.is_healthy()
     print(f"Health Check: {'PASSED' if is_healthy else 'FAILED'}")
 
     if is_healthy:

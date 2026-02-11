@@ -7,7 +7,7 @@ import re
 project_root = Path(__file__).parent.parent.parent
 sys.path.append(str(project_root))
 
-from src.core.instruments.cnc import CNC
+from src.hardware.gantry import Gantry
 from src.protocol_engine.config import DeckConfig
 
 # CONFIGURATION
@@ -38,7 +38,7 @@ def main():
         except:
             pass
             
-    cnc = CNC(config=driver_config)
+    cnc = Gantry(config=driver_config)
     try:
         cnc.connect()
         print(">> Connected!")
