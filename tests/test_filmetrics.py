@@ -121,18 +121,26 @@ class TestParsing:
 class TestFilmetricsLifecycle:
 
     def _make_mock_process(self, stdout_lines=None):
-        """Create a mock Popen object that simulates the C# app."""
+        """Create a mock Popen object that simulates the C# app.
+
+        The C# app uses Console.Write (no newline) for init, so
+        _wait_for_init reads char-by-char via read(1). We set up
+        read() to return the init text one character at a time.
+        """
         proc = MagicMock()
         proc.poll.return_value = None  # process is alive
         proc.pid = 12345
-        if stdout_lines is None:
-            stdout_lines = [
-                "Initializing FIRemote",
-                "Initializition Complete",
+
+        # Init text read char-by-char (Console.Write, no newlines)
+        init_text = "Initializing FIRemoteInitializition Complete"
+        init_chars = [c for c in init_text]
+
+        proc.stdout.read.side_effect = init_chars
+        # readline is used by _send_command (post-init)
+        if stdout_lines is not None:
+            proc.stdout.readline.side_effect = [
+                line + "\n" for line in stdout_lines
             ]
-        proc.stdout.readline.side_effect = [
-            line + "\n" for line in stdout_lines
-        ]
         proc.stdin = MagicMock()
         return proc
 
@@ -223,10 +231,13 @@ class TestFilmetricsCommands:
         proc.pid = 12345
         proc.stdin = MagicMock()
 
-        # First readline calls are for connect() init
-        init_lines = ["Initializing FIRemote\n", "Initializition Complete\n"]
+        # Init uses read(1) char-by-char (Console.Write, no newline)
+        init_text = "Initializing FIRemoteInitializition Complete"
+        proc.stdout.read.side_effect = [c for c in init_text]
+
+        # Commands use readline()
         command_lines = [line + "\n" for line in command_response_lines]
-        proc.stdout.readline.side_effect = init_lines + command_lines
+        proc.stdout.readline.side_effect = command_lines
 
         mock_popen.return_value = proc
         fm = Filmetrics(exe_path="/fake/exe", recipe_name="Test")
@@ -316,9 +327,11 @@ class TestFilmetricsCommands:
         proc.pid = 12345
         proc.stdin = MagicMock()
 
-        init_lines = ["Initializing FIRemote\n", "Initializition Complete\n"]
-        # After init, readline blocks forever — simulate with empty string (EOF)
-        proc.stdout.readline.side_effect = init_lines + [""]
+        # Init uses read(1) char-by-char
+        init_text = "Initializing FIRemoteInitializition Complete"
+        proc.stdout.read.side_effect = [c for c in init_text]
+        # After init, readline returns EOF — simulates no sentinel
+        proc.stdout.readline.side_effect = [""]
 
         mock_popen.return_value = proc
         fm = Filmetrics(exe_path="/fake/exe", recipe_name="Test", command_timeout=0.1)

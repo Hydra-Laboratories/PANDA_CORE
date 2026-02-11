@@ -101,13 +101,19 @@ class Filmetrics(BaseInstrument):
     # ── Private helpers ───────────────────────────────────────────────────
 
     def _wait_for_init(self) -> None:
-        """Read stdout until the C# app signals initialisation is complete."""
+        """Read stdout until the C# app signals initialisation is complete.
+
+        The C# app uses Console.Write (no newline) for init messages,
+        so we read character-by-character instead of using readline().
+        """
+        buffer = ""
         deadline = time.monotonic() + self._command_timeout
         while time.monotonic() < deadline:
-            line = self._process.stdout.readline()
-            if not line:
+            char = self._process.stdout.read(1)
+            if not char:
                 raise FilmetricsConnectionError("Process exited during init")
-            if "complete" in line.lower():
+            buffer += char
+            if "complete" in buffer.lower():
                 return
         raise FilmetricsConnectionError("Timed out waiting for init")
 
