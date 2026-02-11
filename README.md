@@ -26,6 +26,31 @@ This project features a robust **Protocol Engine** for defining and executing au
    python verify_experiment.py experiments/my_experiment.yaml
    ```
 
+## Instrument Drivers
+
+Lab instruments are implemented as `BaseInstrument` subclasses in `src/instruments/`.
+
+### Filmetrics Film Thickness
+
+Driver for the Filmetrics measurement system (`src/instruments/filmetrics/`). Communicates with a C# console app via stdin/stdout.
+
+```python
+from src.instruments.filmetrics import Filmetrics, MockFilmetrics
+
+# Real hardware
+fm = Filmetrics(exe_path="path/to/FilmetricsTool.exe", recipe_name="MyRecipe")
+fm.connect()
+result = fm.measure()
+print(result.thickness_nm, result.goodness_of_fit, result.is_valid)
+fm.disconnect()
+
+# Testing
+mock = MockFilmetrics()
+mock.connect()
+mock.measure()
+print(mock.command_history)  # ['measure']
+```
+
 ## Development
 
 Run unit tests:

@@ -23,6 +23,24 @@ This repository contains code to control a CNC router (mill) using a Python-base
     - **Coordinates**: The machine typically operates in negative space relative to Home (0,0,0). e.g., X goes from 0 to -415.
 3.  **Offsets**: Tools have offsets managed by `ToolManager`.
 
+### Instruments (`src/instruments`)
+Base classes and instrument drivers for lab equipment.
+
+- **`base_instrument.py`**: `BaseInstrument` abstract class and `InstrumentError`. All instrument drivers inherit from this.
+- **`__init__.py`**: Exports `BaseInstrument`, `InstrumentError`.
+
+#### Filmetrics (`src/instruments/filmetrics`)
+Driver for the Filmetrics film thickness measurement system. Communicates with a C# console app (`FilmetricsTool.exe`) via stdin/stdout text commands.
+
+- **`driver.py`**: `Filmetrics(BaseInstrument)` — the real driver.
+    - **Constructor**: `Filmetrics(exe_path, recipe_name, command_timeout=30.0, name=None)`
+    - **Lifecycle**: `connect()`, `disconnect()`, `health_check()`
+    - **Commands**: `acquire_sample()`, `acquire_reference(ref)`, `acquire_background()`, `commit_baseline()`, `measure() -> MeasurementResult`, `save_spectrum(id)`
+- **`mock.py`**: `MockFilmetrics` — in-memory mock for testing. Tracks `command_history: list[str]`.
+- **`models.py`**: `MeasurementResult` frozen dataclass (`thickness_nm`, `goodness_of_fit`, `is_valid`).
+- **`exceptions.py`**: `FilmetricsError` hierarchy (`FilmetricsConnectionError`, `FilmetricsCommandError`, `FilmetricsParseError`).
+- **`reference/`**: Copy of the C# source (`FilmetricsTool_program.cs`) for protocol reference.
+
 ### Protocol Engine (`src/protocol_engine`)
 A modular system for executing experiment sequences defined in code or YAML.
 

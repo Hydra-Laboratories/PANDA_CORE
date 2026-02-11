@@ -1,5 +1,5 @@
 import pytest
-from src.core.base_instrument import BaseInstrument, InstrumentError
+from src.instruments.base_instrument import BaseInstrument, InstrumentError
 
 # Mock concrete implementation for testing
 class MockInstrument(BaseInstrument):
