@@ -439,16 +439,20 @@ class Mill:
         #     self.logger.debug("Mill was homed, resting electrode")
         #     self.rest_electrode()
 
-        self.ser_mill.close()
-        time.sleep(2)
-        self.logger.info("Mill connected: %s", self.ser_mill.is_open)
-        if self.ser_mill.is_open:
-            self.logger.error("Failed to close the serial connection to the mill")
-            raise MillConnectionError("Error closing serial connection to mill")
+        if self.ser_mill:
+            self.ser_mill.close()
+            time.sleep(2)
+            # self.logger.info("Mill connected: %s", self.ser_mill.is_open) 
+            # is_open check on closed port might be valid or not depending on impl, but let's be safe
+            if self.ser_mill.is_open:
+                self.logger.error("Failed to close the serial connection to the mill")
+                raise MillConnectionError("Error closing serial connection to mill")
+            else:
+                self.logger.info("Serial connection to mill closed successfully")
+                self.active_connection = False
+                self.ser_mill = None
         else:
-            self.logger.info("Serial connection to mill closed successfully")
-            self.active_connection = False
-            self.ser_mill = None
+             self.logger.info("Serial connection was already closed or never opened.")
         return
 
     def read_mill_config_file(self, config_file: str = "_configuration.json"):
@@ -516,7 +520,7 @@ class Mill:
             self.logger.error("Error writing mill config to file: %s", str(exep))
             raise MillConfigError("Error writing mill config to file") from exep
 
-    def execute_command(self, command: str):
+    def execute_command(self, command: str, suppress_errors: bool = False):
         """Encodes and sends commands to the mill and returns the response"""
         try:
             self.logger.debug("Command sent: %s", command)
@@ -566,7 +570,7 @@ class Mill:
             mill_response = self.read().lower()
             if not command.startswith("$"):
                 # self.logger.debug("Initially %s", mill_response)
-                mill_response = self.__wait_for_completion(mill_response)
+                mill_response = self.__wait_for_completion(mill_response, suppress_errors=suppress_errors)
                 self.logger.debug("Returned %s", mill_response)
             else:
                 self.logger.debug("Returned %s", mill_response)
@@ -577,15 +581,17 @@ class Mill:
                     self.logger.error("Error in status: %s", mill_response)
                     # Try setting the feed rate and executing the command again
                     self.set_feed_rate(2000)
-                    mill_response = self.execute_command(command)
+                    mill_response = self.execute_command(command, suppress_errors=suppress_errors)
                 else:
-                    self.logger.error(
-                        "current_status: Error in status: %s", mill_response
-                    )
+                    if not suppress_errors:
+                        self.logger.error(
+                            "current_status: Error in status: %s", mill_response
+                        )
                     raise StatusReturnError(f"Error in status: {mill_response}")
 
         except Exception as exep:
-            self.logger.error("Error executing command %s: %s", command, str(exep))
+            if not suppress_errors:
+                self.logger.error("Error executing command %s: %s", command, str(exep))
             raise CommandExecutionError(
                 f"Error executing command {command}: {str(exep)}"
             ) from exep
@@ -631,7 +637,115 @@ class Mill:
 
             time.sleep(0.5)
 
-    def __wait_for_completion(self, incoming_status, timeout=5):
+    def home_xy_hard_limits(self):
+        """
+        Custom homing strategy for machines without valid Z homing.
+        Homes X and Y axes independently using hard limits.
+        """
+        self.logger.info("Starting Custom XY Hard Limit Homing...")
+        
+        # Define homing parameters (matching custom scripts)
+        # X: Right is positive, Max Travel ~320
+        # Y: Back is positive, Max Travel ~320
+        HOMING_FEED_FAST = 500
+        MAX_TRAVEL = 320.0
+        BACKOFF_DIST = 2.0
+        
+        # Helper to home a single axis
+        def home_axis(axis: str, direction: int):
+            self.logger.info(f"Homing Axis: {axis}, Direction: {direction}")
+            
+            # Ensure relative mode
+            self.execute_command("G91")
+            
+            dist_moved = 0.0
+            switch_hit = False
+            step_size = 10.0 # mm per check
+            
+            while dist_moved < MAX_TRAVEL:
+                # Move
+                move_cmd = f"G1 {axis}{step_size * direction} F{HOMING_FEED_FAST}"
+                is_hit = False
+                
+                try:
+                    self.execute_command(move_cmd, suppress_errors=True)
+                    dist_moved += step_size
+                except Exception as e:
+                    # Check for alarm or error indicative of hard limit
+                    err_msg = str(e)
+                    if "error:9" in err_msg or "Alarm" in err_msg:
+                        is_hit = True
+                        self.logger.info(f"Hit detected via exception: {err_msg}")
+                
+                # Check Status for Pn: trigger or Alarm
+                status = ""
+                try:
+                    status = self.current_status()
+                except Exception as e:
+                    # If current_status raises (due to Alarm), check the exception message
+                    status_err = str(e)
+                    if "Alarm" in status_err or "Pn:" in status_err:
+                         # We can try to extract the status from the error message if needed
+                         # But knowing we have an alarm is usually enough if we were moving
+                         status = status_err
+                         is_hit = True
+                
+                # GRBL triggers an Alarm (often error:9) upon hard limit
+                # Status string might show <Alarm|...|Pn:X>
+                if "Alarm" in status:
+                    is_hit = True
+                if "Pn:" in status:
+                     # Check if specific axis triggered
+                     triggered_pins = status.split("Pn:")[1].split("|")[0]
+                     if axis in triggered_pins:
+                         is_hit = True
+                
+                if is_hit:
+                    self.logger.info(f"Hard limit hit for {axis}!")
+                    switch_hit = True
+                    
+                    # Clear Alarm
+                    self.logger.info("Clearing Alarm ($X)...")
+                    try:
+                        self.execute_command("$X")
+                    except:
+                        pass
+                    time.sleep(1)
+                    break
+                
+                # Optional: Sleep slightly to not flood serial?
+                # execute_command waits for 'ok', so it naturally paces.
+            
+            if not switch_hit:
+                self.logger.error(f"Failed to home {axis}: Max travel reached without hitting switch.")
+                raise MillConnectionError(f"Homing failed for {axis}")
+
+            # Back off
+            self.logger.info(f"Backing off {axis}...")
+            self.execute_command("G91")
+            self.execute_command(f"G0 {axis}{-BACKOFF_DIST * direction}")
+            
+            # Set Zero
+            # For 3018, usually:
+            # X Limit is RIGHT (Max X). If we want X=0 at RIGHT, we set X=0. 
+            # If we want X=0 at LEFT, we set X=MAX_TRAVEL (and soft limits work).
+            # The custom script sets X=0 at the switch.
+            self.logger.info(f"Setting {axis} Zero...")
+            self.execute_command(f"G10 L20 P1 {axis}0")
+            
+            # Reset to Absolute
+            self.execute_command("G90")
+
+        # Home X (Right/Positive)
+        home_axis("X", 1)
+        
+        # Home Y (Back/Positive)
+        home_axis("Y", 1)
+        
+        self.homed = True
+        self.logger.info("Custom XY Homing Complete.")
+
+    def __wait_for_completion(self, incoming_status, suppress_errors: bool = False, timeout=5):
         """Wait for the mill to complete the previous command"""
         status = incoming_status
         start_time = time.time()
@@ -639,10 +753,12 @@ class Mill:
             if "<Run" in status:
                 start_time = time.time()
             if "error" in status:
-                self.logger.error("Error in status: %s", status)
+                if not suppress_errors:
+                    self.logger.error("Error in status: %s", status)
                 raise StatusReturnError(f"Error in status: {status}")
             if "alarm" in status:
-                self.logger.error("Alarm in status: %s", status)
+                if not suppress_errors:
+                    self.logger.error("Alarm in status: %s", status)
                 raise StatusReturnError(f"Alarm in status: {status}")
             if time.time() - start_time > timeout:
                 self.logger.warning("Command execution timed out")

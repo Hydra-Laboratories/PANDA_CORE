@@ -1,4 +1,6 @@
 serial_port: /dev/cu.usbserial-140
+cnc:
+  homing_strategy: xy_hard_limits
 
 locations:
   home:

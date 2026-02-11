@@ -65,7 +65,12 @@ class CNC(BaseInstrument):
 
     def home(self) -> None:
         try:
-            self._mill.home()
+            strategy = self.config.get("cnc", {}).get("homing_strategy")
+            if strategy == "xy_hard_limits":
+                self.logger.info("Using custom XY hard limit homing strategy")
+                self._mill.home_xy_hard_limits()
+            else:
+                self._mill.home()
         except Exception as e:
             self.handle_error(e, "home")
 
