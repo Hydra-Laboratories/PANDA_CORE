@@ -153,3 +153,5 @@ __pycache__/
 .pytest_cache/
 src/cnc_control/__pycache__/
 src/protocol_engine/__pycache__/
+
+.env

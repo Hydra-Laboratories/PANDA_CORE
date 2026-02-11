@@ -13,7 +13,7 @@ app.mount("/static", StaticFiles(directory="src/web_server/static", html=True), 
 
 # Singleton Mill instance
 mill_instance = None
-CONFIG_PATH = Path("configs/genmitsu_3018_deck_config.yaml")
+CONFIG_PATH = Path("configs/genmitsu_3018_PROver_v2.yaml")
 deck_config = None
 
 class MoveRequest(BaseModel):
