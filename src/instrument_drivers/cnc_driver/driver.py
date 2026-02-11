@@ -41,13 +41,19 @@ from .logger import set_up_command_logger, set_up_mill_logger
 from .tools import Coordinates, ToolManager
 
 # Formatted strings for the mill commands
-MILL_MOVE = (
-    "G01 X{} Y{} Z{}"  # Move to specified coordinates at the specified feed rate
-)
+MILL_MOVE = "G01 X{} Y{} Z{}"  # Move to specified coordinates at the specified feed rate
 MILL_MOVE_Z = "G01 Z{}"  # Move to specified Z coordinate at the specified feed rate
-RAPID_MILL_MOVE = (
-    "G00 X{} Y{} Z{}"  # Move to specified coordinates at the maximum feed rate
-)
+RAPID_MILL_MOVE = "G00 X{} Y{} Z{}"  # Move to specified coordinates at the maximum feed rate
+
+# Constants
+DEFAULT_FEED_RATE = 2000
+HOMING_FEED_RATE = 5000
+HOMING_TIMEOUT = 90
+MAX_TRAVEL_LIMIT = 320.0  # mm
+HOMING_BACKOFF = 2.0      # mm
+HOMING_FAST_FEED = 500
+HOMING_STEP_SIZE = 10.0   # mm
+
 # Compile regex patterns for extracting coordinates from the mill status
 wpos_pattern = re.compile(r"WPos:([\d.-]+),([\d.-]+),([\d.-]+)")
 mpos_pattern = re.compile(r"MPos:([\d.-]+),([\d.-]+),([\d.-]+)")
@@ -184,33 +190,6 @@ class Mill:
 
         If the response does not begin with a $, scan for connected devices and attempt to connect to each one until a valid response is received.
         """
-
-        def get_ports():
-            """List all available ports"""
-            if os.name == "posix":
-                # Search for ttyUSB, usbmodem, and usbserial
-                ports = list(serial.tools.list_ports.grep("ttyUSB|usbmodem|usbserial"))
-            elif os.name == "nt":
-                ports = list(serial.tools.list_ports.grep("COM"))
-            else:
-                raise OSError("Unsupported OS")
-            return ports
-
-        def read_past_found_on_port() -> str:
-            """Read past the found on port"""
-            if not os.path.exists(Path(__file__).parent / "mill_port.txt"):
-                # Make a file if it doesn't exist
-                with open(Path(__file__).parent / "mill_port.txt", "w") as file:
-                    file.write("")
-
-            with open(Path(__file__).parent / "mill_port.txt", "r") as file:
-                found_on = file.read()
-
-            if not found_on or found_on == "":
-                return []
-
-            return [found_on]
-
         ser_mill = serial.Serial()
         baudrates = [115200, 9600]
         timeout = 2 # Reduced timeout for faster scanning
@@ -224,7 +203,7 @@ class Mill:
             ports.append(priority_port)
 
         # Add others just in case, but after the priority one
-        for p in get_ports():
+        for p in self._get_available_ports():
              if p.device != priority_port:
                  ports.append(p.device)
 
@@ -248,48 +227,7 @@ class Mill:
                             timeout=timeout,
                         )
                         
-                        # Soft reset behavior: some boards reset on DTR toggle, but it can cause issues.
-                        # We will try a simple flush first.
-                        ser_mill.flushInput()
-                        ser_mill.flushOutput()
-                        time.sleep(0.1) # Reduced from 1s
-
-                        if not ser_mill.is_open:
-                            ser_mill.open()
-                            time.sleep(0.5) # Reduced from 1s
-                        
-                        if not ser_mill.is_open:
-                             self.logger.warning("Could not open port %s", port)
-                             continue
-                        
-                        self.logger.info("Querying the mill for status")
-                        
-                        # Try to wake it up
-                        ser_mill.write(b"\r\n")
-                        time.sleep(0.1) # Reduced from 0.5
-                        ser_mill.write(b"\x18") # Soft reset Ctrl-X
-                        time.sleep(0.1) # Reduced from 0.5
-                        ser_mill.flushInput()
-                        
-                        # Now ask for status
-                        ser_mill.write(b"?") 
-                        time.sleep(0.1) # Reduced from 0.5
-                        
-                        # Also send $$ as before, but ? is safer for status
-                        ser_mill.write(b"$$\n")
-                        time.sleep(0.2) # Reduced from 1s
-
-                        statuses = ser_mill.readlines()
-                        self.logger.info(f"Raw response: {statuses}")
-                        
-                        valid_response = False
-                        for line in statuses:
-                            decoded = line.decode(errors='ignore').rstrip()
-                            if "Grbl" in decoded or "ok" in decoded or "error" in decoded or "Idle" in decoded:
-                                valid_response = True
-                                break
-                        
-                        if valid_response:
+                        if self._verify_connection(ser_mill):
                              self.logger.info(f"Connected successfully to {port} at {baudrate}")
                              found = True
                              found_on = port
@@ -308,10 +246,66 @@ class Mill:
                     break
 
         # Write the port to a file for future use
-        with open(Path(__file__).parent / "mill_port.txt", "w") as file:
-            file.write(found_on)
+        self._cache_port(found_on)
 
         return ser_mill, found_on
+
+    def _get_available_ports(self):
+        """List all available ports"""
+        if os.name == "posix":
+            # Search for ttyUSB, usbmodem, and usbserial
+            ports = list(serial.tools.list_ports.grep("ttyUSB|usbmodem|usbserial"))
+        elif os.name == "nt":
+            ports = list(serial.tools.list_ports.grep("COM"))
+        else:
+            raise OSError("Unsupported OS")
+        return ports
+
+    def _verify_connection(self, ser_mill: serial.Serial) -> bool:
+        """Verify that the connected device is a GRBL mill"""
+        # Soft reset behavior: some boards reset on DTR toggle, but it can cause issues.
+        # We will try a simple flush first.
+        ser_mill.flushInput()
+        ser_mill.flushOutput()
+        time.sleep(0.1) # Reduced from 1s
+
+        if not ser_mill.is_open:
+            ser_mill.open()
+            time.sleep(0.5) # Reduced from 1s
+        
+        if not ser_mill.is_open:
+             return False
+        
+        self.logger.info("Querying the mill for status")
+        
+        # Try to wake it up
+        ser_mill.write(b"\r\n")
+        time.sleep(0.1) # Reduced from 0.5
+        ser_mill.write(b"\x18") # Soft reset Ctrl-X
+        time.sleep(0.1) # Reduced from 0.5
+        ser_mill.flushInput()
+        
+        # Now ask for status
+        ser_mill.write(b"?") 
+        time.sleep(0.1) # Reduced from 0.5
+        
+        # Also send $$ as before, but ? is safer for status
+        ser_mill.write(b"$$\n")
+        time.sleep(0.2) # Reduced from 1s
+
+        statuses = ser_mill.readlines()
+        self.logger.info(f"Raw response: {statuses}")
+        
+        for line in statuses:
+            decoded = line.decode(errors='ignore').rstrip()
+            if "Grbl" in decoded or "ok" in decoded or "error" in decoded or "Idle" in decoded:
+                return True
+        return False
+
+    def _cache_port(self, port: str):
+         """Cache the port to a file"""
+         with open(Path(__file__).parent / "mill_port.txt", "w") as file:
+            file.write(port)
 
     def connect_to_mill(
         self,
@@ -363,7 +357,7 @@ class Mill:
         self.check_for_alarm_state()
         self.clear_buffers()
         # Set a default feed rate to prevent error:22 on first move
-        self.set_feed_rate(2000)
+        self.set_feed_rate(DEFAULT_FEED_RATE)
         return self.ser_mill
 
     def check_for_alarm_state(self):
@@ -580,7 +574,7 @@ class Mill:
                     # This is a GRBL error that occurs when the feed rate isn't set before moving with G01 command
                     self.logger.error("Error in status: %s", mill_response)
                     # Try setting the feed rate and executing the command again
-                    self.set_feed_rate(2000)
+                    self.set_feed_rate(DEFAULT_FEED_RATE)
                     mill_response = self.execute_command(command, suppress_errors=suppress_errors)
                 else:
                     if not suppress_errors:
@@ -610,7 +604,7 @@ class Mill:
         """Soft reset the mill"""
         self.execute_command("^X")
 
-    def home(self, timeout=90):
+    def home(self, timeout=HOMING_TIMEOUT):
         """Home the mill with a timeout"""
         self.execute_command("$H")
         # replaced 15s sleep with a polling wait
@@ -644,13 +638,6 @@ class Mill:
         """
         self.logger.info("Starting Custom XY Hard Limit Homing...")
         
-        # Define homing parameters (matching custom scripts)
-        # X: Right is positive, Max Travel ~320
-        # Y: Back is positive, Max Travel ~320
-        HOMING_FEED_FAST = 500
-        MAX_TRAVEL = 320.0
-        BACKOFF_DIST = 2.0
-        
         # Helper to home a single axis
         def home_axis(axis: str, direction: int):
             self.logger.info(f"Homing Axis: {axis}, Direction: {direction}")
@@ -660,16 +647,15 @@ class Mill:
             
             dist_moved = 0.0
             switch_hit = False
-            step_size = 10.0 # mm per check
             
-            while dist_moved < MAX_TRAVEL:
+            while dist_moved < MAX_TRAVEL_LIMIT:
                 # Move
-                move_cmd = f"G1 {axis}{step_size * direction} F{HOMING_FEED_FAST}"
+                move_cmd = f"G1 {axis}{HOMING_STEP_SIZE * direction} F{HOMING_FAST_FEED}"
                 is_hit = False
                 
                 try:
                     self.execute_command(move_cmd, suppress_errors=True)
-                    dist_moved += step_size
+                    dist_moved += HOMING_STEP_SIZE
                 except Exception as e:
                     # Check for alarm or error indicative of hard limit
                     err_msg = str(e)
@@ -713,9 +699,6 @@ class Mill:
                     time.sleep(1)
                     break
                 
-                # Optional: Sleep slightly to not flood serial?
-                # execute_command waits for 'ok', so it naturally paces.
-            
             if not switch_hit:
                 self.logger.error(f"Failed to home {axis}: Max travel reached without hitting switch.")
                 raise MillConnectionError(f"Homing failed for {axis}")
@@ -723,7 +706,7 @@ class Mill:
             # Back off
             self.logger.info(f"Backing off {axis}...")
             self.execute_command("G91")
-            self.execute_command(f"G0 {axis}{-BACKOFF_DIST * direction}")
+            self.execute_command(f"G0 {axis}{-HOMING_BACKOFF * direction}")
             
             # Set Zero
             # For 3018, usually:
@@ -1142,7 +1125,7 @@ class Mill:
             # Add the movement to the second z coordinate and feed rate
             commands.append(f"G01 Z{second_z_cord} F{second_z_cord_feed}")
             # Restore the feed rate to the default of 2000
-            commands.append("F2000")
+            commands.append(f"F{DEFAULT_FEED_RATE}")
         # Form the individual movement commands into a block seperated by \n
         command_str = "\n".join(commands)
         self.execute_command(command_str)
@@ -1186,20 +1169,6 @@ class Mill:
     def _validate_target_coordinates(self, target_coordinates: Coordinates):
         # Validation disabled by request
         pass
-        # if (
-        #     not self.working_volume.x <= target_coordinates.x <= 0
-        # ):  # TODO remove the <=0 check after verifying that new offsets work
-        #     # TODO move to overall travel from 0 to working volume as the check
-        #     self.logger.error("x coordinate out of range")
-        #     raise ValueError("x coordinate out of range")
-        # if not self.working_volume.y <= target_coordinates.y <= 0:
-        #     # If the target y is not between the working volume and 0, raise an error
-        #     self.logger.error("y coordinate out of range")
-        #     raise ValueError("y coordinate out of range")
-        # if not self.working_volume.z <= target_coordinates.z <= self.max_z_height:
-        #     # If the target z is not between the working volume and the max z height, raise an error
-        #     self.logger.error("z coordinate out of range")
-        #     raise ValueError("z coordinate out of range")
 
     def _generate_movement_commands(
         self,
