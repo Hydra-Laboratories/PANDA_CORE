@@ -78,6 +78,28 @@ mock.measure()
 print(mock.command_history)  # ['measure']
 ```
 
+### Thorlabs CCS UV-Vis Spectrometer
+
+Driver for Thorlabs CCS100/CCS175/CCS200 compact spectrometers (`src/instruments/uvvis_ccs/`). Communicates via the TLCCS DLL through ctypes.
+
+```python
+from src.instruments.uvvis_ccs import UVVisCCS, MockUVVisCCS
+
+# Real hardware (requires TLCCS_64.dll and USB-connected spectrometer)
+ccs = UVVisCCS(serial_number="M01216839", dll_path="TLCCS_64.dll")
+ccs.connect()
+ccs.set_integration_time(0.24)
+spectrum = ccs.measure()
+print(spectrum.wavelengths, spectrum.intensities, spectrum.is_valid)
+ccs.disconnect()
+
+# Testing
+mock = MockUVVisCCS()
+mock.connect()
+mock.measure()
+print(mock.command_history)  # ['measure']
+```
+
 ## Development
 
 Run unit tests:

@@ -3,8 +3,8 @@ from src.instruments.base_instrument import BaseInstrument, InstrumentError
 
 # Mock concrete implementation for testing
 class MockInstrument(BaseInstrument):
-    def __init__(self, name="mock_instrument"):
-        super().__init__(name)
+    def __init__(self, name="mock_instrument", offset_x=0.0, offset_y=0.0, depth=0.0):
+        super().__init__(name=name, offset_x=offset_x, offset_y=offset_y, depth=depth)
         self.connected = False
         self.healthy = True
 
@@ -61,8 +61,24 @@ def test_handle_error_passes_through_instrument_error():
     """Test that handle_error re-raises InstrumentError without wrapping it again."""
     instr = MockInstrument()
     original_error = InstrumentError("Already an instrument error")
-    
+
     with pytest.raises(InstrumentError) as exc_info:
         instr.handle_error(original_error, "processing")
-        
+
     assert exc_info.value is original_error
+
+
+def test_default_offset_and_depth():
+    """Instruments default to zero offset and depth."""
+    instr = MockInstrument()
+    assert instr.offset_x == 0.0
+    assert instr.offset_y == 0.0
+    assert instr.depth == 0.0
+
+
+def test_custom_offset_and_depth():
+    """Instruments accept custom offset and depth at construction."""
+    instr = MockInstrument(offset_x=-10.5, offset_y=20.0, depth=-5.0)
+    assert instr.offset_x == -10.5
+    assert instr.offset_y == 20.0
+    assert instr.depth == -5.0
