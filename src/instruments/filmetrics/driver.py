@@ -26,8 +26,11 @@ class Filmetrics(BaseInstrument):
         recipe_name: str,
         command_timeout: float = 30.0,
         name: Optional[str] = None,
+        offset_x: float = 0.0,
+        offset_y: float = 0.0,
+        depth: float = 0.0,
     ):
-        super().__init__(name=name)
+        super().__init__(name=name, offset_x=offset_x, offset_y=offset_y, depth=depth)
         self._exe_path = exe_path
         self._recipe_name = recipe_name
         self._command_timeout = command_timeout

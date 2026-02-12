@@ -6,6 +6,7 @@ Each subdirectory contains a self-contained instrument driver that implements `B
 |--------|--------|------------|-------------|
 | `filmetrics/` | **KLA / Filmetrics** | F-Series (via FilmetricsTool.exe) | Thin-film thickness measurement via spectral reflectance |
 | `uvvis_ccs/` | **Thorlabs** | CCS100 / CCS175 / CCS200 | Compact CCD spectrometer for UV-Vis spectroscopy (3648-pixel) |
+| `pipette/` | **Opentrons** | OT-2 / Flex pipettes | Pipette control via Arduino serial (Pawduino firmware) |
 
 ## Structure convention
 

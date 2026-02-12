@@ -31,8 +31,11 @@ class UVVisCCS(BaseInstrument):
         dll_path: str = "TLCCS_64.dll",
         default_integration_time_s: float = 0.24,
         name: Optional[str] = None,
+        offset_x: float = 0.0,
+        offset_y: float = 0.0,
+        depth: float = 0.0,
     ):
-        super().__init__(name=name)
+        super().__init__(name=name, offset_x=offset_x, offset_y=offset_y, depth=depth)
         self._serial_number = serial_number
         self._dll_path = dll_path
         self._default_integration_time_s = default_integration_time_s

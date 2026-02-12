@@ -11,8 +11,11 @@ class MockFilmetrics(BaseInstrument):
         self,
         default_result: Optional[MeasurementResult] = None,
         name: Optional[str] = None,
+        offset_x: float = 0.0,
+        offset_y: float = 0.0,
+        depth: float = 0.0,
     ):
-        super().__init__(name=name)
+        super().__init__(name=name, offset_x=offset_x, offset_y=offset_y, depth=depth)
         self._connected = False
         self._default_result = default_result or MeasurementResult(
             thickness_nm=150.0, goodness_of_fit=0.95,

@@ -1,0 +1,548 @@
+import pytest
+from unittest.mock import patch, MagicMock, PropertyMock
+
+from src.instruments.base_instrument import BaseInstrument, InstrumentError
+from src.instruments.pipette.models import (
+    PipetteConfig,
+    PipetteFamily,
+    PipetteStatus,
+    AspirateResult,
+    MixResult,
+    PIPETTE_MODELS,
+)
+from src.instruments.pipette.exceptions import (
+    PipetteError,
+    PipetteConnectionError,
+    PipetteCommandError,
+    PipetteTimeoutError,
+    PipetteConfigError,
+)
+from src.instruments.pipette.driver import Pipette
+from src.instruments.pipette.mock import MockPipette
+
+
+# ─── Model tests ─────────────────────────────────────────────────────────────
+
+class TestPipetteConfig:
+
+    def test_p300_calibrated_values(self):
+        cfg = PIPETTE_MODELS["p300_single_gen2"]
+        assert cfg.max_volume == 200.0
+        assert cfg.prime_position == 36.0
+        assert cfg.blowout_position == 46.0
+        assert cfg.drop_tip_position == 60.0
+        assert cfg.mm_to_ul == pytest.approx(0.1098)
+
+    def test_p300_is_ot2_family(self):
+        cfg = PIPETTE_MODELS["p300_single_gen2"]
+        assert cfg.family == PipetteFamily.OT2
+
+    def test_flex_is_flex_family(self):
+        cfg = PIPETTE_MODELS["flex_1channel_1000"]
+        assert cfg.family == PipetteFamily.FLEX
+
+    def test_frozen_dataclass(self):
+        cfg = PIPETTE_MODELS["p300_single_gen2"]
+        with pytest.raises(AttributeError):
+            cfg.max_volume = 500.0
+
+    def test_all_models_have_positive_max_volume(self):
+        for name, cfg in PIPETTE_MODELS.items():
+            assert cfg.max_volume > 0, f"{name} has non-positive max_volume"
+
+    def test_all_models_have_valid_channels(self):
+        for name, cfg in PIPETTE_MODELS.items():
+            assert cfg.channels in (1, 8, 96), f"{name} has unexpected channels={cfg.channels}"
+
+    def test_model_count(self):
+        assert len(PIPETTE_MODELS) == 10
+
+
+class TestPipetteStatus:
+
+    def test_valid_status(self):
+        status = PipetteStatus(
+            is_homed=True, position_mm=36.0, max_volume=200.0,
+            has_tip=True, is_primed=True,
+        )
+        assert status.is_valid is True
+
+    def test_invalid_zero_max_volume(self):
+        status = PipetteStatus(
+            is_homed=True, position_mm=0.0, max_volume=0.0,
+            has_tip=False, is_primed=False,
+        )
+        assert status.is_valid is False
+
+    def test_invalid_negative_position(self):
+        status = PipetteStatus(
+            is_homed=True, position_mm=-1.0, max_volume=200.0,
+            has_tip=False, is_primed=False,
+        )
+        assert status.is_valid is False
+
+    def test_frozen(self):
+        status = PipetteStatus(
+            is_homed=True, position_mm=0.0, max_volume=200.0,
+            has_tip=False, is_primed=False,
+        )
+        with pytest.raises(AttributeError):
+            status.is_homed = False
+
+
+class TestAspirateResult:
+
+    def test_creation(self):
+        result = AspirateResult(success=True, volume_ul=100.0, position_mm=10.98)
+        assert result.success is True
+        assert result.volume_ul == 100.0
+        assert result.position_mm == pytest.approx(10.98)
+
+    def test_frozen(self):
+        result = AspirateResult(success=True, volume_ul=100.0, position_mm=10.0)
+        with pytest.raises(AttributeError):
+            result.success = False
+
+
+class TestMixResult:
+
+    def test_creation(self):
+        result = MixResult(success=True, volume_ul=50.0, repetitions=3)
+        assert result.success is True
+        assert result.volume_ul == 50.0
+        assert result.repetitions == 3
+
+    def test_frozen(self):
+        result = MixResult(success=True, volume_ul=50.0, repetitions=3)
+        with pytest.raises(AttributeError):
+            result.repetitions = 5
+
+
+# ─── Exception hierarchy tests ───────────────────────────────────────────────
+
+class TestExceptions:
+
+    def test_pipette_error_is_instrument_error(self):
+        assert issubclass(PipetteError, InstrumentError)
+
+    def test_connection_error_hierarchy(self):
+        assert issubclass(PipetteConnectionError, PipetteError)
+        err = PipetteConnectionError("port not found")
+        assert isinstance(err, InstrumentError)
+
+    def test_command_error_hierarchy(self):
+        assert issubclass(PipetteCommandError, PipetteError)
+
+    def test_timeout_error_hierarchy(self):
+        assert issubclass(PipetteTimeoutError, PipetteError)
+
+    def test_config_error_hierarchy(self):
+        assert issubclass(PipetteConfigError, PipetteError)
+
+
+# ─── Parsing tests ───────────────────────────────────────────────────────────
+
+class TestParsing:
+
+    def test_parse_key_value_typical(self):
+        response = "OK:{homed:1,pos:10.5,max_vol:200}"
+        result = Pipette._parse_key_value(response)
+        assert result["homed"] == 1.0
+        assert result["pos"] == pytest.approx(10.5)
+        assert result["max_vol"] == 200.0
+
+    def test_parse_key_value_empty_body(self):
+        result = Pipette._parse_key_value("OK:{}")
+        assert result == {}
+
+    def test_parse_key_value_single_pair(self):
+        result = Pipette._parse_key_value("OK:{pos:36.0}")
+        assert result["pos"] == pytest.approx(36.0)
+
+    def test_parse_key_value_non_numeric_skipped(self):
+        result = Pipette._parse_key_value("OK:{status:ready,pos:10.0}")
+        assert "status" not in result
+        assert result["pos"] == pytest.approx(10.0)
+
+    def test_parse_position(self):
+        response = "OK:{pos:36.5,homed:1}"
+        assert Pipette._parse_position(response) == pytest.approx(36.5)
+
+    def test_parse_position_missing(self):
+        response = "OK:{homed:1}"
+        assert Pipette._parse_position(response) == 0.0
+
+
+# ─── Driver constructor tests ────────────────────────────────────────────────
+
+class TestPipetteConstructor:
+
+    def test_unknown_model_raises_config_error(self):
+        with pytest.raises(PipetteConfigError, match="Unknown pipette model"):
+            Pipette(pipette_model="p9999_fake", port="/dev/null")
+
+    def test_known_model_accepted(self):
+        pip = Pipette(pipette_model="p300_single_gen2", port="/dev/null")
+        assert pip.config.name == "p300_single_gen2"
+
+    def test_is_base_instrument(self):
+        pip = Pipette(pipette_model="p300_single_gen2", port="/dev/null")
+        assert isinstance(pip, BaseInstrument)
+
+    def test_custom_name(self):
+        pip = Pipette(
+            pipette_model="p300_single_gen2", port="/dev/null", name="my_pip"
+        )
+        assert pip.name == "my_pip"
+
+
+# ─── Driver lifecycle tests (mocked serial) ─────────────────────────────────
+
+class TestPipetteLifecycle:
+
+    def _make_mock_serial(self, responses=None):
+        """Create a mock serial.Serial that returns canned responses."""
+        mock_ser = MagicMock()
+        mock_ser.is_open = True
+        if responses is None:
+            responses = ["OK:{homed:1,pos:0.0,max_vol:200}\n"]
+        mock_ser.readline.side_effect = [r.encode() for r in responses]
+        return mock_ser
+
+    @patch("src.instruments.pipette.driver.serial.Serial")
+    @patch("src.instruments.pipette.driver.time.sleep")
+    def test_connect_opens_serial(self, mock_sleep, mock_serial_cls):
+        mock_ser = self._make_mock_serial()
+        mock_serial_cls.return_value = mock_ser
+
+        pip = Pipette(pipette_model="p300_single_gen2", port="/dev/ttyUSB0")
+        pip.connect()
+
+        mock_serial_cls.assert_called_once_with(
+            port="/dev/ttyUSB0", baudrate=115200, timeout=30.0,
+        )
+        mock_sleep.assert_called_once()
+
+    @patch("src.instruments.pipette.driver.serial.Serial")
+    @patch("src.instruments.pipette.driver.time.sleep")
+    def test_connect_raises_on_serial_error(self, mock_sleep, mock_serial_cls):
+        import serial as real_serial
+        mock_serial_cls.side_effect = real_serial.SerialException("port busy")
+
+        pip = Pipette(pipette_model="p300_single_gen2", port="/dev/ttyUSB0")
+        with pytest.raises(PipetteConnectionError, match="Cannot open serial"):
+            pip.connect()
+
+    @patch("src.instruments.pipette.driver.serial.Serial")
+    @patch("src.instruments.pipette.driver.time.sleep")
+    def test_connect_raises_on_no_response(self, mock_sleep, mock_serial_cls):
+        mock_ser = MagicMock()
+        mock_ser.is_open = True
+        mock_ser.readline.return_value = b""
+        mock_serial_cls.return_value = mock_ser
+
+        pip = Pipette(
+            pipette_model="p300_single_gen2", port="/dev/ttyUSB0",
+            command_timeout=0.1,
+        )
+        with pytest.raises(PipetteConnectionError, match="did not respond"):
+            pip.connect()
+
+    @patch("src.instruments.pipette.driver.serial.Serial")
+    @patch("src.instruments.pipette.driver.time.sleep")
+    def test_disconnect_closes_serial(self, mock_sleep, mock_serial_cls):
+        mock_ser = self._make_mock_serial()
+        mock_serial_cls.return_value = mock_ser
+
+        pip = Pipette(pipette_model="p300_single_gen2", port="/dev/ttyUSB0")
+        pip.connect()
+        pip.disconnect()
+
+        mock_ser.close.assert_called_once()
+
+    def test_disconnect_safe_when_not_connected(self):
+        pip = Pipette(pipette_model="p300_single_gen2", port="/dev/null")
+        pip.disconnect()  # Should not raise
+
+    def test_health_check_false_when_not_connected(self):
+        pip = Pipette(pipette_model="p300_single_gen2", port="/dev/null")
+        assert pip.health_check() is False
+
+    @patch("src.instruments.pipette.driver.serial.Serial")
+    @patch("src.instruments.pipette.driver.time.sleep")
+    def test_health_check_true_when_connected(self, mock_sleep, mock_serial_cls):
+        # Two status calls: one for connect, one for health_check
+        responses = [
+            "OK:{homed:1,pos:0.0,max_vol:200}\n",
+            "OK:{homed:1,pos:0.0,max_vol:200}\n",
+        ]
+        mock_ser = self._make_mock_serial(responses)
+        mock_serial_cls.return_value = mock_ser
+
+        pip = Pipette(pipette_model="p300_single_gen2", port="/dev/ttyUSB0")
+        pip.connect()
+        assert pip.health_check() is True
+
+
+# ─── Driver command tests (mocked serial) ───────────────────────────────────
+
+class TestPipetteCommands:
+
+    def _make_connected_pipette(self, mock_serial_cls, mock_sleep, responses):
+        """Helper: create a connected Pipette with mocked serial."""
+        all_responses = ["OK:{homed:1,pos:0.0,max_vol:200}\n"] + responses
+        mock_ser = MagicMock()
+        mock_ser.is_open = True
+        mock_ser.readline.side_effect = [r.encode() for r in all_responses]
+        mock_serial_cls.return_value = mock_ser
+
+        pip = Pipette(pipette_model="p300_single_gen2", port="/dev/ttyUSB0")
+        pip.connect()
+        return pip, mock_ser
+
+    @patch("src.instruments.pipette.driver.serial.Serial")
+    @patch("src.instruments.pipette.driver.time.sleep")
+    def test_home(self, mock_sleep, mock_serial_cls):
+        pip, mock_ser = self._make_connected_pipette(
+            mock_serial_cls, mock_sleep,
+            ["OK:{homed:1,pos:0.0}\n"],
+        )
+        pip.home()
+        written = [c[0][0].decode() for c in mock_ser.write.call_args_list]
+        assert any("10" in cmd for cmd in written)
+
+    @patch("src.instruments.pipette.driver.serial.Serial")
+    @patch("src.instruments.pipette.driver.time.sleep")
+    def test_prime(self, mock_sleep, mock_serial_cls):
+        pip, mock_ser = self._make_connected_pipette(
+            mock_serial_cls, mock_sleep,
+            ["OK:{pos:36.0}\n"],
+        )
+        pip.prime()
+        written = [c[0][0].decode() for c in mock_ser.write.call_args_list]
+        assert any("11" in cmd for cmd in written)
+
+    @patch("src.instruments.pipette.driver.serial.Serial")
+    @patch("src.instruments.pipette.driver.time.sleep")
+    def test_aspirate_returns_result(self, mock_sleep, mock_serial_cls):
+        pip, _ = self._make_connected_pipette(
+            mock_serial_cls, mock_sleep,
+            ["OK:{pos:46.98}\n"],
+        )
+        result = pip.aspirate(100.0)
+        assert isinstance(result, AspirateResult)
+        assert result.success is True
+        assert result.volume_ul == 100.0
+        assert result.position_mm == pytest.approx(46.98)
+
+    @patch("src.instruments.pipette.driver.serial.Serial")
+    @patch("src.instruments.pipette.driver.time.sleep")
+    def test_dispense_returns_result(self, mock_sleep, mock_serial_cls):
+        pip, _ = self._make_connected_pipette(
+            mock_serial_cls, mock_sleep,
+            ["OK:{pos:36.0}\n"],
+        )
+        result = pip.dispense(100.0)
+        assert isinstance(result, AspirateResult)
+        assert result.success is True
+        assert result.volume_ul == 100.0
+
+    @patch("src.instruments.pipette.driver.serial.Serial")
+    @patch("src.instruments.pipette.driver.time.sleep")
+    def test_mix_returns_result(self, mock_sleep, mock_serial_cls):
+        pip, _ = self._make_connected_pipette(
+            mock_serial_cls, mock_sleep,
+            ["OK:{pos:36.0}\n"],
+        )
+        result = pip.mix(50.0, repetitions=5)
+        assert isinstance(result, MixResult)
+        assert result.success is True
+        assert result.volume_ul == 50.0
+        assert result.repetitions == 5
+
+    @patch("src.instruments.pipette.driver.serial.Serial")
+    @patch("src.instruments.pipette.driver.time.sleep")
+    def test_get_status(self, mock_sleep, mock_serial_cls):
+        pip, _ = self._make_connected_pipette(
+            mock_serial_cls, mock_sleep,
+            ["OK:{homed:1,pos:36.0,max_vol:200,primed:1}\n"],
+        )
+        status = pip.get_status()
+        assert isinstance(status, PipetteStatus)
+        assert status.is_homed is True
+        assert status.position_mm == pytest.approx(36.0)
+        assert status.is_primed is True
+
+    @patch("src.instruments.pipette.driver.serial.Serial")
+    @patch("src.instruments.pipette.driver.time.sleep")
+    def test_pick_up_tip_sets_flag(self, mock_sleep, mock_serial_cls):
+        pip, _ = self._make_connected_pipette(
+            mock_serial_cls, mock_sleep,
+            ["OK:{pos:0.0}\n", "OK:{homed:1,pos:0.0,max_vol:200}\n"],
+        )
+        pip.pick_up_tip()
+        status = pip.get_status()
+        assert status.has_tip is True
+
+    @patch("src.instruments.pipette.driver.serial.Serial")
+    @patch("src.instruments.pipette.driver.time.sleep")
+    def test_drop_tip_clears_flag(self, mock_sleep, mock_serial_cls):
+        pip, _ = self._make_connected_pipette(
+            mock_serial_cls, mock_sleep,
+            ["OK:{pos:0.0}\n", "OK:{pos:60.0}\n", "OK:{homed:1,pos:60.0,max_vol:200}\n"],
+        )
+        pip.pick_up_tip()
+        pip.drop_tip()
+        status = pip.get_status()
+        assert status.has_tip is False
+
+    @patch("src.instruments.pipette.driver.serial.Serial")
+    @patch("src.instruments.pipette.driver.time.sleep")
+    def test_command_error_on_err_response(self, mock_sleep, mock_serial_cls):
+        pip, _ = self._make_connected_pipette(
+            mock_serial_cls, mock_sleep,
+            ["ERR:motor stall detected\n"],
+        )
+        with pytest.raises(PipetteCommandError, match="motor stall"):
+            pip.home()
+
+    @patch("src.instruments.pipette.driver.serial.Serial")
+    @patch("src.instruments.pipette.driver.time.sleep")
+    def test_blowout(self, mock_sleep, mock_serial_cls):
+        pip, mock_ser = self._make_connected_pipette(
+            mock_serial_cls, mock_sleep,
+            ["OK:{pos:46.0}\n"],
+        )
+        pip.blowout()
+        written = [c[0][0].decode() for c in mock_ser.write.call_args_list]
+        assert any("46.0" in cmd for cmd in written)
+
+    @patch("src.instruments.pipette.driver.serial.Serial")
+    @patch("src.instruments.pipette.driver.time.sleep")
+    def test_drip_stop(self, mock_sleep, mock_serial_cls):
+        pip, mock_ser = self._make_connected_pipette(
+            mock_serial_cls, mock_sleep,
+            ["OK:{pos:36.5}\n"],
+        )
+        pip.drip_stop(5.0)
+        written = [c[0][0].decode() for c in mock_ser.write.call_args_list]
+        assert any("28" in cmd for cmd in written)
+
+    @patch("src.instruments.pipette.driver.serial.Serial")
+    @patch("src.instruments.pipette.driver.time.sleep")
+    def test_warm_up_homes_and_primes(self, mock_sleep, mock_serial_cls):
+        pip, mock_ser = self._make_connected_pipette(
+            mock_serial_cls, mock_sleep,
+            ["OK:{homed:1,pos:0.0}\n", "OK:{pos:36.0}\n"],
+        )
+        pip.warm_up()
+        written = [c[0][0].decode().strip() for c in mock_ser.write.call_args_list]
+        codes = [w.split(",")[0] for w in written]
+        assert "10" in codes  # home
+        assert "11" in codes  # move_to (prime)
+
+
+# ─── MockPipette tests ──────────────────────────────────────────────────────
+
+class TestMockPipette:
+
+    def test_is_base_instrument(self):
+        mock = MockPipette()
+        assert isinstance(mock, BaseInstrument)
+
+    def test_unknown_model_raises_config_error(self):
+        with pytest.raises(PipetteConfigError):
+            MockPipette(pipette_model="p9999_fake")
+
+    def test_connect_disconnect_cycle(self):
+        mock = MockPipette()
+        mock.connect()
+        assert mock.health_check() is True
+        mock.disconnect()
+        assert mock.health_check() is False
+
+    def test_command_history_tracking(self):
+        mock = MockPipette()
+        mock.connect()
+        mock.home()
+        mock.prime()
+        mock.aspirate(100.0)
+        mock.dispense(100.0)
+        mock.blowout()
+        mock.mix(50.0, repetitions=3)
+        mock.pick_up_tip()
+        mock.drop_tip()
+        mock.get_status()
+        mock.drip_stop(5.0)
+
+        assert mock.command_history == [
+            "home",
+            "prime speed=50.0",
+            "aspirate 100.0uL speed=50.0",
+            "dispense 100.0uL speed=50.0",
+            "blowout speed=50.0",
+            "mix 50.0uL reps=3 speed=50.0",
+            "pick_up_tip",
+            "drop_tip",
+            "get_status",
+            "drip_stop 5.0uL speed=50.0",
+        ]
+
+    def test_aspirate_returns_result(self):
+        mock = MockPipette()
+        mock.connect()
+        result = mock.aspirate(100.0)
+        assert isinstance(result, AspirateResult)
+        assert result.success is True
+        assert result.volume_ul == 100.0
+
+    def test_dispense_returns_result(self):
+        mock = MockPipette()
+        mock.connect()
+        result = mock.dispense(100.0)
+        assert isinstance(result, AspirateResult)
+        assert result.success is True
+
+    def test_mix_returns_result(self):
+        mock = MockPipette()
+        mock.connect()
+        result = mock.mix(50.0, repetitions=5)
+        assert isinstance(result, MixResult)
+        assert result.repetitions == 5
+
+    def test_get_status_returns_status(self):
+        mock = MockPipette()
+        mock.connect()
+        mock.home()
+        mock.prime()
+        status = mock.get_status()
+        assert isinstance(status, PipetteStatus)
+        assert status.is_homed is True
+        assert status.is_primed is True
+        assert status.max_volume == 200.0
+
+    def test_tip_tracking(self):
+        mock = MockPipette()
+        mock.connect()
+        mock.pick_up_tip()
+        status = mock.get_status()
+        assert status.has_tip is True
+        mock.drop_tip()
+        status = mock.get_status()
+        assert status.has_tip is False
+
+    def test_warm_up_homes_and_primes(self):
+        mock = MockPipette()
+        mock.connect()
+        mock.warm_up()
+        assert "home" in mock.command_history
+        assert any("prime" in c for c in mock.command_history)
+
+    def test_disconnect_safe_when_not_connected(self):
+        mock = MockPipette()
+        mock.disconnect()  # Should not raise
+
+    def test_config_property(self):
+        mock = MockPipette(pipette_model="flex_1channel_1000")
+        assert mock.config.family == PipetteFamily.FLEX
+        assert mock.config.max_volume == 1000.0
