@@ -1,12 +1,12 @@
 import unittest
 from unittest.mock import MagicMock, patch
-from src.hardware.gantry import Gantry
+from src.gantry.gantry import Gantry
 
 class TestGantry(unittest.TestCase):
     def setUp(self):
         self.config = {"cnc": {"serial_port": "/dev/tty.usbserial"}}
         
-    @patch('src.hardware.gantry.Mill')
+    @patch('src.gantry.gantry.Mill')
     def test_connect_uses_config_port(self, mock_mill_cls):
         # Arrange
         mock_mill = mock_mill_cls.return_value
@@ -20,14 +20,14 @@ class TestGantry(unittest.TestCase):
         # Adjust test if that changes, but gantry.py line 33 says port = None
         mock_mill.connect_to_mill.assert_called_with(port=None) 
 
-    @patch('src.hardware.gantry.Mill')
+    @patch('src.gantry.gantry.Mill')
     def test_move_delegates_to_safe_move(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
         gantry = Gantry(config=self.config)
         gantry.move_to(10, 20, 30)
         mock_mill.safe_move.assert_called_with(x_coord=10, y_coord=20, z_coord=30)
         
-    @patch('src.hardware.gantry.Mill')
+    @patch('src.gantry.gantry.Mill')
     def test_is_healthy(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
         # Case 1: Active connection, no alarm
