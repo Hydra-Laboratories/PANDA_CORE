@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from .labware import Labware, Coordinate3D
 
@@ -14,6 +14,10 @@ class WellPlate(Labware):
     Coordinates for each well are expressed as absolute deck coordinates.
     """
 
+    model_config = ConfigDict(extra="forbid", protected_namespaces=())
+
+    name: str = Field(..., description="Unique well plate name.")
+    model_name: str = Field(..., description="Well plate model identifier.")
     length_mm: float = Field(..., description="Overall plate length in millimeters.")
     width_mm: float = Field(..., description="Overall plate width in millimeters.")
     height_mm: float = Field(..., description="Overall plate height in millimeters.")
@@ -23,6 +27,24 @@ class WellPlate(Labware):
         ...,
         description="Mapping from well ID (e.g. 'A1') to absolute XYZ centers.",
     )
+    capacity_ul: float = Field(..., description="Well capacity in microliters.")
+    working_volume_ul: float = Field(..., description="Working volume per well in microliters.")
+
+    @field_validator("name", "model_name")
+    def _validate_non_empty_text(cls, value: str) -> str:
+        return Labware.validate_name(value)
+
+    @field_validator("capacity_ul", "working_volume_ul")
+    def _validate_positive_volume(cls, value: float, info):  # type: ignore[override]
+        if value <= 0:
+            raise ValueError(f"{info.field_name} must be positive.")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_working_le_capacity(self) -> "WellPlate":
+        if self.working_volume_ul > self.capacity_ul:
+            raise ValueError("working_volume_ul must be <= capacity_ul.")
+        return self
 
     @field_validator("length_mm", "width_mm", "height_mm")
     def _validate_positive_dimension(cls, value: float, info):  # type: ignore[override]
@@ -37,7 +59,7 @@ class WellPlate(Labware):
         return value
 
     @model_validator(mode="before")
-    def _sync_wells_and_locations(cls, data):
+    def _validate_wells(cls, data):
         wells: Dict[str, Coordinate3D] = data.get("wells") or {}
         if not wells:
             raise ValueError("WellPlate must define at least one well.")
@@ -46,9 +68,12 @@ class WellPlate(Labware):
         if "A1" not in wells:
             raise ValueError("WellPlate must define an 'A1' well for anchoring.")
 
-        # Mirror wells into the base Labware `locations` mapping so base APIs work.
-        data["locations"] = dict(wells)
         return data
+
+    def get_location(self, location_id: str | None = None) -> Coordinate3D:
+        if location_id is None:
+            raise KeyError("WellPlate location_id is required, e.g. 'A1'.")
+        return self.get_well_center(location_id)
 
     def get_well_center(self, well_id: str) -> Coordinate3D:
         """

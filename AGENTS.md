@@ -59,10 +59,15 @@ A modular system for executing experiment sequences defined in code or YAML.
 ### Labware Models (`src/labware`)
 Geometry and positioning models for consumables on the deck.
 
-- **`base.py`**: `Coordinate3D` and `Labware` base model. `Labware` manages a mapping from logical location IDs (e.g., `\"A1\"`) to absolute deck coordinates and exposes `get_location(location_id)`.
-- **`well_plate.py`**: `WellPlate(Labware)` for multi-well plates (e.g., SBS 96-well). Stores plate dimensions (length, width, height), grid size (rows/columns), and a `wells` mapping from well ID to center coordinate. Also provides `get_well_center(well_id)`.
-- **`vial.py`**: `Vial(Labware)` for vial racks. Stores vial geometry (height, diameter) and a `vials` mapping from vial ID (e.g., `\"A1\"`) to center coordinate, plus `get_vial_center(vial_id)`.
-- **Usage**: Higher-level code can resolve targets like `\"A1\"` on a given labware instance into absolute XYZ coordinates, which can then be passed into the path planner or CNC driver.
+- **`labware.py`**: `Coordinate3D` and `Labware` base model. `Labware` now provides high-level shared behavior (e.g., `get_location`, `get_initial_position`) and common validation helpers; concrete required fields live in subclasses. All models use strict schema (`extra='forbid'`).
+- **`well_plate.py`**: `WellPlate(Labware)` for multi-well plates (e.g., SBS 96-well). Required fields include `name`, `model_name`, dimensions, layout (`rows`, `columns`), `wells`, and volume fields (`capacity_ul`, `working_volume_ul`). Also provides `get_well_center(well_id)`.
+- **`vial.py`**: `Vial(Labware)` for a single vial. Required fields include `name`, `model_name`, geometry (`height_mm`, `diameter_mm`), single `location`, and volume fields (`capacity_ul`, `working_volume_ul`), plus `get_vial_center()`.
+- **Deck configuration (YAML)**: Deck layout is defined in a **deck YAML** file (labware only; no gantry settings). Strict schema: only allowed fields; missing, extra, or wrong-type fields raise `ValidationError`.
+  - **`deck_schema.py`**: Pydantic models for deck YAML: `DeckSchema` (root, single key `labware`), `WellPlateEntry` (two-point calibration A1 + A2, axis-aligned only), `VialEntry` (single vial location). Both require `model_name`. All use `extra='forbid'`.
+  - **`deck_loader.py`**: `load_labware_from_deck_yaml(path)` loads a deck YAML file and returns `dict[str, Labware]` keyed by the names in the YAML. Well plates are built from A1, calibration A2, and x/y offsets (derived well positions); vials from a single explicit `location`.
+- **Sample config**: `configs/deck.sample.yaml` — one well plate and one vial; use as reference for required fields and two-point calibration format.
+- **Sample inspection script**: `show_deck_objects.py` loads `configs/deck.sample.yaml` and prints the resulting object mapping.
+- **Usage**: Load labware with `load_labware_from_deck_yaml("configs/deck.sample.yaml")` to get e.g. `{"plate_1": WellPlate(...), "vial_1": Vial(...)}`. Resolve targets like `plate_1.get_well_center("A1")` for absolute XYZ.
 
 ### Experiments
 - **`experiments/`**: Directory for storing YAML experiment definitions.

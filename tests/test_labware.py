@@ -3,7 +3,6 @@ import pytest
 from pydantic import ValidationError
 
 from src.labware import (
-    Labware,
     WellPlate,
     Vial,
     Coordinate3D,
@@ -11,34 +10,90 @@ from src.labware import (
 )
 
 
-def test_labware_requires_name_and_locations():
-    """Base Labware requires a name and at least one location."""
-    # Missing name should fail
+def test_well_plate_requires_non_empty_name():
+    """WellPlate requires a non-empty name on the concrete class."""
     with pytest.raises(ValidationError):
-        Labware(name="", locations={})
+        WellPlate(
+            name="",
+            model_name="test_model",
+            length_mm=127.71,
+            width_mm=85.43,
+            height_mm=14.10,
+            rows=8,
+            columns=12,
+            wells={"A1": Coordinate3D(x=-10.0, y=-10.0, z=-15.0)},
+            capacity_ul=200.0,
+            working_volume_ul=150.0,
+        )
 
-    # Empty locations should fail
     with pytest.raises(ValidationError):
-        Labware(name="empty", locations={})
+        Vial(
+            name="  ",
+            model_name="test_model",
+            height_mm=66.75,
+            diameter_mm=28.0,
+            location=Coordinate3D(x=-30.0, y=-40.0, z=-20.0),
+            capacity_ul=1500.0,
+            working_volume_ul=1200.0,
+        )
 
 
-def test_labware_get_location_success_and_failure():
-    """Labware exposes a safe lookup API for locations."""
-    locations = {
-        "A1": Coordinate3D(x=-10.0, y=-20.0, z=-5.0),
-    }
-    labware = Labware(name="generic", locations=locations)
+def test_well_plate_get_location_success_and_failure():
+    """WellPlate get_location delegates to the well ID mapping."""
+    plate = WellPlate(
+        name="SBS_96",
+        model_name="test_model",
+        length_mm=127.71,
+        width_mm=85.43,
+        height_mm=14.10,
+        rows=8,
+        columns=12,
+        wells={"A1": Coordinate3D(x=-10.0, y=-20.0, z=-5.0)},
+        capacity_ul=200.0,
+        working_volume_ul=150.0,
+    )
 
-    # Happy path: known location
-    center = labware.get_location("A1")
+    center = plate.get_location("A1")
     assert isinstance(center, Coordinate3D)
     assert center.x == pytest.approx(-10.0)
     assert center.y == pytest.approx(-20.0)
     assert center.z == pytest.approx(-5.0)
 
-    # Unknown ID should raise a clear error
+    with pytest.raises(KeyError, match="Unknown well ID 'B1'"):
+        plate.get_location("B1")
+
+    with pytest.raises(KeyError, match="location_id is required"):
+        plate.get_location()
+
+
+def test_vial_get_location_success_and_failure():
+    """Single-vial get_location supports default/A1/name aliases."""
+    vial = Vial(
+        name="vial_1",
+        model_name="test_model",
+        height_mm=66.75,
+        diameter_mm=28.0,
+        location=Coordinate3D(x=-30.0, y=-40.0, z=-20.0),
+        capacity_ul=1500.0,
+        working_volume_ul=1200.0,
+    )
+
+    assert vial.get_location() == Coordinate3D(x=-30.0, y=-40.0, z=-20.0)
+    assert vial.get_location("A1") == Coordinate3D(x=-30.0, y=-40.0, z=-20.0)
+    assert vial.get_location("vial_1") == Coordinate3D(x=-30.0, y=-40.0, z=-20.0)
+
+    with pytest.raises(ValidationError):
+        Vial(
+            name="vial_1",
+            model_name="test_model",
+            height_mm=66.75,
+            diameter_mm=28.0,
+            capacity_ul=1500.0,
+            working_volume_ul=1200.0,
+        )
+
     with pytest.raises(KeyError, match="Unknown location ID 'B1'"):
-        labware.get_location("B1")
+        vial.get_location("B1")
 
 
 def test_well_plate_sbs_96_dimensions_and_well_lookup():
@@ -50,12 +105,15 @@ def test_well_plate_sbs_96_dimensions_and_well_lookup():
 
     plate = WellPlate(
         name="SBS_96",
+        model_name="test_model",
         length_mm=127.71,
         width_mm=85.43,
         height_mm=14.10,
         rows=8,
         columns=12,
         wells=wells,
+        capacity_ul=200.0,
+        working_volume_ul=150.0,
     )
 
     assert plate.name == "SBS_96"
@@ -88,70 +146,143 @@ def test_well_plate_requires_positive_dimensions_and_wells():
     with pytest.raises(ValidationError):
         WellPlate(
             name="invalid_plate",
+            model_name="test_model",
             length_mm=-1.0,
             width_mm=85.43,
             height_mm=14.10,
             rows=8,
             columns=12,
             wells={},
+            capacity_ul=200.0,
+            working_volume_ul=150.0,
         )
 
     # Missing A1 should also fail, since A1 is the anchor position
     with pytest.raises(ValidationError):
         WellPlate(
             name="missing_a1",
+            model_name="test_model",
             length_mm=127.71,
             width_mm=85.43,
             height_mm=14.10,
             rows=8,
             columns=12,
             wells={"B1": Coordinate3D(x=-10.0, y=-20.0, z=-15.0)},
+            capacity_ul=200.0,
+            working_volume_ul=150.0,
         )
 
 
-def test_vial_rack_dimensions_and_vial_lookup():
-    """Vial labware captures vial geometry and resolves vial positions by ID."""
-    vials = {
-        "A1": Coordinate3D(x=-30.0, y=-40.0, z=-20.0),
-        "A2": Coordinate3D(x=-60.0, y=-40.0, z=-20.0),
-    }
-
-    vial_labware = Vial(
-        name="standard_vial_rack",
+def test_vial_dimensions_and_location_lookup():
+    """Single Vial captures geometry and resolves its location."""
+    vial = Vial(
+        name="standard_vial",
+        model_name="test_model",
         height_mm=66.75,
         diameter_mm=28.00,
-        center=Coordinate3D(x=-30.0, y=-40.0, z=-20.0),
-        vials=vials,
+        location=Coordinate3D(x=-30.0, y=-40.0, z=-20.0),
+        capacity_ul=1500.0,
+        working_volume_ul=1200.0,
     )
 
-    assert vial_labware.name == "standard_vial_rack"
-    assert vial_labware.height_mm == pytest.approx(66.75)
-    assert vial_labware.diameter_mm == pytest.approx(28.00)
-
-    a1_center = vial_labware.get_vial_center("A1")
-    assert a1_center.x == pytest.approx(-30.0)
-    assert a1_center.y == pytest.approx(-40.0)
-    assert a1_center.z == pytest.approx(-20.0)
-
-    # Base Labware API should also work
-    assert vial_labware.get_location("A1") == a1_center
-
-    # Initial position for vial labware should be the configured center
-    initial = vial_labware.get_initial_position()
-    assert initial == Coordinate3D(x=-30.0, y=-40.0, z=-20.0)
-
-    with pytest.raises(KeyError, match="Unknown vial ID 'B1'"):
-        vial_labware.get_vial_center("B1")
+    assert vial.name == "standard_vial"
+    assert vial.height_mm == pytest.approx(66.75)
+    assert vial.diameter_mm == pytest.approx(28.00)
+    assert vial.get_vial_center() == Coordinate3D(x=-30.0, y=-40.0, z=-20.0)
+    assert vial.get_initial_position() == Coordinate3D(x=-30.0, y=-40.0, z=-20.0)
 
 
-def test_vial_requires_positive_geometry_and_vials():
-    """Vial validates geometry and requires at least one vial position."""
+def test_vial_requires_positive_geometry_and_location():
+    """Vial validates geometry and requires a location."""
     with pytest.raises(ValidationError):
         Vial(
-            name="invalid_vial_rack",
+            name="invalid_vial",
+            model_name="test_model",
             height_mm=0.0,
             diameter_mm=28.0,
-            vials={},
+            location=Coordinate3D(x=-30.0, y=-40.0, z=-20.0),
+            capacity_ul=1500.0,
+            working_volume_ul=1200.0,
+        )
+
+
+def test_well_plate_extra_field_rejected():
+    """WellPlate rejects unknown extra fields (strict schema)."""
+    wells = {"A1": Coordinate3D(x=0.0, y=0.0, z=-15.0)}
+    with pytest.raises(ValidationError):
+        WellPlate(
+            name="x",
+            model_name="test_model",
+            length_mm=127.71,
+            width_mm=85.43,
+            height_mm=14.10,
+            rows=8,
+            columns=12,
+            wells=wells,
+            capacity_ul=200.0,
+            working_volume_ul=150.0,
+            unknown_field=1,
+        )
+
+
+def test_well_plate_volume_required_and_working_le_capacity():
+    """WellPlate requires capacity_ul and working_volume_ul; working_volume_ul <= capacity_ul."""
+    wells = {"A1": Coordinate3D(x=0.0, y=0.0, z=-15.0)}
+    with pytest.raises(ValidationError):
+        WellPlate(
+            name="x",
+            model_name="test_model",
+            length_mm=127.71,
+            width_mm=85.43,
+            height_mm=14.10,
+            rows=8,
+            columns=12,
+            wells=wells,
+            capacity_ul=200.0,
+            working_volume_ul=250.0,
+        )
+    plate = WellPlate(
+        name="x",
+        model_name="test_model",
+        length_mm=127.71,
+        width_mm=85.43,
+        height_mm=14.10,
+        rows=8,
+        columns=12,
+        wells=wells,
+        capacity_ul=200.0,
+        working_volume_ul=150.0,
+    )
+    assert plate.capacity_ul == 200.0
+    assert plate.working_volume_ul == 150.0
+
+
+def test_vial_extra_field_rejected():
+    """Vial rejects unknown extra fields (strict schema)."""
+    with pytest.raises(ValidationError):
+        Vial(
+            name="v",
+            model_name="test_model",
+            height_mm=66.0,
+            diameter_mm=28.0,
+            location=Coordinate3D(x=-30.0, y=-40.0, z=-20.0),
+            capacity_ul=1500.0,
+            working_volume_ul=1200.0,
+            unknown_field=1,
+        )
+
+
+def test_vial_volume_required_and_working_le_capacity():
+    """Vial requires capacity_ul and working_volume_ul; working_volume_ul <= capacity_ul."""
+    with pytest.raises(ValidationError):
+        Vial(
+            name="v",
+            model_name="test_model",
+            height_mm=66.0,
+            diameter_mm=28.0,
+            location=Coordinate3D(x=-30.0, y=-40.0, z=-20.0),
+            capacity_ul=1000.0,
+            working_volume_ul=1200.0,
         )
 
 

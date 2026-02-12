@@ -17,7 +17,7 @@ This project features a robust **Protocol Engine** for defining and executing au
 - **YAML-based Protocols**: Define experiments in simple YAML files (see `experiments/`).
 - **Safe Path Planning**: Automatic "Safe Z" travel and optimization to prevent collisions.
 - **Hardware Abstraction**: Clean separation between protocol logic and hardware drivers.
- - **Labware Abstractions**: Centralized models for well plates and vial racks, making it easy to target logical positions (e.g., `A1`) and resolve them into absolute deck coordinates.
+- **Labware Abstractions**: Centralized models for well plates and vials, making it easy to target logical positions (e.g., `A1`) and resolve them into absolute deck coordinates.
 
 ### Running an Experiment
 1. **Configure Hardware**: Update `configs/genmitsu_3018_deck_config.yaml` with your machine bounds, camera source, and serial port.
@@ -27,15 +27,31 @@ This project features a robust **Protocol Engine** for defining and executing au
    python verify_experiment.py experiments/my_experiment.yaml
    ```
 
-## Labware Models
+## Labware Models and Deck YAML
 
-Logical labware (well plates, vial racks, etc.) is modeled in `src/labware/`:
+Logical labware (well plates and vials) is modeled in `src/labware/`:
 
-- `Labware` is the common base model that maps logical location IDs (like `A1`) to absolute deck coordinates and provides `get_location(location_id)`.
-- `WellPlate` adds plate geometry (length, width, height, rows, columns) and a `wells` mapping, plus `get_well_center(well_id)`.
-- `Vial` adds vial geometry (height, diameter) and a `vials` mapping, plus `get_vial_center(vial_id)`.
+- `Labware` is a high-level base for shared behavior (`get_location`, `get_initial_position`) and common validation helpers.
+- `WellPlate` defines all required plate fields directly: `name`, `model_name`, geometry (`length_mm`, `width_mm`, `height_mm`), layout (`rows`, `columns`), `wells`, and volume fields (`capacity_ul`, `working_volume_ul`).
+- `Vial` defines all required vial fields directly: `name`, `model_name`, geometry (`height_mm`, `diameter_mm`), a single `location`, and volume fields.
 
-Future work will connect these models to YAML config so experiment definitions can refer to labware locations directly (e.g., `plate_1.A1`) and the protocol engine will automatically plan safe motion to those coordinates.
+**Deck configuration (YAML)** defines which labware is on the deck (no gantry/serial settings in the deck file). Use a strict deck YAML with a single top-level key `labware`; each entry is either a well plate (with two-point calibration A1 + A2 and x/y offsets) or a single vial (with explicit `location`). Load into Python objects with:
+
+```python
+from src.labware.deck_loader import load_labware_from_deck_yaml
+
+labware = load_labware_from_deck_yaml("configs/deck.sample.yaml")
+# labware["plate_1"] -> WellPlate; labware["vial_1"] -> Vial
+# labware["plate_1"].get_well_center("A1")  # absolute XYZ
+```
+
+See `configs/deck.sample.yaml` for the required schema. Validation is strict: missing, extra, or wrong-type fields raise `ValidationError`; two-point calibration for well plates must be axis-aligned (A1 and A2 share either x or y).
+
+To quickly inspect loaded objects from the sample deck YAML, run:
+
+```bash
+python show_deck_objects.py
+```
 
 ## Instrument Drivers
 
