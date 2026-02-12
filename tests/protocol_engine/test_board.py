@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 from src.instruments.base_instrument import BaseInstrument
 from src.instruments.pipette.exceptions import PipetteError

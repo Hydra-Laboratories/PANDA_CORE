@@ -1,14 +1,16 @@
+from __future__ import annotations
+
 import logging
-from typing import Any, Optional, Union
+from typing import Any
 
 from src.gantry import Gantry
 from src.instruments.base_instrument import BaseInstrument
 from src.instruments.pipette.exceptions import PipetteError
 from src.instruments.pipette.models import AspirateResult, MixResult
 
-# A position is either a (x, y, z) tuple or any object with x, y, z attributes
+# A position is either an (x, y, z) tuple or any object with x, y, z attributes
 # (e.g. a labware object sitting at a fixed deck location).
-Position = Union[tuple[float, float, float], Any]
+Position = Any
 
 
 class Board:
@@ -22,7 +24,7 @@ class Board:
     def __init__(
         self,
         gantry: Gantry,
-        instruments: Optional[dict[str, BaseInstrument]] = None,
+        instruments: dict[str, BaseInstrument] | None = None,
     ):
         self.gantry = gantry
         self.instruments: dict[str, BaseInstrument] = instruments or {}
@@ -32,7 +34,7 @@ class Board:
 
     def move(
         self,
-        instrument: Union[str, BaseInstrument],
+        instrument: str | BaseInstrument,
         position: Position,
     ) -> None:
         """Move the gantry so that *instrument* arrives at *position*.
@@ -57,7 +59,7 @@ class Board:
         self.gantry.move_to(gantry_x, gantry_y, gantry_z)
 
     def object_position(
-        self, obj: Union[str, BaseInstrument, Any],
+        self, obj: str | BaseInstrument | Any,
     ) -> tuple[float, float]:
         """Return the current (x, y) position of an object on the board.
 
@@ -86,7 +88,7 @@ class Board:
 
         return (obj.x, obj.y)
 
-    # ── Pipette helpers ─────────────────────────────────────────────────
+    # ── Pipette helpers ────────────────────────────────────────────────────
 
     def aspirate(
         self,
@@ -164,7 +166,7 @@ class Board:
         return self.instruments["pipette"]
 
     def _resolve_instrument(
-        self, instrument: Union[str, BaseInstrument],
+        self, instrument: str | BaseInstrument,
     ) -> BaseInstrument:
         """Look up an instrument by name or return it directly."""
         if isinstance(instrument, str):
