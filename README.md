@@ -17,6 +17,7 @@ This project features a robust **Protocol Engine** for defining and executing au
 - **YAML-based Protocols**: Define experiments in simple YAML files (see `experiments/`).
 - **Safe Path Planning**: Automatic "Safe Z" travel and optimization to prevent collisions.
 - **Hardware Abstraction**: Clean separation between protocol logic and hardware drivers.
+ - **Labware Abstractions**: Centralized models for well plates and vial racks, making it easy to target logical positions (e.g., `A1`) and resolve them into absolute deck coordinates.
 
 ### Running an Experiment
 1. **Configure Hardware**: Update `configs/genmitsu_3018_deck_config.yaml` with your machine bounds, camera source, and serial port.
@@ -25,6 +26,16 @@ This project features a robust **Protocol Engine** for defining and executing au
    ```bash
    python verify_experiment.py experiments/my_experiment.yaml
    ```
+
+## Labware Models
+
+Logical labware (well plates, vial racks, etc.) is modeled in `src/labware/`:
+
+- `Labware` is the common base model that maps logical location IDs (like `A1`) to absolute deck coordinates and provides `get_location(location_id)`.
+- `WellPlate` adds plate geometry (length, width, height, rows, columns) and a `wells` mapping, plus `get_well_center(well_id)`.
+- `Vial` adds vial geometry (height, diameter) and a `vials` mapping, plus `get_vial_center(vial_id)`.
+
+Future work will connect these models to YAML config so experiment definitions can refer to labware locations directly (e.g., `plate_1.A1`) and the protocol engine will automatically plan safe motion to those coordinates.
 
 ## Instrument Drivers
 

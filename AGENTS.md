@@ -56,6 +56,14 @@ A modular system for executing experiment sequences defined in code or YAML.
 - **`camera.py`**: `Camera` class wrapping OpenCV for robust image capture (handles warmup, retries).
 - **`executor.py`**: `ProtocolExecutor` that orchestrates the `Mill` and `Camera` to run the compiled protocol.
 
+### Labware Models (`src/labware`)
+Geometry and positioning models for consumables on the deck.
+
+- **`base.py`**: `Coordinate3D` and `Labware` base model. `Labware` manages a mapping from logical location IDs (e.g., `\"A1\"`) to absolute deck coordinates and exposes `get_location(location_id)`.
+- **`well_plate.py`**: `WellPlate(Labware)` for multi-well plates (e.g., SBS 96-well). Stores plate dimensions (length, width, height), grid size (rows/columns), and a `wells` mapping from well ID to center coordinate. Also provides `get_well_center(well_id)`.
+- **`vial.py`**: `Vial(Labware)` for vial racks. Stores vial geometry (height, diameter) and a `vials` mapping from vial ID (e.g., `\"A1\"`) to center coordinate, plus `get_vial_center(vial_id)`.
+- **Usage**: Higher-level code can resolve targets like `\"A1\"` on a given labware instance into absolute XYZ coordinates, which can then be passed into the path planner or CNC driver.
+
 ### Experiments
 - **`experiments/`**: Directory for storing YAML experiment definitions.
 - **`verify_experiment.py`**: Main runner script. Loads an experiment (YAML), compiles it, and executes it on the hardware.
