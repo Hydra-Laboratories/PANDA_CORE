@@ -38,7 +38,7 @@ Logical labware (well plates and vials) is modeled in `src/labware/`:
 **Deck configuration (YAML)** defines which labware is on the deck (no gantry/serial settings in the deck file). Use a strict deck YAML with a single top-level key `labware`; each entry is either a well plate (with two-point calibration A1 + A2 and x/y offsets) or a single vial (with explicit `location`). Load into Python objects with:
 
 ```python
-from src.labware.deck_loader import load_labware_from_deck_yaml
+from src.labware.deck.loader import load_labware_from_deck_yaml
 
 labware = load_labware_from_deck_yaml("configs/deck.sample.yaml")
 # labware["plate_1"] -> WellPlate; labware["vial_1"] -> Vial

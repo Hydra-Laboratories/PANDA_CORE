@@ -1,4 +1,4 @@
-"""Strict Pydantic schemas for deck YAML. Only allowed fields; extra keys forbidden."""
+"""Strict Pydantic schemas for deck YAML."""
 
 from __future__ import annotations
 
@@ -14,8 +14,10 @@ class _Point3D(BaseModel):
     z: float
 
 
-class _CalibrationA2(BaseModel):
+class _CalibrationPoints(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    # Preferred location for A1 in deck YAML.
+    a1: _Point3D | None = None
     a2: _Point3D
 
 
@@ -32,16 +34,25 @@ class WellPlateEntry(BaseModel):
     length_mm: float
     width_mm: float
     height_mm: float
-    a1: _Point3D
-    calibration: _CalibrationA2
+    # Backward compatibility: top-level A1 is accepted but deprecated.
+    a1: _Point3D | None = None
+    calibration: _CalibrationPoints
     x_offset_mm: float
     y_offset_mm: float
     capacity_ul: float
     working_volume_ul: float
 
+    @property
+    def a1_point(self) -> _Point3D:
+        """Return canonical A1 point, preferring calibration.a1."""
+        a1 = self.calibration.a1 or self.a1
+        if a1 is None:
+            raise ValueError("Calibration must define `a1` (prefer `calibration.a1`).")
+        return a1
+
     @model_validator(mode="after")
     def _validate_two_point_calibration(self) -> "WellPlateEntry":
-        a1, a2 = self.a1, self.calibration.a2
+        a1, a2 = self.a1_point, self.calibration.a2
         if a1.x == a2.x and a1.y == a2.y:
             raise ValueError("Calibration points A1 and A2 must not be identical.")
         same_x = abs(a1.x - a2.x) < 1e-9
@@ -91,4 +102,7 @@ class DeckSchema(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    labware: Dict[str, LabwareEntry] = Field(..., description="Mapping of labware key to well_plate or vial entry.")
+    labware: Dict[str, LabwareEntry] = Field(
+        ..., description="Mapping of labware key to well_plate or vial entry."
+    )
+

@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-import yaml
 from pathlib import Path
 from string import ascii_uppercase
 from typing import Any, Dict, Type, Union
 
+import yaml
 from pydantic import BaseModel, ValidationError
 
-from .deck_schema import DeckSchema, WellPlateEntry, VialEntry
-from .labware import Coordinate3D
-from .vial import Vial
-from .well_plate import WellPlate
-
-
-class DeckLoaderError(Exception):
-    """Human-friendly deck loader error intended for CLI output."""
+from ..labware import Coordinate3D
+from ..vial import Vial
+from ..well_plate import WellPlate
+from .errors import DeckLoaderError
+from .schema import DeckSchema, VialEntry, WellPlateEntry
 
 
 def _format_loader_exception(path: Path, error: Exception) -> str:
@@ -31,8 +28,8 @@ def _format_loader_exception(path: Path, error: Exception) -> str:
 
         if "axis-aligned" in detail or "diagonal orientation is invalid" in detail:
             guidance = (
-                "Set `calibration.a2` so it shares either the same x or the same y as `a1` "
-                "(not both different)."
+                "Set `calibration.a1` and `calibration.a2` so A2 shares either "
+                "the same x or the same y as A1 (not both different)."
             )
         elif error_type == "missing" or "Field required" in detail:
             guidance = "Add the missing required YAML field shown in the error location."
@@ -66,9 +63,6 @@ def _point_to_coord(p) -> Coordinate3D:
 def _entry_kwargs_for_model(entry: BaseModel, model_class: Type[BaseModel]) -> Dict[str, Any]:
     """
     Build constructor kwargs from entry by keeping only keys that exist on the target model.
-
-    This way, when the model gains new fields that are also on the entry schema,
-    the loader does not need to be updated.
     """
     allowed = set(model_class.model_fields.keys())
     raw = entry.model_dump()
@@ -82,8 +76,8 @@ def _row_labels(rows: int) -> list[str]:
 
 
 def _derive_wells_from_calibration(entry: WellPlateEntry) -> Dict[str, Coordinate3D]:
-    """Build well ID -> Coordinate3D from A1, A2 calibration and offsets."""
-    a1 = entry.a1
+    """Build well ID -> Coordinate3D from calibration A1/A2 and offsets."""
+    a1 = entry.a1_point
     a2 = entry.calibration.a2
     rounding = 3
     wells: Dict[str, Coordinate3D] = {}
@@ -125,13 +119,13 @@ def _derive_wells_from_calibration(entry: WellPlateEntry) -> Dict[str, Coordinat
     return wells
 
 
-def _build_well_plate(key: str, entry: WellPlateEntry) -> WellPlate:
+def _build_well_plate(entry: WellPlateEntry) -> WellPlate:
     kwargs = _entry_kwargs_for_model(entry, WellPlate)
     kwargs["wells"] = _derive_wells_from_calibration(entry)
     return WellPlate(**kwargs)
 
 
-def _build_vial(key: str, entry: VialEntry) -> Vial:
+def _build_vial(entry: VialEntry) -> Vial:
     kwargs = _entry_kwargs_for_model(entry, Vial)
     kwargs["location"] = _point_to_coord(entry.location)
     return Vial(**kwargs)
@@ -140,14 +134,6 @@ def _build_vial(key: str, entry: VialEntry) -> Vial:
 def load_labware_from_deck_yaml(path: str | Path) -> Dict[str, Union[WellPlate, Vial]]:
     """
     Load a deck YAML file and return a mapping from labware name (key in YAML) to Labware.
-
-    The deck YAML must contain a top-level 'labware' key. No other top-level keys are allowed.
-    Each labware entry is validated strictly (missing, extra, or wrong-type fields raise
-    ValidationError). Two-point calibration for well plates must be axis-aligned (A1 and A2
-    have either the same x or the same y).
-
-    Returns:
-        Dict mapping each labware key to a WellPlate or Vial instance.
     """
     path = Path(path)
     with path.open() as f:
@@ -158,9 +144,9 @@ def load_labware_from_deck_yaml(path: str | Path) -> Dict[str, Union[WellPlate, 
     result: Dict[str, Union[WellPlate, Vial]] = {}
     for name, entry in deck.labware.items():
         if isinstance(entry, WellPlateEntry):
-            result[name] = _build_well_plate(name, entry)
+            result[name] = _build_well_plate(entry)
         else:
-            result[name] = _build_vial(name, entry)
+            result[name] = _build_vial(entry)
     return result
 
 
@@ -176,3 +162,4 @@ def load_labware_from_deck_yaml_safe(path: str | Path) -> Dict[str, Union[WellPl
         return load_labware_from_deck_yaml(resolved_path)
     except Exception as exc:
         raise DeckLoaderError(_format_loader_exception(resolved_path, exc)) from None
+

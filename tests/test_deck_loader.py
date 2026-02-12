@@ -8,7 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from src.labware import WellPlate, Vial, Coordinate3D
-from src.labware.deck_loader import (
+from src.labware.deck.loader import (
     DeckLoaderError,
     load_labware_from_deck_yaml,
     load_labware_from_deck_yaml_safe,
@@ -28,11 +28,11 @@ labware:
     length_mm: 127.71
     width_mm: 85.43
     height_mm: 14.10
-    a1:
-      x: -10.0
-      y: -10.0
-      z: -15.0
     calibration:
+      a1:
+        x: -10.0
+        y: -10.0
+        z: -15.0
       a2:
         x: -1.0
         y: -10.0

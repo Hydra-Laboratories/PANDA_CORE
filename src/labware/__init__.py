@@ -1,4 +1,4 @@
-from .deck_loader import (
+from .deck import (
     DeckLoaderError,
     load_labware_from_deck_yaml,
     load_labware_from_deck_yaml_safe,
