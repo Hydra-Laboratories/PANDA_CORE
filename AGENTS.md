@@ -41,6 +41,17 @@ Driver for the Filmetrics film thickness measurement system. Communicates with a
 - **`exceptions.py`**: `FilmetricsError` hierarchy (`FilmetricsConnectionError`, `FilmetricsCommandError`, `FilmetricsParseError`).
 - **`reference/`**: Copy of the C# source (`FilmetricsTool_program.cs`) for protocol reference.
 
+#### UV-Vis CCS Spectrometer (`src/instruments/uvvis_ccs`)
+Driver for the Thorlabs CCS-series compact spectrometers (CCS100/CCS175/CCS200). Communicates with the instrument via the Thorlabs TLCCS DLL through ctypes. 3648-pixel linear CCD.
+
+- **`driver.py`**: `UVVisCCS(BaseInstrument)` — the real DLL-based driver.
+    - **Constructor**: `UVVisCCS(serial_number, dll_path="TLCCS_64.dll", default_integration_time_s=0.24, name=None)`
+    - **Lifecycle**: `connect()`, `disconnect()`, `health_check()`
+    - **Commands**: `set_integration_time(seconds)`, `get_integration_time()`, `measure() -> UVVisSpectrum`, `get_device_info()`
+- **`mock.py`**: `MockUVVisCCS` — in-memory mock for testing. Tracks `command_history: list[str]`.
+- **`models.py`**: `UVVisSpectrum` frozen dataclass (`wavelengths`, `intensities`, `integration_time_s`, `is_valid`, `num_pixels`). `NUM_PIXELS = 3648`.
+- **`exceptions.py`**: `UVVisCCSError` hierarchy (`UVVisCCSConnectionError`, `UVVisCCSMeasurementError`, `UVVisCCSTimeoutError`).
+
 ### Protocol Engine (`src/protocol_engine`)
 A modular system for executing experiment sequences defined in code or YAML.
 
