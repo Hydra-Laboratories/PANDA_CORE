@@ -46,8 +46,8 @@ def test_well_plate_get_location_success_and_failure():
         length_mm=127.71,
         width_mm=85.43,
         height_mm=14.10,
-        rows=8,
-        columns=12,
+        rows=1,
+        columns=1,
         wells={"A1": Coordinate3D(x=-10.0, y=-20.0, z=-5.0)},
         capacity_ul=200.0,
         working_volume_ul=150.0,
@@ -67,7 +67,7 @@ def test_well_plate_get_location_success_and_failure():
 
 
 def test_vial_get_location_success_and_failure():
-    """Single-vial get_location supports default/A1/name aliases."""
+    """Single-vial get_location supports default and name lookup."""
     vial = Vial(
         name="vial_1",
         model_name="test_model",
@@ -79,7 +79,6 @@ def test_vial_get_location_success_and_failure():
     )
 
     assert vial.get_location() == Coordinate3D(x=-30.0, y=-40.0, z=-20.0)
-    assert vial.get_location("A1") == Coordinate3D(x=-30.0, y=-40.0, z=-20.0)
     assert vial.get_location("vial_1") == Coordinate3D(x=-30.0, y=-40.0, z=-20.0)
 
     with pytest.raises(ValidationError):
@@ -94,10 +93,12 @@ def test_vial_get_location_success_and_failure():
 
     with pytest.raises(KeyError, match="Unknown location ID 'B1'"):
         vial.get_location("B1")
+    with pytest.raises(KeyError, match="Unknown location ID 'A1'"):
+        vial.get_location("A1")
 
 
 def test_well_plate_sbs_96_dimensions_and_well_lookup():
-    """WellPlate captures SBS 96 dimensions and resolves wells by ID."""
+    """WellPlate captures dimensions and resolves wells by ID."""
     wells = {
         "A1": Coordinate3D(x=-10.0, y=-10.0, z=-15.0),
         "B1": Coordinate3D(x=-10.0, y=-20.0, z=-15.0),
@@ -109,8 +110,8 @@ def test_well_plate_sbs_96_dimensions_and_well_lookup():
         length_mm=127.71,
         width_mm=85.43,
         height_mm=14.10,
-        rows=8,
-        columns=12,
+        rows=2,
+        columns=1,
         wells=wells,
         capacity_ul=200.0,
         working_volume_ul=150.0,
@@ -120,8 +121,8 @@ def test_well_plate_sbs_96_dimensions_and_well_lookup():
     assert plate.length_mm == pytest.approx(127.71)
     assert plate.width_mm == pytest.approx(85.43)
     assert plate.height_mm == pytest.approx(14.10)
-    assert plate.rows == 8
-    assert plate.columns == 12
+    assert plate.rows == 2
+    assert plate.columns == 1
 
     # Well lookup using ergonomic API
     a1_center = plate.get_well_center("A1")
@@ -247,8 +248,8 @@ def test_well_plate_volume_required_and_working_le_capacity():
         length_mm=127.71,
         width_mm=85.43,
         height_mm=14.10,
-        rows=8,
-        columns=12,
+        rows=1,
+        columns=1,
         wells=wells,
         capacity_ul=200.0,
         working_volume_ul=150.0,
@@ -320,4 +321,48 @@ def test_generate_wells_from_offsets():
     # B2: both row and column offsets applied
     assert wells["B2"].x == pytest.approx(10.0)
     assert wells["B2"].y == pytest.approx(-5.0)
+
+
+def test_coordinate3d_rejects_non_finite_values():
+    """Coordinate3D must reject NaN and infinite values."""
+    with pytest.raises(ValidationError):
+        Coordinate3D(x=float("nan"), y=0.0, z=0.0)
+    with pytest.raises(ValidationError):
+        Coordinate3D(x=0.0, y=float("inf"), z=0.0)
+    with pytest.raises(ValidationError):
+        Coordinate3D(x=0.0, y=0.0, z=float("-inf"))
+
+
+def test_well_plate_requires_exact_rows_columns_well_count():
+    """WellPlate wells mapping count must match rows * columns exactly."""
+    with pytest.raises(ValidationError):
+        WellPlate(
+            name="count_mismatch",
+            model_name="test_model",
+            length_mm=127.71,
+            width_mm=85.43,
+            height_mm=14.10,
+            rows=8,
+            columns=12,
+            wells={"A1": Coordinate3D(x=0.0, y=0.0, z=-15.0)},
+            capacity_ul=200.0,
+            working_volume_ul=150.0,
+        )
+
+
+def test_well_plate_rows_limited_to_26():
+    """WellPlate rows are limited to A-Z."""
+    with pytest.raises(ValidationError):
+        WellPlate(
+            name="too_many_rows",
+            model_name="test_model",
+            length_mm=127.71,
+            width_mm=85.43,
+            height_mm=14.10,
+            rows=27,
+            columns=1,
+            wells={"A1": Coordinate3D(x=0.0, y=0.0, z=-15.0)},
+            capacity_ul=200.0,
+            working_volume_ul=150.0,
+        )
 

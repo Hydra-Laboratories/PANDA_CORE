@@ -21,8 +21,13 @@ class WellPlate(Labware):
     length_mm: float = Field(..., description="Overall plate length in millimeters.")
     width_mm: float = Field(..., description="Overall plate width in millimeters.")
     height_mm: float = Field(..., description="Overall plate height in millimeters.")
-    rows: int = Field(..., description="Number of well rows (e.g. 8 for 96-well).")
-    columns: int = Field(..., description="Number of well columns (e.g. 12 for 96-well).")
+    rows: int = Field(
+        ...,
+        gt=0,
+        le=26,
+        description="Number of well rows (e.g. 8 for 96-well). Max 26 (A-Z).",
+    )
+    columns: int = Field(..., gt=0, description="Number of well columns (e.g. 12 for 96-well).")
     wells: Dict[str, Coordinate3D] = Field(
         ...,
         description="Mapping from well ID (e.g. 'A1') to absolute XYZ centers.",
@@ -52,12 +57,6 @@ class WellPlate(Labware):
             raise ValueError(f"{info.field_name} must be positive.")
         return value
 
-    @field_validator("rows", "columns")
-    def _validate_positive_grid_size(cls, value: int, info):  # type: ignore[override]
-        if value <= 0:
-            raise ValueError(f"{info.field_name} must be a positive integer.")
-        return value
-
     @model_validator(mode="before")
     def _validate_wells(cls, data):
         wells: Dict[str, Coordinate3D] = data.get("wells") or {}
@@ -69,6 +68,15 @@ class WellPlate(Labware):
             raise ValueError("WellPlate must define an 'A1' well for anchoring.")
 
         return data
+
+    @model_validator(mode="after")
+    def _validate_well_count(self) -> "WellPlate":
+        expected_well_count = self.rows * self.columns
+        if len(self.wells) != expected_well_count:
+            raise ValueError(
+                f"WellPlate wells count must equal rows*columns ({expected_well_count}), got {len(self.wells)}."
+            )
+        return self
 
     def get_location(self, location_id: str | None = None) -> Coordinate3D:
         if location_id is None:

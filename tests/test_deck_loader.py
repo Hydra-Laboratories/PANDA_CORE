@@ -320,6 +320,65 @@ labware:
         Path(path).unlink(missing_ok=True)
 
 
+def test_safe_loader_yaml_parse_error_has_clean_message():
+    """Safe loader reports YAML parse issues without traceback noise."""
+    bad_yaml = "labware:\n  plate_1:\n    type: well_plate\n    calibration: [\n"
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(bad_yaml)
+        path = f.name
+    try:
+        with pytest.raises(DeckLoaderError) as exc_info:
+            load_labware_from_deck_yaml_safe(path)
+        message = str(exc_info.value)
+        assert message.startswith("❌")
+        assert "parse error" in message.lower()
+        assert "How to fix:" in message
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_safe_loader_missing_file_has_clean_message():
+    """Safe loader reports missing-file errors as DeckLoaderError."""
+    missing_path = "/tmp/this_file_does_not_exist_12345.yaml"
+    with pytest.raises(DeckLoaderError) as exc_info:
+        load_labware_from_deck_yaml_safe(missing_path)
+    message = str(exc_info.value)
+    assert message.startswith("❌")
+    assert "deck loader error" in message.lower()
+    assert "How to fix:" in message
+
+
+def test_zero_offsets_fail_schema_validation():
+    """x/y offsets must be non-zero in well plate schema."""
+    yaml = """
+labware:
+  p:
+    type: well_plate
+    name: x
+    model_name: x
+    rows: 8
+    columns: 12
+    length_mm: 127.71
+    width_mm: 85.43
+    height_mm: 14.10
+    calibration:
+      a1: { x: 0.0, y: 0.0, z: -15.0 }
+      a2: { x: 9.0, y: 0.0, z: -15.0 }
+    x_offset_mm: 0.0
+    y_offset_mm: -9.0
+    capacity_ul: 200.0
+    working_volume_ul: 150.0
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(yaml)
+        path = f.name
+    try:
+        with pytest.raises(ValidationError):
+            load_labware_from_deck_yaml(path)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
 def test_calibration_identical_points_fails():
     """A1 and A2 identical must fail."""
     yaml = """

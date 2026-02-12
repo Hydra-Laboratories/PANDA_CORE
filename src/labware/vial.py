@@ -42,14 +42,8 @@ class Vial(Labware):
             raise ValueError(f"{info.field_name} must be positive.")
         return value
 
-    @model_validator(mode="after")
-    def _validate_location(self) -> "Vial":
-        if self.location is None:
-            raise ValueError("Vial must define a location.")
-        return self
-
     def get_location(self, location_id: str | None = None) -> Coordinate3D:
-        if location_id is None or location_id in {"A1", self.name}:
+        if location_id is None or location_id == self.name:
             return self.location
         raise KeyError(f"Unknown location ID '{location_id}'")
 

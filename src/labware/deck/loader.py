@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from string import ascii_uppercase
 from typing import Any, Dict, Type, Union
 
 import yaml
@@ -13,7 +12,7 @@ from ..labware import Coordinate3D
 from ..vial import Vial
 from ..well_plate import WellPlate
 from .errors import DeckLoaderError
-from .schema import DeckSchema, VialEntry, WellPlateEntry
+from .schema import DeckSchema, VialEntry, WellPlateEntry, _Point3D
 
 
 def _format_loader_exception(path: Path, error: Exception) -> str:
@@ -55,7 +54,7 @@ def _format_loader_exception(path: Path, error: Exception) -> str:
     )
 
 
-def _point_to_coord(p) -> Coordinate3D:
+def _point_to_coord(p: _Point3D) -> Coordinate3D:
     """Convert schema point (x, y, z) to Coordinate3D."""
     return Coordinate3D(x=p.x, y=p.y, z=p.z)
 
@@ -70,9 +69,17 @@ def _entry_kwargs_for_model(entry: BaseModel, model_class: Type[BaseModel]) -> D
 
 
 def _row_labels(rows: int) -> list[str]:
-    if rows <= 0 or rows > 26:
-        raise ValueError("rows must be between 1 and 26 for row label generation.")
-    return list(ascii_uppercase[:rows])
+    if rows <= 0:
+        raise ValueError("rows must be positive for row label generation.")
+    labels: list[str] = []
+    for index in range(rows):
+        label = ""
+        value = index + 1
+        while value > 0:
+            value, remainder = divmod(value - 1, 26)
+            label = chr(65 + remainder) + label
+        labels.append(label)
+    return labels
 
 
 def _derive_wells_from_calibration(entry: WellPlateEntry) -> Dict[str, Coordinate3D]:
@@ -90,6 +97,11 @@ def _derive_wells_from_calibration(entry: WellPlateEntry) -> Dict[str, Coordinat
     if same_y:
         # Columns along X: A2 is (a1.x + col_step, a1.y)
         col_step = a2.x - a1.x
+        # Ensure calibration A2 corresponds to physical well A2 (one adjacent column step).
+        if abs(col_step - entry.x_offset_mm) > 1e-9:
+            raise ValueError(
+                "Calibration A2 must match one adjacent column step from A1 (delta x must equal x_offset_mm)."
+            )
         row_step = entry.y_offset_mm
         for row_idx, row_label in enumerate(row_labels):
             for col_idx, col_num in enumerate(column_indices):
@@ -103,6 +115,11 @@ def _derive_wells_from_calibration(entry: WellPlateEntry) -> Dict[str, Coordinat
     elif same_x:
         # Columns along Y: A2 is (a1.x, a1.y + col_step)
         col_step = a2.y - a1.y
+        # Ensure calibration A2 corresponds to physical well A2 (one adjacent column step).
+        if abs(col_step - entry.y_offset_mm) > 1e-9:
+            raise ValueError(
+                "Calibration A2 must match one adjacent column step from A1 (delta y must equal y_offset_mm)."
+            )
         row_step = entry.x_offset_mm
         for row_idx, row_label in enumerate(row_labels):
             for col_idx, col_num in enumerate(column_indices):
@@ -161,5 +178,5 @@ def load_labware_from_deck_yaml_safe(path: str | Path) -> Dict[str, Union[WellPl
     try:
         return load_labware_from_deck_yaml(resolved_path)
     except Exception as exc:
-        raise DeckLoaderError(_format_loader_exception(resolved_path, exc)) from None
+        raise DeckLoaderError(_format_loader_exception(resolved_path, exc)) from exc
 

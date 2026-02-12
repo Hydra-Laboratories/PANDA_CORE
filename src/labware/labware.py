@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+import math
+
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class Coordinate3D(BaseModel):
@@ -11,6 +13,12 @@ class Coordinate3D(BaseModel):
     x: float
     y: float
     z: float
+
+    @field_validator("x", "y", "z")
+    def _validate_finite(cls, value: float, info):  # type: ignore[override]
+        if not math.isfinite(value):
+            raise ValueError(f"{info.field_name} must be finite (not NaN/Inf).")
+        return value
 
 
 class Labware(BaseModel):

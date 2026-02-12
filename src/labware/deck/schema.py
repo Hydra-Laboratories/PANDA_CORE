@@ -29,8 +29,8 @@ class WellPlateEntry(BaseModel):
     type: Literal["well_plate"] = "well_plate"
     name: str
     model_name: str
-    rows: int
-    columns: int
+    rows: int = Field(..., gt=0)
+    columns: int = Field(..., gt=0)
     length_mm: float
     width_mm: float
     height_mm: float
@@ -65,6 +65,8 @@ class WellPlateEntry(BaseModel):
             raise ValueError("working_volume_ul must be <= capacity_ul.")
         if self.capacity_ul <= 0 or self.working_volume_ul <= 0:
             raise ValueError("capacity_ul and working_volume_ul must be positive.")
+        if self.x_offset_mm == 0 or self.y_offset_mm == 0:
+            raise ValueError("x_offset_mm and y_offset_mm must be non-zero.")
         return self
 
 
