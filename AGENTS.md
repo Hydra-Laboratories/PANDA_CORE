@@ -78,6 +78,15 @@ A modular system for executing experiment sequences defined in code or YAML.
 2.  **Running**: Execute `python verify_experiment.py experiments/your_experiment.yaml`.
 3.  **Connecting**: The system handles connection details (port, camera source) via `configs/genmitsu_3018_deck_config.yaml`.
 
+### Setup (`setup/`)
+First-run scripts for verifying hardware after unboxing.
+
+- **`hello_world.py`**: Interactive jog test. Connects to the gantry (auto-scan, no config), homes the machine, then lets you move the router with arrow keys and see live position updates.
+    - **Usage**: `python3 setup/hello_world.py`
+    - **Controls**: Arrow keys (X/Y ±1mm), Z key (Z down 1mm), X key (Z up 1mm), Q (quit)
+    - **Dependencies**: `src/hardware/gantry.py` (Gantry class)
+- **`keyboard_input.py`**: Helper module that reads single keypresses (including arrow keys) without requiring Enter. Uses `tty`/`termios` (Unix only).
+
 ## Environment
 - **Python**: 3.x
 - **Dependencies**: `pyserial`, `opencv-python`, `pydantic`, `pyyaml`.
