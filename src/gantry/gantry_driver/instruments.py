@@ -1,19 +1,15 @@
-"""Class of the instruments used on the CNC mill."""
+"""Instrument definitions and offset management for the CNC mill."""
 
 import json
 from enum import Enum
 from pathlib import Path
 from typing import Dict, Tuple, Union
 
-from .types import JSONSerializable, ToolInfo
-
-
-# NOTE these are not mill agnostic, so they should be implemented by whichever
-# project is using this library.
+from .types import JSONSerializable, InstrumentInfo
 
 
 class Instruments(Enum):
-    """Class for naming of the mill instruments."""
+    """Enumeration of available mill instruments."""
 
     CENTER = "center"
     PIPETTE = "pipette"
@@ -22,11 +18,8 @@ class Instruments(Enum):
     DECAPPER = "decapper"
 
 
-Tools = Instruments
-
-
 class Coordinates:
-    """Class for storing coordinates."""
+    """Immutable-style 3D coordinate representation with auto-rounding."""
 
     def __init__(self, x, y, z):
         self.x = x
@@ -110,13 +103,15 @@ class Coordinates:
         }
 
 
-class ToolOffset(JSONSerializable):
+class InstrumentOffset(JSONSerializable):
+    """Stores the name and XYZ offset for a single instrument."""
+
     def __init__(self, name: str, offset: Coordinates):
         self.name: str = name
         self.offset: Coordinates = offset
 
     @classmethod
-    def from_dict(cls, data: ToolInfo):
+    def from_dict(cls, data: InstrumentInfo):
         offset = Coordinates(data["x"], data["y"], data["z"])
         return cls(name=data["name"], offset=offset)
 
@@ -132,110 +127,113 @@ class ToolOffset(JSONSerializable):
         return f"{self.name}: {str(self.offset)}"
 
 
-class ToolManager:
+class InstrumentManager:
     """
-    Class for managing the tools used on the CNC mill.
-    On initialization, the class will load the tools from a default JSON file located locally to the module.
-    If the file does not exist, the class will create a default tool called "center" with an offset of (0, 0, 0).
+    Manages instrument offsets for the CNC mill.
 
-    You can provide a different JSON file path to the class on initialization.
+    On initialization, loads instrument definitions from a JSON file located
+    alongside this module. If the file does not exist, creates a default
+    set of instruments with zero offsets.
 
-    The class provides methods for adding, getting, updating, and deleting tools.
+    A different JSON file path can be provided on initialization.
 
     Attributes:
-        json_file (str): The path to the JSON file containing the tools.
-        tool_offsets (dict): A dictionary of the tool offsets.
+        json_file (str): Path to the JSON file containing instrument offsets.
+        instrument_offsets (dict): Mapping of instrument names to InstrumentOffset objects.
     """
 
-    def __init__(self, json_file: str = Path(__file__).parent / "tools.json"):
+    def __init__(self, json_file: str = Path(__file__).parent / "instruments.json"):
         self.json_file = json_file
-        self.tool_offsets: Dict[str, ToolOffset] = self.load_tools()
+        self.instrument_offsets: Dict[str, InstrumentOffset] = self._load_instruments()
 
-        if self.tool_offsets == {}:
-            self.tool_offsets = {self.__default_tool().name: self.__default_tool()}
-            self.save_tools()
+        if self.instrument_offsets == {}:
+            self.instrument_offsets = {self._default_instrument().name: self._default_instrument()}
+            self._save_instruments()
 
-    def load_tools(self) -> Dict[str, ToolOffset]:
+    def _load_instruments(self) -> Dict[str, InstrumentOffset]:
         try:
             with open(self.json_file, "r") as file:
                 data = json.load(file)
-                return {item["name"]: ToolOffset.from_dict(item) for item in data}
+                return {item["name"]: InstrumentOffset.from_dict(item) for item in data}
         except (FileNotFoundError, json.JSONDecodeError):
             with open(self.json_file, "w") as file:
-                json.dump(default_tool_json, file, indent=4)
+                json.dump(DEFAULT_INSTRUMENT_DATA, file, indent=4)
             return {
-                item["name"]: ToolOffset.from_dict(item) for item in default_tool_json
+                item["name"]: InstrumentOffset.from_dict(item)
+                for item in DEFAULT_INSTRUMENT_DATA
             }
         except Exception as e:
-            print(f"Error loading tools: {e}")
+            print(f"Error loading instruments: {e}")
             return {}
 
-    def save_tools(self):
+    def _save_instruments(self):
         with open(self.json_file, "w") as file:
             json.dump(
-                [tool.to_dict() for tool in self.tool_offsets.values()], file, indent=4
+                [inst.to_dict() for inst in self.instrument_offsets.values()],
+                file,
+                indent=4,
             )
 
-    def add_tool(
+    def add_instrument(
         self, name: str, offset: Union[Coordinates, Tuple[float, float, float]]
     ):
         if not isinstance(name, str):
             try:
                 name = name.value
             except AttributeError:
-                raise ValueError("Invalid tool") from None
+                raise ValueError("Invalid instrument name") from None
         if isinstance(offset, tuple):
             offset = Coordinates(*offset)
 
-        if name in self.tool_offsets:
-            self.update_tool(name, offset)
+        if name in self.instrument_offsets:
+            self.update_instrument(name, offset)
         else:
-            self.tool_offsets[name] = ToolOffset(name=name, offset=offset)
+            self.instrument_offsets[name] = InstrumentOffset(name=name, offset=offset)
 
-        self.save_tools()
+        self._save_instruments()
 
-    def get_tool(self, name: str) -> ToolOffset:
+    def get_instrument(self, name: str) -> InstrumentOffset:
         if not isinstance(name, str):
             try:
                 name = name.value
             except AttributeError:
-                raise ValueError("Invalid tool") from None
-        return self.tool_offsets.get(name)
+                raise ValueError("Invalid instrument name") from None
+        return self.instrument_offsets.get(name)
 
     def get_offset(self, name: str) -> Coordinates:
         if not isinstance(name, str):
             try:
                 name = name.value
             except AttributeError:
-                raise ValueError("Invalid tool") from None
-        return self.tool_offsets.get(name).offset
+                raise ValueError("Invalid instrument name") from None
+        return self.instrument_offsets.get(name).offset
 
-    def update_tool(self, name: str, offset: Coordinates):
+    def update_instrument(self, name: str, offset: Coordinates):
         if not isinstance(name, str):
             try:
                 name = name.value
             except AttributeError:
-                raise ValueError("Invalid tool") from None
+                raise ValueError("Invalid instrument name") from None
         if isinstance(offset, tuple):
             offset = Coordinates(*offset)
-        if name in self.tool_offsets:
-            self.tool_offsets[name].offset = offset
-            self.save_tools()
+        if name in self.instrument_offsets:
+            self.instrument_offsets[name].offset = offset
+            self._save_instruments()
         else:
-            raise ValueError(f"Tool {name} not found")
+            raise ValueError(f"Instrument '{name}' not found")
 
-    def delete_tool(self, name: str):
-        if name in self.tool_offsets:
-            del self.tool_offsets[name]
-            self.save_tools()
+    def delete_instrument(self, name: str):
+        if name in self.instrument_offsets:
+            del self.instrument_offsets[name]
+            self._save_instruments()
         else:
-            raise ValueError(f"Tool {name} not found")
+            raise ValueError(f"Instrument '{name}' not found")
 
-    def __default_tool(self):
-        return ToolOffset(name="center", offset=Coordinates(0, 0, 0))
+    def _default_instrument(self):
+        return InstrumentOffset(name="center", offset=Coordinates(0, 0, 0))
 
 
-default_tool_json = [
+DEFAULT_INSTRUMENT_DATA = [
     {"name": "center", "x": 0.0, "y": 0.0, "z": 0.0},
     {"name": "pipette", "x": 0.0, "y": 0.0, "z": 0.0},
     {"name": "electrode", "x": 0.0, "y": 0.0, "z": 0.0},

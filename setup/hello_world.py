@@ -10,7 +10,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from src.hardware.gantry import Gantry
+from src.gantry import Gantry
 from setup.keyboard_input import read_keypress
 
 # Working volume limits (machine uses negative coordinates)
