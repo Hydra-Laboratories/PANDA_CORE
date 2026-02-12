@@ -1,12 +1,12 @@
+# CUB — Genmitsu 3018 PRO Desktop (smaller machine)
+serial_port: /dev/cu.usbserial-2130
 cnc:
-serial_port: "/dev/cu.usbserial-2130"
+  homing_strategy: xy_hard_limits
 
-locations:
-  home:
-    x: 0.0
-    y: 0.0
-    z: 0.0
-  imaging_station:
-    x: -150.0
-    y: -100.0
-    z: -35.0
+working_volume:
+  x_min: -300.0
+  x_max: 0.0
+  y_min: -200.0
+  y_max: 0.0
+  z_min: -80.0
+  z_max: 0.0
