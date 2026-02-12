@@ -7,7 +7,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from src.instrument_drivers.cnc_driver.driver import Mill, wpos_pattern, mpos_pattern, Coordinates
+from src.gantry.gantry_driver.driver import Mill, wpos_pattern, mpos_pattern, Coordinates
 
 class TestCNCDriverLogic(unittest.TestCase):
     
@@ -35,9 +35,9 @@ class TestCNCDriverLogic(unittest.TestCase):
         self.assertIsNone(wpos_pattern.search(invalid_status))
         self.assertIsNone(mpos_pattern.search(invalid_status))
 
-    @patch('src.instrument_drivers.cnc_driver.driver.serial.Serial')
-    @patch('src.instrument_drivers.cnc_driver.driver.set_up_mill_logger')
-    @patch('src.instrument_drivers.cnc_driver.driver.set_up_command_logger')
+    @patch('src.gantry.gantry_driver.driver.serial.Serial')
+    @patch('src.gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('src.gantry.gantry_driver.driver.set_up_command_logger')
     def test_generate_movement_commands(self, mock_cmd_logger, mock_mill_logger, mock_serial):
         """Test generation of G-code commands."""
         # Setup mock mill with basic config
@@ -51,8 +51,8 @@ class TestCNCDriverLogic(unittest.TestCase):
         
         commands = mill._generate_movement_commands(current, target)
         # Should be diagonal move
-        self.assertIn("G01 X10 Y10", commands)
-        self.assertIn("G01 Z0", commands)
+        self.assertIn("G01 X10.0 Y10.0", commands)
+        self.assertIn("G01 Z0.0", commands)
         
         # Test 2: Move where current Z is unsafe (e.g. deep in a well)
         # However, _generate_movement_commands logic in current driver:
@@ -70,13 +70,13 @@ class TestCNCDriverLogic(unittest.TestCase):
         #   append Y..
         #   append Z..
         
-        self.assertIn("G01 X10", commands_unsafe)
-        self.assertIn("G01 Y10", commands_unsafe)
-        self.assertNotIn("G01 X10 Y10", commands_unsafe)
+        self.assertIn("G01 X10.0", commands_unsafe)
+        self.assertIn("G01 Y10.0", commands_unsafe)
+        self.assertNotIn("G01 X10.0 Y10.0", commands_unsafe)
 
-    @patch('src.instrument_drivers.cnc_driver.driver.serial.Serial')
-    @patch('src.instrument_drivers.cnc_driver.driver.set_up_mill_logger')
-    @patch('src.instrument_drivers.cnc_driver.driver.set_up_command_logger')
+    @patch('src.gantry.gantry_driver.driver.serial.Serial')
+    @patch('src.gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('src.gantry.gantry_driver.driver.set_up_command_logger')
     def test_mock_connection(self, mock_cmd_logger, mock_mill_logger, mock_serial):
         """Test connecting with mocked serial port."""
         mock_serial_instance = MagicMock()
@@ -86,6 +86,12 @@ class TestCNCDriverLogic(unittest.TestCase):
         # Mock the locate_mill_over_serial to return our mock
         with patch.object(Mill, 'locate_mill_over_serial', return_value=(mock_serial_instance, '/dev/test')):
             mill = Mill()
+            mill.read_mill_config = MagicMock()
+            mill.write_mill_config_file = MagicMock()
+            mill.read_working_volume = MagicMock()
+            mill.check_for_alarm_state = MagicMock()
+            mill.clear_buffers = MagicMock()
+            mill.set_feed_rate = MagicMock()
             mill.connect_to_mill(port='/dev/test')
             
             self.assertTrue(mill.active_connection)
