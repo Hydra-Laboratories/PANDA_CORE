@@ -7,8 +7,8 @@ import pytest
 
 from pydantic import ValidationError
 
-from src.labware import WellPlate, Vial, Coordinate3D
-from src.labware.deck.loader import (
+from src.deck import WellPlate, Vial, Coordinate3D
+from src.deck.loader import (
     DeckLoaderError,
     load_labware_from_deck_yaml,
     load_labware_from_deck_yaml_safe,

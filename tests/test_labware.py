@@ -2,7 +2,7 @@ import pytest
 
 from pydantic import ValidationError
 
-from src.labware import (
+from src.deck import (
     WellPlate,
     Vial,
     Coordinate3D,

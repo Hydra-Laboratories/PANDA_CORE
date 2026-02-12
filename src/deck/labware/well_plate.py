@@ -134,4 +134,3 @@ def generate_wells_from_offsets(
             )
 
     return wells
-

@@ -8,9 +8,9 @@ from typing import Any, Dict, Type, Union
 import yaml
 from pydantic import BaseModel, ValidationError
 
-from ..labware import Coordinate3D
-from ..vial import Vial
-from ..well_plate import WellPlate
+from .labware import Coordinate3D
+from .labware.vial import Vial
+from .labware.well_plate import WellPlate
 from .errors import DeckLoaderError
 from .yaml_schema import DeckYamlSchema, VialYamlEntry, WellPlateYamlEntry, _YamlPoint3D
 
@@ -179,4 +179,3 @@ def load_labware_from_deck_yaml_safe(path: str | Path) -> Dict[str, Union[WellPl
         return load_labware_from_deck_yaml(resolved_path)
     except Exception as exc:
         raise DeckLoaderError(_format_loader_exception(resolved_path, exc)) from exc
-

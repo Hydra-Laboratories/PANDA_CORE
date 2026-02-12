@@ -55,4 +55,3 @@ class Vial(Labware):
         Initial position for a single vial is its center location.
         """
         return self.location
-

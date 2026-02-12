@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from pprint import pprint
 
-from src.labware import DeckLoaderError, load_labware_from_deck_yaml_safe
+from src.deck import DeckLoaderError, load_labware_from_deck_yaml_safe
 
 
 def main() -> None:
