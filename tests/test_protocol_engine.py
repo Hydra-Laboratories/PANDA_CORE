@@ -4,15 +4,15 @@ from src.protocol_engine.schema import MoveAction, ImageAction, ExperimentSequen
 
 def test_move_action_valid():
     """Test creating a valid MoveAction."""
-    action = MoveAction(target_location="well_A1", tool="pipette")
+    action = MoveAction(target_location="well_A1", instrument="pipette")
     assert action.action_type == "move"
     assert action.target_location == "well_A1"
-    assert action.tool == "pipette"
+    assert action.instrument == "pipette"
     assert action.z_offset == 0.0
 
 def test_move_action_defaults():
     """Test MoveAction default values."""
-    action = MoveAction(target_location="home", tool="center")
+    action = MoveAction(target_location="home", instrument="center")
     assert action.z_offset == 0.0
 
 def test_image_action_valid():
@@ -24,7 +24,7 @@ def test_image_action_valid():
 
 def test_experiment_sequence_valid():
     """Test creating a valid ExperimentSequence with multiple actions."""
-    move = MoveAction(target_location="well_A1", tool="pipette")
+    move = MoveAction(target_location="well_A1", instrument="pipette")
     image = ImageAction(target_location="well_A1", label="check")
     seq = ExperimentSequence(name="Test Sequence", actions=[move, image])
     
@@ -38,15 +38,15 @@ def test_experiment_sequence_invalid_action():
     with pytest.raises(ValidationError):
         ExperimentSequence(name="Invalid", actions=[{"invalid": "dict"}])
 
-def test_move_action_invalid_tool():
+def test_move_action_invalid_instrument():
     """Test MoveAction validation (generic check, specific validation logic might be in Planner later)."""
     # Simply ensuring it accepts strings for now
-    action = MoveAction(target_location="loc", tool="unknown_tool")
-    assert action.tool == "unknown_tool"
+    action = MoveAction(target_location="loc", instrument="unknown_instrument")
+    assert action.instrument == "unknown_instrument"
 
 # Deck Config Tests
 from src.protocol_engine.config import DeckConfig, MachineBounds
-from src.cnc_control.tools import Coordinates
+from src.instrument_drivers.cnc_driver.instruments import Coordinates
 
 def test_deck_config_valid():
     """Test creating a valid DeckConfig from a dictionary."""
@@ -214,9 +214,9 @@ def test_compiler_compile_valid_sequence():
     )
     
     actions = [
-        MoveAction(target_location="loc_A", tool="center"),
+        MoveAction(target_location="loc_A", instrument="center"),
         ImageAction(target_location="loc_A", label="test_img"),
-        MoveAction(target_location="home", tool="center")
+        MoveAction(target_location="home", instrument="center")
     ]
     seq = ExperimentSequence(name="Test Seq", actions=actions)
     

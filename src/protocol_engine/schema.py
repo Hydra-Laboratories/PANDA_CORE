@@ -8,7 +8,7 @@ class MoveAction(BaseModel):
     """
     action_type: Literal["move"] = "move"
     target_location: str
-    tool: str = "center"
+    instrument: str = "center"
     z_offset: float = 0.0
 
 class ImageAction(BaseModel):
