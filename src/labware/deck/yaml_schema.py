@@ -7,21 +7,21 @@ from typing import Annotated, Dict, Literal, Union
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-class _Point3D(BaseModel):
+class _YamlPoint3D(BaseModel):
     model_config = ConfigDict(extra="forbid")
     x: float
     y: float
     z: float
 
 
-class _CalibrationPoints(BaseModel):
+class _YamlCalibrationPoints(BaseModel):
     model_config = ConfigDict(extra="forbid")
     # Preferred location for A1 in deck YAML.
-    a1: _Point3D | None = None
-    a2: _Point3D
+    a1: _YamlPoint3D | None = None
+    a2: _YamlPoint3D
 
 
-class WellPlateEntry(BaseModel):
+class WellPlateYamlEntry(BaseModel):
     """Strict schema for one well plate in deck labware."""
 
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
@@ -35,15 +35,15 @@ class WellPlateEntry(BaseModel):
     width_mm: float
     height_mm: float
     # Backward compatibility: top-level A1 is accepted but deprecated.
-    a1: _Point3D | None = None
-    calibration: _CalibrationPoints
+    a1: _YamlPoint3D | None = None
+    calibration: _YamlCalibrationPoints
     x_offset_mm: float
     y_offset_mm: float
     capacity_ul: float
     working_volume_ul: float
 
     @property
-    def a1_point(self) -> _Point3D:
+    def a1_point(self) -> _YamlPoint3D:
         """Return canonical A1 point, preferring calibration.a1."""
         a1 = self.calibration.a1 or self.a1
         if a1 is None:
@@ -51,7 +51,7 @@ class WellPlateEntry(BaseModel):
         return a1
 
     @model_validator(mode="after")
-    def _validate_two_point_calibration(self) -> "WellPlateEntry":
+    def _validate_two_point_calibration(self) -> "WellPlateYamlEntry":
         a1, a2 = self.a1_point, self.calibration.a2
         if a1.x == a2.x and a1.y == a2.y:
             raise ValueError("Calibration points A1 and A2 must not be identical.")
@@ -70,7 +70,7 @@ class WellPlateEntry(BaseModel):
         return self
 
 
-class VialEntry(BaseModel):
+class VialYamlEntry(BaseModel):
     """Strict schema for one vial labware in deck labware."""
 
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
@@ -80,12 +80,12 @@ class VialEntry(BaseModel):
     model_name: str
     height_mm: float
     diameter_mm: float
-    location: _Point3D
+    location: _YamlPoint3D
     capacity_ul: float
     working_volume_ul: float
 
     @model_validator(mode="after")
-    def _validate_vial_volumes(self) -> "VialEntry":
+    def _validate_vial_volumes(self) -> "VialYamlEntry":
         if self.working_volume_ul > self.capacity_ul:
             raise ValueError("working_volume_ul must be <= capacity_ul.")
         if self.capacity_ul <= 0 or self.working_volume_ul <= 0:
@@ -93,18 +93,17 @@ class VialEntry(BaseModel):
         return self
 
 
-LabwareEntry = Annotated[
-    Union[WellPlateEntry, VialEntry],
+LabwareYamlEntry = Annotated[
+    Union[WellPlateYamlEntry, VialYamlEntry],
     Field(discriminator="type"),
 ]
 
 
-class DeckSchema(BaseModel):
+class DeckYamlSchema(BaseModel):
     """Root deck YAML schema: only 'labware' key allowed."""
 
     model_config = ConfigDict(extra="forbid")
 
-    labware: Dict[str, LabwareEntry] = Field(
+    labware: Dict[str, LabwareYamlEntry] = Field(
         ..., description="Mapping of labware key to well_plate or vial entry."
     )
-

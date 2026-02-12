@@ -12,7 +12,7 @@ from ..labware import Coordinate3D
 from ..vial import Vial
 from ..well_plate import WellPlate
 from .errors import DeckLoaderError
-from .schema import DeckSchema, VialEntry, WellPlateEntry, _Point3D
+from .yaml_schema import DeckYamlSchema, VialYamlEntry, WellPlateYamlEntry, _YamlPoint3D
 
 
 def _format_loader_exception(path: Path, error: Exception) -> str:
@@ -54,7 +54,7 @@ def _format_loader_exception(path: Path, error: Exception) -> str:
     )
 
 
-def _point_to_coord(p: _Point3D) -> Coordinate3D:
+def _point_to_coord(p: _YamlPoint3D) -> Coordinate3D:
     """Convert schema point (x, y, z) to Coordinate3D."""
     return Coordinate3D(x=p.x, y=p.y, z=p.z)
 
@@ -82,7 +82,7 @@ def _row_labels(rows: int) -> list[str]:
     return labels
 
 
-def _derive_wells_from_calibration(entry: WellPlateEntry) -> Dict[str, Coordinate3D]:
+def _derive_wells_from_calibration(entry: WellPlateYamlEntry) -> Dict[str, Coordinate3D]:
     """Build well ID -> Coordinate3D from calibration A1/A2 and offsets."""
     a1 = entry.a1_point
     a2 = entry.calibration.a2
@@ -136,13 +136,13 @@ def _derive_wells_from_calibration(entry: WellPlateEntry) -> Dict[str, Coordinat
     return wells
 
 
-def _build_well_plate(entry: WellPlateEntry) -> WellPlate:
+def _build_well_plate(entry: WellPlateYamlEntry) -> WellPlate:
     kwargs = _entry_kwargs_for_model(entry, WellPlate)
     kwargs["wells"] = _derive_wells_from_calibration(entry)
     return WellPlate(**kwargs)
 
 
-def _build_vial(entry: VialEntry) -> Vial:
+def _build_vial(entry: VialYamlEntry) -> Vial:
     kwargs = _entry_kwargs_for_model(entry, Vial)
     kwargs["location"] = _point_to_coord(entry.location)
     return Vial(**kwargs)
@@ -157,10 +157,10 @@ def load_labware_from_deck_yaml(path: str | Path) -> Dict[str, Union[WellPlate, 
         raw = yaml.safe_load(f)
     if raw is None:
         raw = {}
-    deck = DeckSchema.model_validate(raw)
+    deck = DeckYamlSchema.model_validate(raw)
     result: Dict[str, Union[WellPlate, Vial]] = {}
     for name, entry in deck.labware.items():
-        if isinstance(entry, WellPlateEntry):
+        if isinstance(entry, WellPlateYamlEntry):
             result[name] = _build_well_plate(entry)
         else:
             result[name] = _build_vial(entry)
