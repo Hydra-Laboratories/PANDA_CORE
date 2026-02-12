@@ -2,11 +2,11 @@ name: "Verification Protocol"
 actions:
   - action_type: "move"
     target_location: "home"
-    tool: "center"
+    instrument: "center"
   
   - action_type: "move"
     target_location: "imaging_station"
-    tool: "center"
+    instrument: "center"
     
   - action_type: "image"
     target_location: "imaging_station"
@@ -14,4 +14,4 @@ actions:
     
   - action_type: "move"
     target_location: "home"
-    tool: "center"
+    instrument: "center"

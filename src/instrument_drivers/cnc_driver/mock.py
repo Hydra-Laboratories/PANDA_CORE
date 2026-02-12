@@ -11,7 +11,7 @@ import serial
 
 from .driver import Mill as RealMill
 from .exceptions import MillConfigError
-from .tools import Coordinates
+from .instruments import Coordinates
 
 
 class MockMill(RealMill):

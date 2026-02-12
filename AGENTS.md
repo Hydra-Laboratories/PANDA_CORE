@@ -4,11 +4,11 @@ This repository contains code to control a CNC router (mill) using a Python-base
 
 ## Key Components
 
-### Source Code (`src/cnc_control`)
+### Source Code (`src/instrument_drivers/cnc_driver`)
 - **`driver.py`**: Contains the `Mill` class, which is the main interface for controlling the CNC machine.
     - **Usage**: Use `with Mill() as mill:` to connect.
     - **Methods**: `mill.move_to_position(x, y, z)`, `mill.home()`, `mill.current_coordinates()`.
-- **`tools.py`**: Defines `Coordinates`, `ToolManager`, and `Instruments`. Handles tool offsets.
+- **`instruments.py`**: Defines `Coordinates`, `InstrumentManager`, and `Instruments`. Handles instrument offsets.
 - **`mock.py`**: Contains `MockMill` for offline testing.
 
 ### Testing
@@ -21,7 +21,7 @@ This repository contains code to control a CNC router (mill) using a Python-base
 1.  **Connecting**: Always use the context manager `with Mill() as mill:` to ensure proper connection and cleanup.
 2.  **Moving**: Use `mill.move_to_position(x, y, z)` for safe moves. The driver handles validation against the working volume (negative coordinates mostly).
     - **Coordinates**: The machine typically operates in negative space relative to Home (0,0,0). e.g., X goes from 0 to -415.
-3.  **Offsets**: Tools have offsets managed by `ToolManager`.
+3.  **Offsets**: Instruments have offsets managed by `InstrumentManager`.
 
 ### Instruments (`src/instruments`)
 Base classes and instrument drivers for lab equipment.
