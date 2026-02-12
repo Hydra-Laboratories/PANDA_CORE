@@ -1,6 +1,6 @@
 from typing import Optional, Dict, Any, Tuple
 import logging
-from src.instrument_drivers.cnc_driver.driver import Mill
+from .gantry_driver.driver import Mill
 
 logger = logging.getLogger(__name__)
 
