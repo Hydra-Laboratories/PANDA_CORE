@@ -1,0 +1,11 @@
+# Sample protocol: move pipette between two wells.
+# Load with: load_protocol_from_yaml("configs/protocol.sample.yaml")
+# Execute with: protocol.run(ProtocolContext(board=board, deck=deck))
+
+protocol:
+  - move:
+      instrument: pipette
+      position: plate_1.A1
+  - move:
+      instrument: pipette
+      position: plate_1.C9
