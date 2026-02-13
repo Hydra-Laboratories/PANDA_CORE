@@ -42,6 +42,18 @@ def _unix_read_one_key():
     return ch.upper()
 
 
+def _unix_flush_stdin():
+    """Discard any buffered stdin without blocking."""
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        while select.select([sys.stdin], [], [], 0)[0]:
+            sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
 def _unix_read_keypress_batch():
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
@@ -50,7 +62,8 @@ def _unix_read_keypress_batch():
         key = _unix_read_one_key()
         count = 1
 
-        while select.select([sys.stdin], [], [], 0.03)[0]:
+        # 150ms timeout catches held-key repeats (typical repeat rate 30-100ms)
+        while select.select([sys.stdin], [], [], 0.15)[0]:
             next_key = _unix_read_one_key()
             if next_key == key:
                 count += 1
@@ -73,18 +86,24 @@ def _windows_read_one_key():
     return ch.decode("ascii", errors="ignore").upper()
 
 
+def _windows_flush_stdin():
+    """Discard any buffered stdin without blocking."""
+    while msvcrt.kbhit():
+        msvcrt.getch()
+
+
 def _windows_read_keypress_batch():
     key = _windows_read_one_key()
     count = 1
 
-    # Drain buffered repeats (give 30ms for more input to arrive)
-    deadline = time.monotonic() + 0.03
+    # 150ms timeout catches held-key repeats
+    deadline = time.monotonic() + 0.15
     while time.monotonic() < deadline:
         if msvcrt.kbhit():
             next_key = _windows_read_one_key()
             if next_key == key:
                 count += 1
-                deadline = time.monotonic() + 0.03
+                deadline = time.monotonic() + 0.15
             else:
                 break
         else:
@@ -121,3 +140,15 @@ def read_keypress_batch() -> tuple:
     if _IS_WINDOWS:
         return _windows_read_keypress_batch()
     return _unix_read_keypress_batch()
+
+
+def flush_stdin() -> None:
+    """Discard any buffered stdin without blocking.
+
+    Call this after a blocking operation (e.g. gantry.move_to) to throw
+    away keypresses that accumulated while the operation was running.
+    """
+    if _IS_WINDOWS:
+        _windows_flush_stdin()
+    else:
+        _unix_flush_stdin()

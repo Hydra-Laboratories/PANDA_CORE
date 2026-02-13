@@ -13,7 +13,7 @@ project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
 from src.gantry import Gantry
-from setup.keyboard_input import read_keypress_batch
+from setup.keyboard_input import read_keypress_batch, flush_stdin
 
 CONFIGS_DIR = project_root / "configs"
 
@@ -29,6 +29,7 @@ MACHINES = {
 }
 
 STEP = 1.0
+MAX_STEP = 10.0
 
 CONTROLS_LEGEND = """
 Controls:
@@ -98,7 +99,7 @@ def main() -> None:
 
         while True:
             key, count = read_keypress_batch()
-            step = STEP * count
+            step = min(STEP * count, MAX_STEP)
 
             x, y, z = coords["x"], coords["y"], coords["z"]
 
@@ -121,6 +122,7 @@ def main() -> None:
                 continue
 
             gantry.move_to(x, y, z)
+            flush_stdin()
             coords = gantry.get_coordinates()
             print_position(coords)
 
