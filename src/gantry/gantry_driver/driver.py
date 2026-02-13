@@ -48,7 +48,7 @@ HOMING_TIMEOUT = 90
 MAX_TRAVEL_LIMIT = 320.0  # mm
 HOMING_BACKOFF = 2.0      # mm
 HOMING_FAST_FEED = 500
-HOMING_STEP_SIZE = 10.0   # mm
+HOMING_STEP_SIZE = 50.0   # mm
 
 # Compile regex patterns for extracting coordinates from the mill status
 wpos_pattern = re.compile(r"WPos:([\d.-]+),([\d.-]+),([\d.-]+)")
