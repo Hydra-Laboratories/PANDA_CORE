@@ -29,7 +29,7 @@ This project features a robust **Protocol Engine** for defining and executing au
 
 ## Labware Models and Deck YAML
 
-Logical labware (well plates and vials) is modeled in `src/labware/`:
+Logical labware (well plates and vials) is modeled in `src/deck/labware/`:
 
 - `Labware` is a high-level base for shared behavior (`get_location`, `get_initial_position`) and common validation helpers.
 - `WellPlate` defines all required plate fields directly: `name`, `model_name`, geometry (`length_mm`, `width_mm`, `height_mm`), layout (`rows`, `columns`), `wells`, and volume fields (`capacity_ul`, `working_volume_ul`).
@@ -38,11 +38,11 @@ Logical labware (well plates and vials) is modeled in `src/labware/`:
 **Deck configuration (YAML)** defines which labware is on the deck (no gantry/serial settings in the deck file). Use a strict deck YAML with a single top-level key `labware`; each entry is either a well plate (with two-point calibration A1 + A2 and x/y offsets) or a single vial (with explicit `location`). Load into Python objects with:
 
 ```python
-from src.labware.deck.loader import load_labware_from_deck_yaml
+from src.deck import load_deck_from_yaml
 
-labware = load_labware_from_deck_yaml("configs/deck.sample.yaml")
-# labware["plate_1"] -> WellPlate; labware["vial_1"] -> Vial
-# labware["plate_1"].get_well_center("A1")  # absolute XYZ
+deck = load_deck_from_yaml("configs/deck.sample.yaml")
+# deck["plate_1"] -> WellPlate; deck["vial_1"] -> Vial
+# deck.resolve("plate_1.A1")  # absolute XYZ coordinate
 ```
 
 See `configs/deck.sample.yaml` for the required schema. Validation is strict: missing, extra, or wrong-type fields raise `ValidationError`; two-point calibration for well plates must be axis-aligned (A1 and A2 share either x or y).

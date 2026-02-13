@@ -7,11 +7,11 @@ import pytest
 
 from pydantic import ValidationError
 
-from src.labware import WellPlate, Vial, Coordinate3D
-from src.labware.deck.loader import (
+from src.deck import WellPlate, Vial, Coordinate3D, Deck
+from src.deck.loader import (
     DeckLoaderError,
-    load_labware_from_deck_yaml,
-    load_labware_from_deck_yaml_safe,
+    load_deck_from_yaml,
+    load_deck_from_yaml_safe,
 )
 
 
@@ -56,19 +56,19 @@ labware:
 """
 
 
-def test_load_valid_deck_returns_dict_keyed_by_name():
-    """Valid deck YAML yields dict[str, Labware] keyed by configured names."""
+def test_load_valid_deck_returns_deck_with_labware():
+    """Valid deck YAML yields a Deck containing labware keyed by configured names."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(VALID_DECK_ONE_PLATE_ONE_VIAL)
         path = f.name
     try:
-        result = load_labware_from_deck_yaml(path)
-        assert isinstance(result, dict)
-        assert "plate_1" in result
-        assert "vial_1" in result
-        assert len(result) == 2
-        assert isinstance(result["plate_1"], WellPlate)
-        assert isinstance(result["vial_1"], Vial)
+        deck = load_deck_from_yaml(path)
+        assert isinstance(deck, Deck)
+        assert "plate_1" in deck
+        assert "vial_1" in deck
+        assert len(deck) == 2
+        assert isinstance(deck["plate_1"], WellPlate)
+        assert isinstance(deck["vial_1"], Vial)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -79,7 +79,7 @@ def test_loaded_well_plate_has_derived_wells_and_volume():
         f.write(VALID_DECK_ONE_PLATE_ONE_VIAL)
         path = f.name
     try:
-        result = load_labware_from_deck_yaml(path)
+        result = load_deck_from_yaml(path)
         plate = result["plate_1"]
         assert plate.rows == 8
         assert plate.columns == 12
@@ -100,7 +100,7 @@ def test_loaded_vial_has_location_and_volume():
         f.write(VALID_DECK_ONE_PLATE_ONE_VIAL)
         path = f.name
     try:
-        result = load_labware_from_deck_yaml(path)
+        result = load_deck_from_yaml(path)
         vial = result["vial_1"]
         assert vial.get_vial_center().x == pytest.approx(-30.0)
         assert vial.model_name == "standard_1_5ml_vial"
@@ -137,7 +137,7 @@ labware:
         f.write(yaml)
         path = f.name
     try:
-        result = load_labware_from_deck_yaml(path)
+        result = load_deck_from_yaml(path)
         plate = result["p"]
         assert plate.get_well_center("A1").x == pytest.approx(0.0)
         assert plate.get_well_center("A1").y == pytest.approx(0.0)
@@ -174,7 +174,7 @@ labware:
         f.write(yaml)
         path = f.name
     try:
-        result = load_labware_from_deck_yaml(path)
+        result = load_deck_from_yaml(path)
         plate = result["p"]
         assert plate.get_well_center("A1").x == pytest.approx(10.0)
         assert plate.get_well_center("A2").x == pytest.approx(0.0)
@@ -208,7 +208,7 @@ labware:
         f.write(yaml)
         path = f.name
     try:
-        result = load_labware_from_deck_yaml(path)
+        result = load_deck_from_yaml(path)
         plate = result["p"]
         assert plate.get_well_center("A1").x == pytest.approx(0.0)
         assert plate.get_well_center("A1").y == pytest.approx(0.0)
@@ -245,7 +245,7 @@ labware:
         f.write(yaml)
         path = f.name
     try:
-        result = load_labware_from_deck_yaml(path)
+        result = load_deck_from_yaml(path)
         plate = result["p"]
         assert plate.get_well_center("A1").y == pytest.approx(8.0)
         assert plate.get_well_center("A2").y == pytest.approx(0.0)
@@ -280,7 +280,7 @@ labware:
         path = f.name
     try:
         with pytest.raises(ValidationError, match="axis.aligned|diagonal|orientation"):
-            load_labware_from_deck_yaml(path)
+            load_deck_from_yaml(path)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -311,7 +311,7 @@ labware:
         path = f.name
     try:
         with pytest.raises(DeckLoaderError) as exc_info:
-            load_labware_from_deck_yaml_safe(path)
+            load_deck_from_yaml_safe(path)
         message = str(exc_info.value)
         assert message.startswith("❌")
         assert "How to fix:" in message
@@ -328,7 +328,7 @@ def test_safe_loader_yaml_parse_error_has_clean_message():
         path = f.name
     try:
         with pytest.raises(DeckLoaderError) as exc_info:
-            load_labware_from_deck_yaml_safe(path)
+            load_deck_from_yaml_safe(path)
         message = str(exc_info.value)
         assert message.startswith("❌")
         assert "parse error" in message.lower()
@@ -341,7 +341,7 @@ def test_safe_loader_missing_file_has_clean_message():
     """Safe loader reports missing-file errors as DeckLoaderError."""
     missing_path = "/tmp/this_file_does_not_exist_12345.yaml"
     with pytest.raises(DeckLoaderError) as exc_info:
-        load_labware_from_deck_yaml_safe(missing_path)
+        load_deck_from_yaml_safe(missing_path)
     message = str(exc_info.value)
     assert message.startswith("❌")
     assert "deck loader error" in message.lower()
@@ -374,7 +374,7 @@ labware:
         path = f.name
     try:
         with pytest.raises(ValidationError):
-            load_labware_from_deck_yaml(path)
+            load_deck_from_yaml(path)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -405,7 +405,7 @@ labware:
         path = f.name
     try:
         with pytest.raises(ValidationError, match="identical|degenerate|same"):
-            load_labware_from_deck_yaml(path)
+            load_deck_from_yaml(path)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -420,7 +420,7 @@ def test_missing_top_level_labware_fails():
         path = f.name
     try:
         with pytest.raises(ValidationError):
-            load_labware_from_deck_yaml(path)
+            load_deck_from_yaml(path)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -448,7 +448,7 @@ labware:
         path = f.name
     try:
         with pytest.raises(ValidationError):
-            load_labware_from_deck_yaml(path)
+            load_deck_from_yaml(path)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -471,7 +471,7 @@ labware:
         path = f.name
     try:
         with pytest.raises(ValidationError):
-            load_labware_from_deck_yaml(path)
+            load_deck_from_yaml(path)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -489,7 +489,7 @@ gantry: {}
         path = f.name
     try:
         with pytest.raises(ValidationError):
-            load_labware_from_deck_yaml(path)
+            load_deck_from_yaml(path)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -521,7 +521,7 @@ labware:
         path = f.name
     try:
         with pytest.raises(ValidationError):
-            load_labware_from_deck_yaml(path)
+            load_deck_from_yaml(path)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -553,7 +553,7 @@ labware:
         f.write(yaml)
         path = f.name
     try:
-        result = load_labware_from_deck_yaml(path)
+        result = load_deck_from_yaml(path)
         assert result["p"].rows == 8
         assert result["p"].columns == 12
     finally:
@@ -586,7 +586,7 @@ labware:
         path = f.name
     try:
         with pytest.raises(ValidationError):
-            load_labware_from_deck_yaml(path)
+            load_deck_from_yaml(path)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -619,7 +619,7 @@ labware:
         path = f.name
     try:
         with pytest.raises(ValidationError):
-            load_labware_from_deck_yaml(path)
+            load_deck_from_yaml(path)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -650,7 +650,7 @@ labware:
         path = f.name
     try:
         with pytest.raises(ValidationError):
-            load_labware_from_deck_yaml(path)
+            load_deck_from_yaml(path)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -658,13 +658,14 @@ labware:
 # ----- Empty labware -----
 
 def test_empty_labware_dict_allowed():
-    """Deck with labware: {} is valid and returns empty dict."""
+    """Deck with labware: {} is valid and returns empty Deck."""
     yaml = "labware: {}\n"
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(yaml)
         path = f.name
     try:
-        result = load_labware_from_deck_yaml(path)
-        assert result == {}
+        deck = load_deck_from_yaml(path)
+        assert isinstance(deck, Deck)
+        assert len(deck) == 0
     finally:
         Path(path).unlink(missing_ok=True)
