@@ -92,6 +92,7 @@ Deck configuration loading, runtime deck container, and labware geometry/positio
   - **`src/deck/errors.py`**: `DeckLoaderError` for user-facing loader failures.
 - **Sample config**: `configs/deck.sample.yaml` — one well plate and one vial; use as reference for required fields and two-point calibration format.
 - **Sample inspection script**: `show_deck_objects.py` loads `configs/deck.sample.yaml` and prints the resulting object mapping.
+- **Trace script**: `trace_well_plate_corners.py` loads deck YAML, computes corner wells for reference, then builds an X-shape sequence over a square region (`N = min(rows, columns)`): first diagonal `A1, B2, ...` and second diagonal `A{N}, B{N-1}, ...`. It prints well IDs and coordinates for the sequence. Optional hardware execution is opt-in via `--execute-gantry`; execution skips homing by default and prompts for interactive confirmation unless `--no-confirm` is used.
 - **Usage**: Load a deck with `load_deck_from_yaml("configs/deck.sample.yaml")` to get a `Deck` object. Access labware: `deck["plate_1"]`. Resolve targets: `deck.resolve("plate_1.A1")` for absolute XYZ.
 
 ### Experiments

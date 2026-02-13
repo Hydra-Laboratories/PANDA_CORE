@@ -53,6 +53,29 @@ To quickly inspect loaded objects from the sample deck YAML, run:
 python show_deck_objects.py
 ```
 
+To print a dry-run X-shape trace for the first well plate in your deck YAML, run:
+
+```bash
+python trace_well_plate_corners.py
+```
+
+Optional gantry execution is available but disabled by default:
+
+```bash
+python trace_well_plate_corners.py --execute-gantry
+```
+
+By default, live execution skips homing and requires interactive confirmation.
+If you need non-interactive execution (for controlled automation), use:
+
+```bash
+python trace_well_plate_corners.py --execute-gantry --no-confirm
+```
+
+The X-shape pattern uses a square region with `N = min(rows, columns)`:
+- diagonal 1: `A1, B2, C3, ...`
+- diagonal 2: `A{N}, B{N-1}, C{N-2}, ...`
+
 ## Instrument Drivers
 
 Lab instruments are implemented as `BaseInstrument` subclasses in `src/instruments/`.
