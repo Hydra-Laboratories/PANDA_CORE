@@ -6,19 +6,14 @@ from typing import Annotated, Dict, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-
-class _YamlPoint3D(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    x: float
-    y: float
-    z: float
+from .labware import Coordinate3D
 
 
 class _YamlCalibrationPoints(BaseModel):
     model_config = ConfigDict(extra="forbid")
     # Preferred location for A1 in deck YAML.
-    a1: _YamlPoint3D | None = None
-    a2: _YamlPoint3D
+    a1: Coordinate3D | None = None
+    a2: Coordinate3D
 
 
 class WellPlateYamlEntry(BaseModel):
@@ -35,7 +30,7 @@ class WellPlateYamlEntry(BaseModel):
     width_mm: float
     height_mm: float
     # Backward compatibility: top-level A1 is accepted but deprecated.
-    a1: _YamlPoint3D | None = None
+    a1: Coordinate3D | None = None
     calibration: _YamlCalibrationPoints
     x_offset_mm: float
     y_offset_mm: float
@@ -43,7 +38,7 @@ class WellPlateYamlEntry(BaseModel):
     working_volume_ul: float
 
     @property
-    def a1_point(self) -> _YamlPoint3D:
+    def a1_point(self) -> Coordinate3D:
         """Return canonical A1 point, preferring calibration.a1."""
         a1 = self.calibration.a1 or self.a1
         if a1 is None:
@@ -80,7 +75,7 @@ class VialYamlEntry(BaseModel):
     model_name: str
     height_mm: float
     diameter_mm: float
-    location: _YamlPoint3D
+    location: Coordinate3D
     capacity_ul: float
     working_volume_ul: float
 

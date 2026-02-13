@@ -69,7 +69,7 @@ A modular system for executing experiment sequences defined in code or YAML.
 - **`schema.py`**: Pydantic models acting as the "Source of Truth" for valid actions (`MoveAction`, `ImageAction`) and sequences. Supports loading from YAML.
     - **Usage**: `ExperimentSequence.from_yaml("path/to/experiment.yaml")`
 - **`config.py`**: `DeckConfig` class managing machine bounds, safe heights, and hardware settings (Config Loading).
-    - **Config File**: `configs/genmitsu_3018_deck_config.yaml`
+    - **Config File**: `configs/machines/genmitsu_3018_deck_config.yaml`
 - **`path_planner.py`**: Generates safe, optimized `PathPlan`s between waypoints.
     - **Strategies**: 
         - Naive (Lift -> Travel -> Lower)
@@ -90,9 +90,9 @@ Deck configuration loading, runtime deck container, and labware geometry/positio
   - **`src/deck/yaml_schema.py`**: Pydantic models for deck YAML: `DeckYamlSchema` (root, single key `labware`), `WellPlateYamlEntry` (two-point calibration points under `calibration.a1` and `calibration.a2`, axis-aligned only), `VialYamlEntry` (single vial location). Both require `model_name`. All use `extra='forbid'`.
   - **`src/deck/loader.py`**: `load_deck_from_yaml(path)` loads a deck YAML file and returns a `Deck` containing all labware. Well plates are built from calibration A1/A2 and x/y offsets (derived well positions); vials from a single explicit `location`.
   - **`src/deck/errors.py`**: `DeckLoaderError` for user-facing loader failures.
-- **Sample config**: `configs/deck.sample.yaml` — one well plate and one vial; use as reference for required fields and two-point calibration format.
-- **Sample inspection script**: `show_deck_objects.py` loads `configs/deck.sample.yaml` and prints the resulting object mapping.
-- **Usage**: Load a deck with `load_deck_from_yaml("configs/deck.sample.yaml")` to get a `Deck` object. Access labware: `deck["plate_1"]`. Resolve targets: `deck.resolve("plate_1.A1")` for absolute XYZ.
+- **Sample config**: `configs/decks/deck.sample.yaml` — one well plate and one vial; use as reference for required fields and two-point calibration format.
+- **Sample inspection script**: `show_deck_objects.py` loads `configs/decks/deck.sample.yaml` and prints the resulting object mapping.
+- **Usage**: Load a deck with `load_deck_from_yaml("configs/decks/deck.sample.yaml")` to get a `Deck` object. Access labware: `deck["plate_1"]`. Resolve targets: `deck.resolve("plate_1.A1")` for absolute XYZ.
 
 ### Experiments
 - **`experiments/`**: Directory for storing YAML experiment definitions.
@@ -103,7 +103,7 @@ Deck configuration loading, runtime deck container, and labware geometry/positio
 
 1.  **Defining Experiments**: Create a YAML file in `experiments/` defining the sequence of moves and images.
 2.  **Running**: Execute `python verify_experiment.py experiments/your_experiment.yaml`.
-3.  **Connecting**: The system handles connection details (port, camera source) via `configs/genmitsu_3018_deck_config.yaml`.
+3.  **Connecting**: The system handles connection details (port, camera source) via `configs/machines/genmitsu_3018_deck_config.yaml`.
 
 ### Setup (`setup/`)
 First-run scripts for verifying hardware after unboxing.

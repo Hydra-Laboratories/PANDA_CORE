@@ -20,7 +20,7 @@ This project features a robust **Protocol Engine** for defining and executing au
 - **Labware Abstractions**: Centralized models for well plates and vials, making it easy to target logical positions (e.g., `A1`) and resolve them into absolute deck coordinates.
 
 ### Running an Experiment
-1. **Configure Hardware**: Update `configs/genmitsu_3018_deck_config.yaml` with your machine bounds, camera source, and serial port.
+1. **Configure Hardware**: Update `configs/machines/genmitsu_3018_deck_config.yaml` with your machine bounds, camera source, and serial port.
 2. **Define Experiment**: Create a YAML file in `experiments/` (e.g., `experiments/my_experiment.yaml`).
 3. **Run**:
    ```bash
@@ -40,12 +40,12 @@ Logical labware (well plates and vials) is modeled in `src/deck/labware/`:
 ```python
 from src.deck import load_deck_from_yaml
 
-deck = load_deck_from_yaml("configs/deck.sample.yaml")
+deck = load_deck_from_yaml("configs/decks/deck.sample.yaml")
 # deck["plate_1"] -> WellPlate; deck["vial_1"] -> Vial
 # deck.resolve("plate_1.A1")  # absolute XYZ coordinate
 ```
 
-See `configs/deck.sample.yaml` for the required schema. Validation is strict: missing, extra, or wrong-type fields raise `ValidationError`; two-point calibration for well plates must be axis-aligned (A1 and A2 share either x or y).
+See `configs/decks/deck.sample.yaml` for the required schema. Validation is strict: missing, extra, or wrong-type fields raise `ValidationError`; two-point calibration for well plates must be axis-aligned (A1 and A2 share either x or y).
 
 To quickly inspect loaded objects from the sample deck YAML, run:
 
