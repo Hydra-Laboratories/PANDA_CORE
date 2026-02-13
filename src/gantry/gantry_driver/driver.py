@@ -877,8 +877,8 @@ class Mill:
         commands = self._generate_movement_commands(
             current_coordinates, target_coordinates
         )
-        command_str = "\n".join(commands)
-        self.execute_command(command_str)
+        for cmd in commands:
+            self.execute_command(cmd)
         return None
 
     def move_to_positions(
@@ -925,9 +925,8 @@ class Mill:
 
             current_coordinates = target_coordinates
 
-        if commands:
-            command_str = "\n".join(commands)
-            self.execute_command(command_str)
+        for cmd in commands:
+            self.execute_command(cmd)
 
     def update_offset(self, instrument, offset_x, offset_y, offset_z):
         """Update the offset for an instrument."""
@@ -999,7 +998,7 @@ class Mill:
             current_coordinates, target_coordinates, self.max_z_height
         ):
             self.logger.debug("Moving to Z=%s first", self.max_z_height)
-            commands.append(f"G01 Z{self.max_z_height}")
+            commands.append(f"G01 Z{self.max_z_height} F{DEFAULT_FEED_RATE}")
             move_to_zero = True
         else:
             self.logger.debug("Not moving to Z=%s first", self.max_z_height)
@@ -1017,8 +1016,8 @@ class Mill:
             commands.append(f"G01 Z{second_z_cord} F{second_z_cord_feed}")
             commands.append(f"F{DEFAULT_FEED_RATE}")
 
-        command_str = "\n".join(commands)
-        self.execute_command(command_str)
+        for cmd in commands:
+            self.execute_command(cmd)
 
         return self.current_coordinates()
 
@@ -1066,22 +1065,23 @@ class Mill:
         target_coordinates: Coordinates,
         move_z_first: bool = False,
     ):
+        f = f" F{DEFAULT_FEED_RATE}"
         commands = []
         if current_coordinates.z >= self.safe_z_height or move_z_first:
             # If above the safe height, allow an XY diagonal move then Z movement
-            commands.append(f"G01 X{target_coordinates.x} Y{target_coordinates.y}")
-            commands.append(f"G01 Z{target_coordinates.z}")
+            commands.append(f"G01 X{target_coordinates.x} Y{target_coordinates.y}{f}")
+            commands.append(f"G01 Z{target_coordinates.z}{f}")
         else:
             if target_coordinates.x != current_coordinates.x:
-                commands.append(f"G01 X{target_coordinates.x}")
+                commands.append(f"G01 X{target_coordinates.x}{f}")
             if target_coordinates.y != current_coordinates.y:
-                commands.append(f"G01 Y{target_coordinates.y}")
+                commands.append(f"G01 Y{target_coordinates.y}{f}")
             if target_coordinates.z != current_coordinates.z:
-                commands.append(f"G01 Z{target_coordinates.z}")
+                commands.append(f"G01 Z{target_coordinates.z}{f}")
             if (
                 target_coordinates.z == current_coordinates.z and move_z_first
             ):
-                commands.append(f"G01 Z{target_coordinates.z}")
+                commands.append(f"G01 Z{target_coordinates.z}{f}")
 
         return commands
 
