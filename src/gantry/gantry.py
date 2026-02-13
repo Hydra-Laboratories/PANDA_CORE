@@ -99,6 +99,13 @@ class Gantry:
             self.logger.error(f"Error getting status: {e}")
             return "Error"
 
+    def stop(self) -> None:
+        """Immediately stop all gantry motion (GRBL feed hold)."""
+        try:
+            self._mill.stop()
+        except Exception as e:
+            self.logger.error(f"Error stopping gantry: {e}")
+
     def get_coordinates(self) -> Dict[str, float]:
         """Return current coordinates as a dict."""
         try:

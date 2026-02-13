@@ -7,24 +7,24 @@ router interactively with keyboard keys while displaying position.
 import sys
 from pathlib import Path
 
+import yaml
+
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
 from src.gantry import Gantry
-from setup.keyboard_input import read_keypress
+from setup.keyboard_input import read_keypress_batch
+
+CONFIGS_DIR = project_root / "configs"
 
 MACHINES = {
     "PANDA": {
         "label": "PANDA (XL — 415x300x200mm)",
-        "x_min": -415.0, "x_max": 0.0,
-        "y_min": -300.0, "y_max": 0.0,
-        "z_min": -200.0, "z_max": 0.0,
+        "config_file": CONFIGS_DIR / "genmitsu_3018_PROver_v2.yaml",
     },
     "CUB": {
         "label": "CUB (Small — 300x200x80mm)",
-        "x_min": -300.0, "x_max": 0.0,
-        "y_min": -200.0, "y_max": 0.0,
-        "z_min": -80.0,  "z_max": 0.0,
+        "config_file": CONFIGS_DIR / "genmitsu_3018_PRO_Desktop.yaml",
     },
 }
 
@@ -40,25 +40,28 @@ Controls:
 """
 
 
-def clamp(value: float, lo: float, hi: float) -> float:
-    return max(lo, min(hi, value))
-
-
 def print_position(coords: dict) -> None:
     print(f"  Position -> X: {coords['x']:.1f}  Y: {coords['y']:.1f}  Z: {coords['z']:.1f}")
 
 
-def select_machine() -> dict:
+def load_machine_config(config_file: Path) -> dict:
+    with open(config_file) as f:
+        return yaml.safe_load(f)
+
+
+def select_machine() -> tuple:
+    """Returns (machine_entry, loaded_config)."""
     print("\nWhich system are you working with?")
     print("  1) PANDA  — the larger XL machine (415x300x200mm)")
     print("  2) CUB    — the smaller machine   (300x200x80mm)")
 
     while True:
         choice = input("\nEnter 1 or 2: ").strip()
-        if choice == "1":
-            return MACHINES["PANDA"]
-        if choice == "2":
-            return MACHINES["CUB"]
+        if choice in ("1", "2"):
+            key = "PANDA" if choice == "1" else "CUB"
+            machine = MACHINES[key]
+            config = load_machine_config(machine["config_file"])
+            return machine, config
         print("Invalid choice. Please enter 1 or 2.")
 
 
@@ -68,10 +71,10 @@ def main() -> None:
     print("  First-run interactive jog test")
     print("=" * 50)
 
-    machine = select_machine()
+    machine, config = select_machine()
     print(f"\nSelected: {machine['label']}")
 
-    gantry = Gantry()
+    gantry = Gantry(config=config)
 
     print("\nConnecting to gantry...")
     gantry.connect()
@@ -83,33 +86,34 @@ def main() -> None:
 
     print("Connected successfully.")
 
-    input("\nPress ENTER to home the machine...")
-    print("Homing... (this may take a moment)")
-    gantry.home()
-    print("Homing complete.")
-
-    coords = gantry.get_coordinates()
-    print_position(coords)
-    print(CONTROLS_LEGEND)
-
     try:
+        input("\nPress ENTER to home the machine...")
+        print("Homing... (this may take a moment)")
+        gantry.home()
+        print("Homing complete.")
+
+        coords = gantry.get_coordinates()
+        print_position(coords)
+        print(CONTROLS_LEGEND)
+
         while True:
-            key = read_keypress()
+            key, count = read_keypress_batch()
+            step = STEP * count
 
             x, y, z = coords["x"], coords["y"], coords["z"]
 
             if key == "LEFT":
-                x = clamp(x - STEP, machine["x_min"], machine["x_max"])
+                x -= step
             elif key == "RIGHT":
-                x = clamp(x + STEP, machine["x_min"], machine["x_max"])
+                x += step
             elif key == "UP":
-                y = clamp(y + STEP, machine["y_min"], machine["y_max"])
+                y += step
             elif key == "DOWN":
-                y = clamp(y - STEP, machine["y_min"], machine["y_max"])
+                y -= step
             elif key == "Z":
-                z = clamp(z - STEP, machine["z_min"], machine["z_max"])
+                z -= step
             elif key == "X":
-                z = clamp(z + STEP, machine["z_min"], machine["z_max"])
+                z += step
             elif key == "Q":
                 print("\nExiting...")
                 break
@@ -121,7 +125,8 @@ def main() -> None:
             print_position(coords)
 
     except KeyboardInterrupt:
-        print("\nInterrupted.")
+        print("\nInterrupted — stopping motion...")
+        gantry.stop()
     finally:
         print("Disconnecting...")
         gantry.disconnect()

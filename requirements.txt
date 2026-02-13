@@ -1,5 +1,4 @@
 pyserial
 pytest
-python-dotenv
-fastapi
-uvicorn
+pyyaml
+pydantic

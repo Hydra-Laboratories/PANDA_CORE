@@ -51,8 +51,8 @@ class TestCNCDriverLogic(unittest.TestCase):
         
         commands = mill._generate_movement_commands(current, target)
         # Should be diagonal move
-        self.assertIn("G01 X10.0 Y10.0", commands)
-        self.assertIn("G01 Z0.0", commands)
+        self.assertIn("G01 X10.0 Y10.0 F2000", commands)
+        self.assertIn("G01 Z0.0 F2000", commands)
         
         # Test 2: Move where current Z is unsafe (e.g. deep in a well)
         # However, _generate_movement_commands logic in current driver:
@@ -70,8 +70,8 @@ class TestCNCDriverLogic(unittest.TestCase):
         #   append Y..
         #   append Z..
         
-        self.assertIn("G01 X10.0", commands_unsafe)
-        self.assertIn("G01 Y10.0", commands_unsafe)
+        self.assertIn("G01 X10.0 F2000", commands_unsafe)
+        self.assertIn("G01 Y10.0 F2000", commands_unsafe)
         self.assertNotIn("G01 X10.0 Y10.0", commands_unsafe)
 
     @patch('src.gantry.gantry_driver.driver.serial.Serial')
