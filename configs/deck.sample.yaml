@@ -1,0 +1,40 @@
+# Sample deck configuration: labware only (no gantry settings).
+# Load with: load_deck_from_yaml("configs/deck.sample.yaml")
+# Returns: Deck containing labware keyed by the names below (e.g. "plate_1", "vial_1").
+
+labware:
+  plate_1:
+    type: well_plate
+    name: opentrons_96_well_20ml
+    model_name: opentrons_96_well_20ml
+    rows: 8
+    columns: 12
+    length_mm: 127.71
+    width_mm: 85.43
+    height_mm: 14.10
+    calibration:
+      a1:
+        x: -10.0
+        y: -10.0
+        z: -15.0
+      a2:
+        x: -1.0
+        y: -10.0
+        z: -15.0
+    x_offset_mm: 9.0
+    y_offset_mm: -9.0
+    capacity_ul: 200.0
+    working_volume_ul: 150.0
+
+  vial_1:
+    type: vial
+    name: standard_vial
+    model_name: standard_1_5ml_vial
+    height_mm: 66.75
+    diameter_mm: 28.0
+    location:
+      x: -30.0
+      y: -40.0
+      z: -20.0
+    capacity_ul: 1500.0
+    working_volume_ul: 1200.0
