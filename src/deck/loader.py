@@ -1,4 +1,4 @@
-"""Load deck YAML into a mapping of name -> Labware (WellPlate or Vial)."""
+"""Load deck YAML into a Deck containing Labware (WellPlate or Vial)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from typing import Any, Dict, Type, Union
 import yaml
 from pydantic import BaseModel, ValidationError
 
+from .deck import Deck
 from .labware import Coordinate3D
 from .labware.vial import Vial
 from .labware.well_plate import WellPlate
@@ -148,26 +149,26 @@ def _build_vial(entry: VialYamlEntry) -> Vial:
     return Vial(**kwargs)
 
 
-def load_labware_from_deck_yaml(path: str | Path) -> Dict[str, Union[WellPlate, Vial]]:
+def load_deck_from_yaml(path: str | Path) -> Deck:
     """
-    Load a deck YAML file and return a mapping from labware name (key in YAML) to Labware.
+    Load a deck YAML file and return a Deck containing all labware.
     """
     path = Path(path)
     with path.open() as f:
         raw = yaml.safe_load(f)
     if raw is None:
         raw = {}
-    deck = DeckYamlSchema.model_validate(raw)
-    result: Dict[str, Union[WellPlate, Vial]] = {}
-    for name, entry in deck.labware.items():
+    schema = DeckYamlSchema.model_validate(raw)
+    labware: Dict[str, Union[WellPlate, Vial]] = {}
+    for name, entry in schema.labware.items():
         if isinstance(entry, WellPlateYamlEntry):
-            result[name] = _build_well_plate(entry)
+            labware[name] = _build_well_plate(entry)
         else:
-            result[name] = _build_vial(entry)
-    return result
+            labware[name] = _build_vial(entry)
+    return Deck(labware)
 
 
-def load_labware_from_deck_yaml_safe(path: str | Path) -> Dict[str, Union[WellPlate, Vial]]:
+def load_deck_from_yaml_safe(path: str | Path) -> Deck:
     """
     Load deck YAML with user-friendly exception formatting.
 
@@ -176,6 +177,6 @@ def load_labware_from_deck_yaml_safe(path: str | Path) -> Dict[str, Union[WellPl
     """
     resolved_path = Path(path)
     try:
-        return load_labware_from_deck_yaml(resolved_path)
+        return load_deck_from_yaml(resolved_path)
     except Exception as exc:
         raise DeckLoaderError(_format_loader_exception(resolved_path, exc)) from exc
