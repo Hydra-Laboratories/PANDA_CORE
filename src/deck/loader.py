@@ -13,7 +13,7 @@ from .labware import Coordinate3D
 from .labware.vial import Vial
 from .labware.well_plate import WellPlate
 from .errors import DeckLoaderError
-from .yaml_schema import DeckYamlSchema, VialYamlEntry, WellPlateYamlEntry, _YamlPoint3D
+from .yaml_schema import DeckYamlSchema, VialYamlEntry, WellPlateYamlEntry
 
 
 def _format_loader_exception(path: Path, error: Exception) -> str:
@@ -53,11 +53,6 @@ def _format_loader_exception(path: Path, error: Exception) -> str:
         f"❌ Deck loader error in `{path}`: {detail}\n"
         "How to fix: Verify the file path and deck YAML contents."
     )
-
-
-def _point_to_coord(p: _YamlPoint3D) -> Coordinate3D:
-    """Convert schema point (x, y, z) to Coordinate3D."""
-    return Coordinate3D(x=p.x, y=p.y, z=p.z)
 
 
 def _entry_kwargs_for_model(entry: BaseModel, model_class: Type[BaseModel]) -> Dict[str, Any]:
@@ -145,7 +140,7 @@ def _build_well_plate(entry: WellPlateYamlEntry) -> WellPlate:
 
 def _build_vial(entry: VialYamlEntry) -> Vial:
     kwargs = _entry_kwargs_for_model(entry, Vial)
-    kwargs["location"] = _point_to_coord(entry.location)
+    kwargs["location"] = entry.location
     return Vial(**kwargs)
 
 

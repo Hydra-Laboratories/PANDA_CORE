@@ -15,7 +15,7 @@ def main():
 
     # 1. Load Config (to replicate how DeckConfig loads it, 
     # ensuring we get the serial port and strategy)
-    config_path = project_root / "configs/genmitsu_3018_PROver_v2.yaml"
+    config_path = project_root / "configs/machines/genmitsu_3018_PROver_v2.yaml"
     
     # Simple direct load or use DeckConfig if preferred
     # Using DeckConfig to be consistent with app usage if possible, 

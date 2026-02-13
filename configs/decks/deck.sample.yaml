@@ -1,5 +1,5 @@
 # Sample deck configuration: labware only (no gantry settings).
-# Load with: load_deck_from_yaml("configs/deck.sample.yaml")
+# Load with: load_deck_from_yaml("configs/decks/deck.sample.yaml")
 # Returns: Deck containing labware keyed by the names below (e.g. "plate_1", "vial_1").
 
 labware:
