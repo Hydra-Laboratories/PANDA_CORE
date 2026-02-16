@@ -34,8 +34,12 @@ class UVVisCCS(BaseInstrument):
         offset_x: float = 0.0,
         offset_y: float = 0.0,
         depth: float = 0.0,
+        measurement_height: float = 0.0,
     ):
-        super().__init__(name=name, offset_x=offset_x, offset_y=offset_y, depth=depth)
+        super().__init__(
+            name=name, offset_x=offset_x, offset_y=offset_y,
+            depth=depth, measurement_height=measurement_height,
+        )
         self._serial_number = serial_number
         self._dll_path = dll_path
         self._default_integration_time_s = default_integration_time_s

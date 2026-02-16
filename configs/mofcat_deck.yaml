@@ -1,0 +1,26 @@
+# MOFcat deck configuration — labware only.
+
+labware:
+  wellplate_1:
+    type: well_plate
+    name: corning_96_well_360ul
+    model_name: corning_3590_96well
+    rows: 8
+    columns: 12
+    length_mm: 127.76
+    width_mm: 85.47
+    height_mm: 14.22
+    calibration:
+      a1:
+        x: -14.38
+        y: -11.24
+        z: -25.0
+      a2:
+        x: -5.38
+        y: -11.24
+        z: -25.0
+    x_offset_mm: 9.0
+    y_offset_mm: -9.0
+    capacity_ul: 360.0
+    working_volume_ul: 200.0
+

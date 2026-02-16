@@ -29,8 +29,12 @@ class MockUVVisCCS(BaseInstrument):
         offset_x: float = 0.0,
         offset_y: float = 0.0,
         depth: float = 0.0,
+        measurement_height: float = 0.0,
     ):
-        super().__init__(name=name, offset_x=offset_x, offset_y=offset_y, depth=depth)
+        super().__init__(
+            name=name, offset_x=offset_x, offset_y=offset_y,
+            depth=depth, measurement_height=measurement_height,
+        )
         self._connected = False
         self._integration_time_s = 0.24
         self._default_result = default_result or _synthetic_spectrum()
