@@ -3,8 +3,8 @@ from src.instruments.base_instrument import BaseInstrument, InstrumentError
 
 # Mock concrete implementation for testing
 class MockInstrument(BaseInstrument):
-    def __init__(self, name="mock_instrument", offset_x=0.0, offset_y=0.0, depth=0.0):
-        super().__init__(name=name, offset_x=offset_x, offset_y=offset_y, depth=depth)
+    def __init__(self, name="mock_instrument", offset_x=0.0, offset_y=0.0, depth=0.0, measurement_height=0.0):
+        super().__init__(name=name, offset_x=offset_x, offset_y=offset_y, depth=depth, measurement_height=measurement_height)
         self.connected = False
         self.healthy = True
 
@@ -69,11 +69,12 @@ def test_handle_error_passes_through_instrument_error():
 
 
 def test_default_offset_and_depth():
-    """Instruments default to zero offset and depth."""
+    """Instruments default to zero offset, depth, and measurement_height."""
     instr = MockInstrument()
     assert instr.offset_x == 0.0
     assert instr.offset_y == 0.0
     assert instr.depth == 0.0
+    assert instr.measurement_height == 0.0
 
 
 def test_custom_offset_and_depth():
@@ -82,3 +83,9 @@ def test_custom_offset_and_depth():
     assert instr.offset_x == -10.5
     assert instr.offset_y == 20.0
     assert instr.depth == -5.0
+
+
+def test_custom_measurement_height():
+    """Instruments accept a custom measurement_height at construction."""
+    instr = MockInstrument(measurement_height=3.0)
+    assert instr.measurement_height == 3.0

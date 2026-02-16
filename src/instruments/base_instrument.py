@@ -21,11 +21,13 @@ class BaseInstrument(ABC):
         offset_x: float = 0.0,
         offset_y: float = 0.0,
         depth: float = 0.0,
+        measurement_height: float = 0.0,
     ):
         self.name = name or self.__class__.__name__
         self.offset_x = offset_x
         self.offset_y = offset_y
         self.depth = depth
+        self.measurement_height = measurement_height
         self.logger = logging.getLogger(f"{__name__}.{self.name}")
 
     @abstractmethod

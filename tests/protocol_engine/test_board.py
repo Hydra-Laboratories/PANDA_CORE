@@ -1,6 +1,8 @@
 import pytest
 from unittest.mock import MagicMock
 
+from src.deck.labware import Coordinate3D
+from src.deck.labware.well_plate import WellPlate
 from src.instruments.base_instrument import BaseInstrument
 from src.instruments.pipette.exceptions import PipetteError
 from src.instruments.pipette.models import AspirateResult, MixResult
@@ -407,3 +409,253 @@ class TestBoardDropTip:
 
         gantry.move_to.assert_called_once_with(-90.0, -55.0, -18.0)
         pip.drop_tip.assert_called_once_with(50.0)
+
+
+# ─── scan() tests ───────────────────────────────────────────────────────────
+
+def _make_2x2_plate() -> WellPlate:
+    return WellPlate(
+        name="plate_1",
+        model_name="test_96",
+        length_mm=127.71,
+        width_mm=85.43,
+        height_mm=14.10,
+        rows=2,
+        columns=2,
+        wells={
+            "A1": Coordinate3D(x=0.0, y=0.0, z=-5.0),
+            "A2": Coordinate3D(x=10.0, y=0.0, z=-5.0),
+            "B1": Coordinate3D(x=0.0, y=-8.0, z=-5.0),
+            "B2": Coordinate3D(x=10.0, y=-8.0, z=-5.0),
+        },
+        capacity_ul=200.0,
+        working_volume_ul=150.0,
+    )
+
+
+def _make_2x3_plate() -> WellPlate:
+    return WellPlate(
+        name="plate_2",
+        model_name="test_model",
+        length_mm=127.71,
+        width_mm=85.43,
+        height_mm=14.10,
+        rows=2,
+        columns=3,
+        wells={
+            "A1": Coordinate3D(x=0.0, y=0.0, z=-5.0),
+            "A2": Coordinate3D(x=10.0, y=0.0, z=-5.0),
+            "A3": Coordinate3D(x=20.0, y=0.0, z=-5.0),
+            "B1": Coordinate3D(x=0.0, y=-8.0, z=-5.0),
+            "B2": Coordinate3D(x=10.0, y=-8.0, z=-5.0),
+            "B3": Coordinate3D(x=20.0, y=-8.0, z=-5.0),
+        },
+        capacity_ul=200.0,
+        working_volume_ul=150.0,
+    )
+
+
+class _FakeSensor(BaseInstrument):
+    """Concrete BaseInstrument subclass for scan tests."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.call_count = 0
+        self.received_plates = []
+        self._return_value = True
+
+    def connect(self) -> None:
+        pass
+
+    def disconnect(self) -> None:
+        pass
+
+    def health_check(self) -> bool:
+        return True
+
+    def measure(self, plate: WellPlate) -> bool:
+        self.call_count += 1
+        self.received_plates.append(plate)
+        return self._return_value
+
+
+def _make_sensor(**kwargs) -> _FakeSensor:
+    defaults = dict(name="sensor", offset_x=0.0, offset_y=0.0, depth=0.0)
+    defaults.update(kwargs)
+    return _FakeSensor(**defaults)
+
+
+class TestBoardScan:
+
+    def test_scan_moves_instrument_to_each_well(self):
+        """scan moves the instrument over each well before calling method."""
+        gantry = _mock_gantry()
+        sensor = _make_sensor()
+        board = Board(gantry=gantry, instruments={"sensor": sensor})
+        plate = _make_2x2_plate()
+
+        board.scan(plate, sensor.measure)
+
+        assert gantry.move_to.call_count == 4
+
+    def test_scan_moves_to_correct_coordinates(self):
+        """scan sends the gantry to each well's position (adjusted for offset)."""
+        gantry = _mock_gantry()
+        sensor = _make_sensor(offset_x=-5.0, offset_y=2.0, depth=-1.0)
+        board = Board(gantry=gantry, instruments={"sensor": sensor})
+        plate = _make_2x2_plate()
+
+        board.scan(plate, sensor.measure)
+
+        # A1 at (0, 0, -5): gantry = (0 - -5, 0 - 2, -5 - -1) = (5, -2, -4)
+        # A2 at (10, 0, -5): gantry = (15, -2, -4)
+        # B1 at (0, -8, -5): gantry = (5, -10, -4)
+        # B2 at (10, -8, -5): gantry = (15, -10, -4)
+        calls = [c.args for c in gantry.move_to.call_args_list]
+        assert calls == [
+            (5.0, -2.0, -4.0),
+            (15.0, -2.0, -4.0),
+            (5.0, -10.0, -4.0),
+            (15.0, -10.0, -4.0),
+        ]
+
+    def test_scan_moves_before_calling_method(self):
+        """For each well, the gantry moves first, then the method fires."""
+        gantry = _mock_gantry()
+        sensor = _make_sensor()
+        board = Board(gantry=gantry, instruments={"sensor": sensor})
+        plate = _make_2x2_plate()
+        call_order = []
+
+        gantry.move_to.side_effect = lambda *a: call_order.append("move")
+        original_measure = sensor.measure.__func__
+
+        def tracking_measure(self_inner, p):
+            call_order.append("method")
+            return original_measure(self_inner, p)
+
+        import types
+        sensor.measure = types.MethodType(tracking_measure, sensor)
+        board.scan(plate, sensor.measure)
+        assert call_order == ["move", "method"] * 4
+
+    def test_scan_calls_method_once_per_well(self):
+        """scan calls the method exactly once for each well."""
+        gantry = _mock_gantry()
+        sensor = _make_sensor()
+        board = Board(gantry=gantry, instruments={"sensor": sensor})
+        plate = _make_2x2_plate()
+
+        board.scan(plate, sensor.measure)
+        assert sensor.call_count == 4
+
+    def test_scan_returns_dict_of_bool_per_well(self):
+        """scan returns a Dict[str, bool] mapping each well ID to its result."""
+        gantry = _mock_gantry()
+        sensor = _make_sensor()
+        board = Board(gantry=gantry, instruments={"sensor": sensor})
+        plate = _make_2x2_plate()
+
+        result = board.scan(plate, sensor.measure)
+        assert isinstance(result, dict)
+        assert set(result.keys()) == {"A1", "A2", "B1", "B2"}
+        assert all(v is True for v in result.values())
+
+    def test_scan_captures_false_results(self):
+        """scan faithfully records False returns from the method."""
+        gantry = _mock_gantry()
+        sensor = _make_sensor()
+        sensor._return_value = False
+        board = Board(gantry=gantry, instruments={"sensor": sensor})
+        plate = _make_2x2_plate()
+
+        result = board.scan(plate, sensor.measure)
+        assert all(v is False for v in result.values())
+
+    def test_scan_visits_wells_in_row_major_order(self):
+        """scan iterates A1, A2, A3, B1, B2, B3 (row-major)."""
+        gantry = _mock_gantry()
+        sensor = _make_sensor()
+        board = Board(gantry=gantry, instruments={"sensor": sensor})
+        plate = _make_2x3_plate()
+
+        # Track move order via gantry calls — A1(0,0), A2(10,0), A3(20,0), B1(0,-8), ...
+        board.scan(plate, sensor.measure)
+        xs = [c.args[0] for c in gantry.move_to.call_args_list]
+        assert xs == [0.0, 10.0, 20.0, 0.0, 10.0, 20.0]
+
+    def test_scan_passes_plate_to_method(self):
+        """The method receives the wellplate instance."""
+        gantry = _mock_gantry()
+        sensor = _make_sensor()
+        board = Board(gantry=gantry, instruments={"sensor": sensor})
+        plate = _make_2x2_plate()
+
+        board.scan(plate, sensor.measure)
+        assert all(p is plate for p in sensor.received_plates)
+
+    def test_scan_propagates_exceptions(self):
+        """If the method raises, scan does not swallow the exception."""
+        import types
+        gantry = _mock_gantry()
+        sensor = _make_sensor()
+        board = Board(gantry=gantry, instruments={"sensor": sensor})
+        plate = _make_2x2_plate()
+
+        def exploding_measure(self_inner, p):
+            raise RuntimeError("sensor failure")
+
+        sensor.measure = types.MethodType(exploding_measure, sensor)
+        with pytest.raises(RuntimeError, match="sensor failure"):
+            board.scan(plate, sensor.measure)
+
+    def test_scan_rejects_unbound_callable(self):
+        """scan raises AttributeError for a plain function (no __self__)."""
+        board = Board(gantry=_mock_gantry())
+        plate = _make_2x2_plate()
+
+        def loose_func(p):
+            return True
+
+        with pytest.raises(AttributeError, match="bound method"):
+            board.scan(plate, loose_func)
+
+    def test_scan_applies_measurement_height(self):
+        """scan adjusts the z coordinate by the instrument's measurement_height."""
+        gantry = _mock_gantry()
+        # depth=-1.0, measurement_height=3.0
+        sensor = _make_sensor(offset_x=0.0, offset_y=0.0, depth=-1.0, measurement_height=3.0)
+        board = Board(gantry=gantry, instruments={"sensor": sensor})
+        plate = _make_2x2_plate()  # wells at z=-5.0
+
+        board.scan(plate, sensor.measure)
+
+        # Well z=-5.0, measurement_height=+3.0 → target z=-2.0
+        # Then Board.move subtracts depth: gantry_z = -2.0 - (-1.0) = -1.0
+        zs = [c.args[2] for c in gantry.move_to.call_args_list]
+        assert zs == [-1.0, -1.0, -1.0, -1.0]
+
+    def test_scan_zero_measurement_height_unchanged(self):
+        """measurement_height=0 leaves z unchanged (default behavior)."""
+        gantry = _mock_gantry()
+        sensor = _make_sensor(offset_x=0.0, offset_y=0.0, depth=0.0, measurement_height=0.0)
+        board = Board(gantry=gantry, instruments={"sensor": sensor})
+        plate = _make_2x2_plate()  # wells at z=-5.0
+
+        board.scan(plate, sensor.measure)
+
+        zs = [c.args[2] for c in gantry.move_to.call_args_list]
+        assert zs == [-5.0, -5.0, -5.0, -5.0]
+
+    def test_scan_rejects_non_instrument_bound_method(self):
+        """scan raises TypeError if __self__ is not a BaseInstrument."""
+        board = Board(gantry=_mock_gantry())
+        plate = _make_2x2_plate()
+
+        class NotAnInstrument:
+            def measure(self, plate):
+                return True
+
+        obj = NotAnInstrument()
+        with pytest.raises(TypeError, match="BaseInstrument"):
+            board.scan(plate, obj.measure)

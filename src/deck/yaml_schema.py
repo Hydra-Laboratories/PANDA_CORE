@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Dict, Literal, Union
+from typing import Annotated, Dict, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -17,7 +17,7 @@ class _YamlPoint3D(BaseModel):
 class _YamlCalibrationPoints(BaseModel):
     model_config = ConfigDict(extra="forbid")
     # Preferred location for A1 in deck YAML.
-    a1: _YamlPoint3D | None = None
+    a1: Optional[_YamlPoint3D] = None
     a2: _YamlPoint3D
 
 
@@ -35,7 +35,7 @@ class WellPlateYamlEntry(BaseModel):
     width_mm: float
     height_mm: float
     # Backward compatibility: top-level A1 is accepted but deprecated.
-    a1: _YamlPoint3D | None = None
+    a1: Optional[_YamlPoint3D] = None
     calibration: _YamlCalibrationPoints
     x_offset_mm: float
     y_offset_mm: float
