@@ -1,0 +1,15 @@
+[project]
+name = "panda-core"
+version = "0.1.0"
+requires-python = ">=3.9"
+dependencies = [
+    "pyserial",
+    "pyyaml",
+    "pydantic",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
