@@ -1,8 +1,8 @@
-"""Tests for MachineConfig and WorkingVolume domain models."""
+"""Tests for GantryConfig and WorkingVolume domain models."""
 
 from __future__ import annotations
 
-from src.machine.machine_config import MachineConfig, WorkingVolume
+from src.gantry.gantry_config import GantryConfig, WorkingVolume
 
 
 def _make_volume(
@@ -14,9 +14,12 @@ def _make_volume(
     z_max: float = 0.0,
 ) -> WorkingVolume:
     return WorkingVolume(
-        x_min=x_min, x_max=x_max,
-        y_min=y_min, y_max=y_max,
-        z_min=z_min, z_max=z_max,
+        x_min=x_min,
+        x_max=x_max,
+        y_min=y_min,
+        y_max=y_max,
+        z_min=z_min,
+        z_max=z_max,
     )
 
 
@@ -77,11 +80,11 @@ class TestWorkingVolume:
             pass
 
 
-class TestMachineConfig:
+class TestGantryConfig:
 
     def test_stores_all_fields(self):
         vol = _make_volume()
-        config = MachineConfig(
+        config = GantryConfig(
             serial_port="/dev/ttyUSB0",
             homing_strategy="xy_hard_limits",
             working_volume=vol,
@@ -91,7 +94,7 @@ class TestMachineConfig:
         assert config.working_volume is vol
 
     def test_frozen_dataclass(self):
-        config = MachineConfig(
+        config = GantryConfig(
             serial_port="/dev/ttyUSB0",
             homing_strategy="standard",
             working_volume=_make_volume(),

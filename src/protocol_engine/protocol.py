@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict, List, Optional
 from src.deck.deck import Deck
 
 from src.board.board import Board
-from src.machine.machine_config import MachineConfig
+from src.gantry.gantry_config import GantryConfig
 
 
 @dataclass
@@ -18,13 +18,13 @@ class ProtocolContext:
     """Runtime context injected into every command handler.
 
     Provides access to the Board (gantry + instruments), the Deck
-    (labware target resolution), and optionally the MachineConfig
+    (labware target resolution), and optionally the GantryConfig
     (working volume and hardware settings).
     """
 
     board: Board
     deck: Deck
-    machine: Optional[MachineConfig] = None
+    gantry: Optional[GantryConfig] = None
     logger: logging.Logger = field(
         default_factory=lambda: logging.getLogger("protocol"),
     )

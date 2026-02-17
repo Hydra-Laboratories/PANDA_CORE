@@ -10,22 +10,22 @@ from src.deck.labware.labware import Coordinate3D
 from src.deck.labware.vial import Vial
 from src.deck.labware.well_plate import WellPlate
 from src.instruments.base_instrument import BaseInstrument
-from src.machine.machine_config import MachineConfig, WorkingVolume
+from src.gantry.gantry_config import GantryConfig, WorkingVolume
 from src.validation.bounds import validate_deck_positions, validate_gantry_positions
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
-def _make_machine(
+def _make_gantry(
     x_min: float = -300.0,
     x_max: float = 0.0,
     y_min: float = -200.0,
     y_max: float = 0.0,
     z_min: float = -80.0,
     z_max: float = 0.0,
-) -> MachineConfig:
-    return MachineConfig(
+) -> GantryConfig:
+    return GantryConfig(
         serial_port="/dev/ttyUSB0",
         homing_strategy="standard",
         working_volume=WorkingVolume(
@@ -120,22 +120,22 @@ def _make_board(*instruments: tuple) -> Board:
 class TestValidateDeckPositions:
 
     def test_all_positions_within_bounds_passes(self):
-        machine = _make_machine()
+        gantry = _make_gantry()
         deck = _make_deck(vial_1=_make_vial(x=-30.0, y=-40.0, z=-20.0))
-        violations = validate_deck_positions(machine, deck)
+        violations = validate_deck_positions(gantry, deck)
         assert violations == []
 
     def test_well_plate_all_wells_within_bounds_passes(self):
-        machine = _make_machine()
+        gantry = _make_gantry()
         plate = _make_plate(a1_x=-10.0, a1_y=-10.0, a1_z=-15.0)
         deck = _make_deck(plate_1=plate)
-        violations = validate_deck_positions(machine, deck)
+        violations = validate_deck_positions(gantry, deck)
         assert violations == []
 
     def test_vial_outside_x_min_fails(self):
-        machine = _make_machine(x_min=-300.0)
+        gantry = _make_gantry(x_min=-300.0)
         deck = _make_deck(vial_1=_make_vial(x=-300.001))
-        violations = validate_deck_positions(machine, deck)
+        violations = validate_deck_positions(gantry, deck)
         assert len(violations) == 1
         assert violations[0].labware_key == "vial_1"
         assert violations[0].position_id == "location"
@@ -143,70 +143,70 @@ class TestValidateDeckPositions:
         assert violations[0].bound_name == "x_min"
 
     def test_vial_outside_x_max_fails(self):
-        machine = _make_machine(x_max=0.0)
+        gantry = _make_gantry(x_max=0.0)
         deck = _make_deck(vial_1=_make_vial(x=0.001))
-        violations = validate_deck_positions(machine, deck)
+        violations = validate_deck_positions(gantry, deck)
         assert len(violations) == 1
         assert violations[0].axis == "x"
         assert violations[0].bound_name == "x_max"
 
     def test_well_plate_corner_well_outside_y_min_fails(self):
-        machine = _make_machine(y_min=-20.0)
+        gantry = _make_gantry(y_min=-20.0)
         # B1 well will be at y = -10.0 + (-15.0) = -25.0, outside y_min=-20
         plate = _make_plate(a1_y=-10.0, y_offset=-15.0)
         deck = _make_deck(plate_1=plate)
-        violations = validate_deck_positions(machine, deck)
+        violations = validate_deck_positions(gantry, deck)
         assert len(violations) > 0
         lw_keys = {v.labware_key for v in violations}
         assert "plate_1" in lw_keys
 
     def test_well_plate_corner_well_outside_z_min_fails(self):
-        machine = _make_machine(z_min=-10.0)
+        gantry = _make_gantry(z_min=-10.0)
         plate = _make_plate(a1_z=-15.0)
         deck = _make_deck(plate_1=plate)
-        violations = validate_deck_positions(machine, deck)
+        violations = validate_deck_positions(gantry, deck)
         assert len(violations) > 0
         assert all(v.axis == "z" for v in violations)
 
     def test_position_exactly_on_boundary_passes(self):
-        machine = _make_machine(x_min=-300.0)
+        gantry = _make_gantry(x_min=-300.0)
         deck = _make_deck(vial_1=_make_vial(x=-300.0))
-        violations = validate_deck_positions(machine, deck)
+        violations = validate_deck_positions(gantry, deck)
         assert violations == []
 
     def test_position_epsilon_beyond_boundary_fails(self):
-        machine = _make_machine(x_min=-300.0)
+        gantry = _make_gantry(x_min=-300.0)
         deck = _make_deck(vial_1=_make_vial(x=-300.001))
-        violations = validate_deck_positions(machine, deck)
+        violations = validate_deck_positions(gantry, deck)
         assert len(violations) == 1
 
     def test_empty_deck_passes(self):
-        machine = _make_machine()
+        gantry = _make_gantry()
         deck = _make_deck()
-        violations = validate_deck_positions(machine, deck)
+        violations = validate_deck_positions(gantry, deck)
         assert violations == []
 
     def test_mixed_labware_one_out_of_bounds_fails(self):
-        machine = _make_machine(x_min=-300.0)
+        gantry = _make_gantry(x_min=-300.0)
         vial_ok = _make_vial(name="ok_vial", x=-100.0)
         vial_bad = _make_vial(name="bad_vial", x=-301.0)
         deck = _make_deck(ok=vial_ok, bad=vial_bad)
-        violations = validate_deck_positions(machine, deck)
+        violations = validate_deck_positions(gantry, deck)
         assert len(violations) == 1
         assert violations[0].labware_key == "bad"
 
     def test_multiple_violations_reported(self):
-        machine = _make_machine(x_min=-50.0, y_min=-50.0)
+        gantry = _make_gantry(x_min=-50.0, y_min=-50.0)
         vial_bad_x = _make_vial(name="v1", x=-100.0, y=-30.0, z=-20.0)
         vial_bad_y = _make_vial(name="v2", x=-30.0, y=-100.0, z=-20.0)
         deck = _make_deck(v1=vial_bad_x, v2=vial_bad_y)
-        violations = validate_deck_positions(machine, deck)
+        violations = validate_deck_positions(gantry, deck)
         assert len(violations) == 2
 
     def test_violation_identifies_labware_and_position(self):
-        machine = _make_machine(x_min=-50.0)
+        gantry = _make_gantry(x_min=-50.0)
         deck = _make_deck(my_vial=_make_vial(x=-100.0))
-        violations = validate_deck_positions(machine, deck)
+        violations = validate_deck_positions(gantry, deck)
         assert violations[0].labware_key == "my_vial"
         assert violations[0].position_id == "location"
         assert violations[0].coordinate_type == "deck"
@@ -219,32 +219,32 @@ class TestValidateDeckPositions:
 class TestValidateGantryPositions:
 
     def test_all_gantry_positions_within_bounds_passes(self):
-        machine = _make_machine()
+        gantry = _make_gantry()
         deck = _make_deck(vial_1=_make_vial(x=-30.0, y=-40.0, z=-20.0))
         instr = _make_instrument(offset_x=-5.0, offset_y=0.0, depth=0.0)
         board = _make_board(("instr_1", instr))
-        violations = validate_gantry_positions(machine, deck, board)
+        violations = validate_gantry_positions(gantry, deck, board)
         assert violations == []
 
     def test_instrument_offset_pushes_gantry_outside_x_max_fails(self):
         # vial at x=-2.0, instrument offset_x=-5.0
         # gantry_x = -2.0 - (-5.0) = 3.0 > x_max=0.0
-        machine = _make_machine(x_max=0.0)
+        gantry = _make_gantry(x_max=0.0)
         deck = _make_deck(vial_1=_make_vial(x=-2.0, y=-40.0, z=-20.0))
         instr = _make_instrument(offset_x=-5.0)
         board = _make_board(("probe", instr))
-        violations = validate_gantry_positions(machine, deck, board)
+        violations = validate_gantry_positions(gantry, deck, board)
         assert len(violations) >= 1
         assert any(v.axis == "x" and v.bound_name == "x_max" for v in violations)
 
     def test_instrument_offset_pushes_gantry_outside_x_min_fails(self):
         # vial at x=-295.0, instrument offset_x=10.0
         # gantry_x = -295.0 - 10.0 = -305.0 < x_min=-300.0
-        machine = _make_machine(x_min=-300.0)
+        gantry = _make_gantry(x_min=-300.0)
         deck = _make_deck(vial_1=_make_vial(x=-295.0, y=-40.0, z=-20.0))
         instr = _make_instrument(offset_x=10.0)
         board = _make_board(("probe", instr))
-        violations = validate_gantry_positions(machine, deck, board)
+        violations = validate_gantry_positions(gantry, deck, board)
         assert len(violations) >= 1
         assert any(v.axis == "x" and v.bound_name == "x_min" for v in violations)
 
@@ -253,11 +253,11 @@ class TestValidateGantryPositions:
         # gantry_z = -75.0 - (-10.0) = -65.0 — within bounds
         # Try: vial at z=-75.0, instrument depth=10.0
         # gantry_z = -75.0 - 10.0 = -85.0 < z_min=-80.0
-        machine = _make_machine(z_min=-80.0)
+        gantry = _make_gantry(z_min=-80.0)
         deck = _make_deck(vial_1=_make_vial(x=-30.0, y=-40.0, z=-75.0))
         instr = _make_instrument(depth=10.0)
         board = _make_board(("deep_instr", instr))
-        violations = validate_gantry_positions(machine, deck, board)
+        violations = validate_gantry_positions(gantry, deck, board)
         assert len(violations) >= 1
         assert any(v.axis == "z" and v.bound_name == "z_min" for v in violations)
 
@@ -266,66 +266,66 @@ class TestValidateGantryPositions:
         # gantry_x = -295.0 - (-5.0) = -290.0 — well within bounds
         # Set up so gantry lands exactly on boundary:
         # vial at x=-5.0, offset_x=-5.0 -> gantry_x = -5.0 - (-5.0) = 0.0 = x_max
-        machine = _make_machine(x_max=0.0)
+        gantry = _make_gantry(x_max=0.0)
         deck = _make_deck(vial_1=_make_vial(x=-5.0, y=-40.0, z=-20.0))
         instr = _make_instrument(offset_x=-5.0)
         board = _make_board(("instr_1", instr))
-        violations = validate_gantry_positions(machine, deck, board)
+        violations = validate_gantry_positions(gantry, deck, board)
         assert violations == []
 
     def test_gantry_position_epsilon_beyond_boundary_fails(self):
         # vial at x=-4.999, offset_x=-5.0 -> gantry_x = -4.999 - (-5.0) = 0.001 > x_max=0.0
-        machine = _make_machine(x_max=0.0)
+        gantry = _make_gantry(x_max=0.0)
         deck = _make_deck(vial_1=_make_vial(x=-4.999, y=-40.0, z=-20.0))
         instr = _make_instrument(offset_x=-5.0)
         board = _make_board(("instr_1", instr))
-        violations = validate_gantry_positions(machine, deck, board)
+        violations = validate_gantry_positions(gantry, deck, board)
         assert len(violations) >= 1
 
     def test_zero_offset_instrument_gantry_equals_deck_position(self):
-        machine = _make_machine()
+        gantry = _make_gantry()
         deck = _make_deck(vial_1=_make_vial(x=-30.0, y=-40.0, z=-20.0))
         instr = _make_instrument(offset_x=0.0, offset_y=0.0, depth=0.0)
         board = _make_board(("instr_1", instr))
-        violations = validate_gantry_positions(machine, deck, board)
+        violations = validate_gantry_positions(gantry, deck, board)
         assert violations == []
 
     def test_multiple_instruments_one_ok_one_fails(self):
-        machine = _make_machine(x_max=0.0)
+        gantry = _make_gantry(x_max=0.0)
         deck = _make_deck(vial_1=_make_vial(x=-2.0, y=-40.0, z=-20.0))
         ok_instr = _make_instrument(offset_x=0.0)
         bad_instr = _make_instrument(offset_x=-5.0)
         board = _make_board(("ok", ok_instr), ("bad", bad_instr))
-        violations = validate_gantry_positions(machine, deck, board)
+        violations = validate_gantry_positions(gantry, deck, board)
         assert len(violations) >= 1
         instr_names = {v.instrument_name for v in violations}
         assert "bad" in instr_names
         assert "ok" not in instr_names
 
     def test_error_identifies_instrument_labware_and_position(self):
-        machine = _make_machine(x_max=0.0)
+        gantry = _make_gantry(x_max=0.0)
         deck = _make_deck(my_vial=_make_vial(x=-2.0, y=-40.0, z=-20.0))
         instr = _make_instrument(offset_x=-5.0)
         board = _make_board(("my_probe", instr))
-        violations = validate_gantry_positions(machine, deck, board)
+        violations = validate_gantry_positions(gantry, deck, board)
         assert violations[0].instrument_name == "my_probe"
         assert violations[0].labware_key == "my_vial"
         assert violations[0].position_id == "location"
         assert violations[0].coordinate_type == "gantry"
 
     def test_empty_deck_passes_gantry_validation(self):
-        machine = _make_machine()
+        gantry = _make_gantry()
         deck = _make_deck()
         instr = _make_instrument(offset_x=-15.0)
         board = _make_board(("instr_1", instr))
-        violations = validate_gantry_positions(machine, deck, board)
+        violations = validate_gantry_positions(gantry, deck, board)
         assert violations == []
 
     def test_empty_board_no_instruments_passes(self):
-        machine = _make_machine()
+        gantry = _make_gantry()
         deck = _make_deck(vial_1=_make_vial())
         board = _make_board()
-        violations = validate_gantry_positions(machine, deck, board)
+        violations = validate_gantry_positions(gantry, deck, board)
         assert violations == []
 
     def test_well_plate_gantry_validation_checks_all_wells(self):
@@ -333,12 +333,12 @@ class TestValidateGantryPositions:
         # instrument offset_x = 290.0 -> gantry_x = well_x - 290.0
         # A1 gantry_x = -10 - 290 = -300.0 (on boundary)
         # A2 gantry_x = -15 - 290 = -305.0 (out of bounds)
-        machine = _make_machine(x_min=-300.0)
+        gantry = _make_gantry(x_min=-300.0)
         plate = _make_plate(a1_x=-10.0, a1_y=-10.0, a1_z=-15.0)
         deck = _make_deck(plate_1=plate)
         instr = _make_instrument(offset_x=290.0)
         board = _make_board(("big_offset", instr))
-        violations = validate_gantry_positions(machine, deck, board)
+        violations = validate_gantry_positions(gantry, deck, board)
         # At least the wells at x=-15.0 should violate (gantry_x = -305.0)
         assert len(violations) > 0
         assert all(v.instrument_name == "big_offset" for v in violations)

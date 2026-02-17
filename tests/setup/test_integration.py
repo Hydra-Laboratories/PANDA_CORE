@@ -8,7 +8,7 @@ import tempfile
 
 import pytest
 
-from src.machine.machine_config import MachineConfig
+from src.gantry.gantry_config import GantryConfig
 from src.protocol_engine.protocol import Protocol, ProtocolContext
 from src.protocol_engine.registry import CommandRegistry
 from src.protocol_engine.setup import setup_protocol
@@ -29,7 +29,7 @@ def _ensure_commands_registered():
 
 # ── Full config YAML strings ────────────────────────────────────────────
 
-MACHINE_YAML = """\
+GANTRY_YAML = """\
 serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
@@ -112,7 +112,7 @@ class TestEndToEndSetup:
 
     def test_full_setup_loads_and_validates_successfully(self):
         paths = [
-            _write_temp_yaml(MACHINE_YAML),
+            _write_temp_yaml(GANTRY_YAML),
             _write_temp_yaml(DECK_YAML),
             _write_temp_yaml(BOARD_YAML),
             _write_temp_yaml(PROTOCOL_YAML),
@@ -122,7 +122,7 @@ class TestEndToEndSetup:
 
             assert isinstance(protocol, Protocol)
             assert isinstance(context, ProtocolContext)
-            assert isinstance(context.machine, MachineConfig)
+            assert isinstance(context.gantry, GantryConfig)
             assert len(protocol) == 2
             assert "pipette" in context.board.instruments
             assert "plate_1" in context.deck
@@ -133,7 +133,7 @@ class TestEndToEndSetup:
 
     def test_full_setup_protocol_can_run_with_mock_gantry(self):
         paths = [
-            _write_temp_yaml(MACHINE_YAML),
+            _write_temp_yaml(GANTRY_YAML),
             _write_temp_yaml(DECK_YAML),
             _write_temp_yaml(BOARD_YAML),
             _write_temp_yaml(PROTOCOL_YAML),
@@ -146,7 +146,7 @@ class TestEndToEndSetup:
             for p in paths:
                 os.unlink(p)
 
-    def test_setup_catches_labware_outside_machine_bounds(self):
+    def test_setup_catches_labware_outside_gantry_bounds(self):
         bad_deck = """\
 labware:
   far_vial:
@@ -163,7 +163,7 @@ labware:
     working_volume_ul: 800.0
 """
         paths = [
-            _write_temp_yaml(MACHINE_YAML),
+            _write_temp_yaml(GANTRY_YAML),
             _write_temp_yaml(bad_deck),
             _write_temp_yaml(BOARD_YAML),
             _write_temp_yaml(PROTOCOL_YAML),
@@ -195,7 +195,7 @@ labware:
     working_volume_ul: 800.0
 """
         paths = [
-            _write_temp_yaml(MACHINE_YAML),
+            _write_temp_yaml(GANTRY_YAML),
             _write_temp_yaml(edge_deck),
             _write_temp_yaml(BOARD_YAML),
             _write_temp_yaml(PROTOCOL_YAML),
@@ -211,7 +211,7 @@ labware:
                 os.unlink(p)
 
     def test_setup_with_tight_bounds_validates_all_well_positions(self):
-        tight_machine = """\
+        tight_gantry = """\
 serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
@@ -226,7 +226,7 @@ working_volume:
         # plate_1 wells extend to x = -10 + 9*2 = 8.0 (within plate A3 at x=-28)
         # But with tight bounds, waste_vial at x=-250 will fail
         paths = [
-            _write_temp_yaml(tight_machine),
+            _write_temp_yaml(tight_gantry),
             _write_temp_yaml(DECK_YAML),
             _write_temp_yaml(BOARD_YAML),
             _write_temp_yaml(PROTOCOL_YAML),

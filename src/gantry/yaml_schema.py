@@ -1,4 +1,4 @@
-"""Strict Pydantic schemas for machine YAML."""
+"""Strict Pydantic schemas for gantry YAML."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class WorkingVolumeYaml(BaseModel):
-    """Machine working volume bounds in millimeters."""
+    """Gantry working volume bounds in millimeters."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -39,8 +39,8 @@ class CncYaml(BaseModel):
     homing_strategy: Literal["xy_hard_limits", "standard"]
 
 
-class MachineYamlSchema(BaseModel):
-    """Root machine YAML schema."""
+class GantryYamlSchema(BaseModel):
+    """Root gantry YAML schema."""
 
     model_config = ConfigDict(extra="forbid")
 

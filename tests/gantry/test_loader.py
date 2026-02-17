@@ -1,4 +1,4 @@
-"""Tests for machine YAML loader."""
+"""Tests for gantry YAML loader."""
 
 from __future__ import annotations
 
@@ -7,12 +7,12 @@ import tempfile
 
 import pytest
 
-from src.machine.errors import MachineLoaderError
-from src.machine.loader import load_machine_from_yaml, load_machine_from_yaml_safe
-from src.machine.machine_config import MachineConfig
+from src.gantry.errors import GantryLoaderError
+from src.gantry.gantry_config import GantryConfig
+from src.gantry.loader import load_gantry_from_yaml, load_gantry_from_yaml_safe
 
 
-VALID_MACHINE_YAML = """\
+VALID_GANTRY_YAML = """\
 serial_port: /dev/cu.usbserial-2130
 cnc:
   homing_strategy: xy_hard_limits
@@ -33,20 +33,20 @@ def _write_temp_yaml(content: str) -> str:
     return f.name
 
 
-class TestLoadMachineFromYaml:
+class TestLoadGantryFromYaml:
 
-    def test_load_valid_machine_returns_machine_config(self):
-        path = _write_temp_yaml(VALID_MACHINE_YAML)
+    def test_load_valid_gantry_returns_gantry_config(self):
+        path = _write_temp_yaml(VALID_GANTRY_YAML)
         try:
-            result = load_machine_from_yaml(path)
-            assert isinstance(result, MachineConfig)
+            result = load_gantry_from_yaml(path)
+            assert isinstance(result, GantryConfig)
         finally:
             os.unlink(path)
 
-    def test_loaded_machine_has_correct_bounds(self):
-        path = _write_temp_yaml(VALID_MACHINE_YAML)
+    def test_loaded_gantry_has_correct_bounds(self):
+        path = _write_temp_yaml(VALID_GANTRY_YAML)
         try:
-            config = load_machine_from_yaml(path)
+            config = load_gantry_from_yaml(path)
             vol = config.working_volume
             assert vol.x_min == -300.0
             assert vol.x_max == 0.0
@@ -57,31 +57,31 @@ class TestLoadMachineFromYaml:
         finally:
             os.unlink(path)
 
-    def test_loaded_machine_has_serial_port(self):
-        path = _write_temp_yaml(VALID_MACHINE_YAML)
+    def test_loaded_gantry_has_serial_port(self):
+        path = _write_temp_yaml(VALID_GANTRY_YAML)
         try:
-            config = load_machine_from_yaml(path)
+            config = load_gantry_from_yaml(path)
             assert config.serial_port == "/dev/cu.usbserial-2130"
         finally:
             os.unlink(path)
 
-    def test_loaded_machine_has_homing_strategy(self):
-        path = _write_temp_yaml(VALID_MACHINE_YAML)
+    def test_loaded_gantry_has_homing_strategy(self):
+        path = _write_temp_yaml(VALID_GANTRY_YAML)
         try:
-            config = load_machine_from_yaml(path)
+            config = load_gantry_from_yaml(path)
             assert config.homing_strategy == "xy_hard_limits"
         finally:
             os.unlink(path)
 
     def test_missing_file_raises_file_not_found(self):
         with pytest.raises(FileNotFoundError):
-            load_machine_from_yaml("/nonexistent/path.yaml")
+            load_gantry_from_yaml("/nonexistent/path.yaml")
 
     def test_invalid_yaml_raises(self):
         path = _write_temp_yaml("{{invalid yaml: [")
         try:
             with pytest.raises(Exception):
-                load_machine_from_yaml(path)
+                load_gantry_from_yaml(path)
         finally:
             os.unlink(path)
 
@@ -94,7 +94,7 @@ cnc:
         path = _write_temp_yaml(yaml_content)
         try:
             with pytest.raises(Exception, match="working_volume"):
-                load_machine_from_yaml(path)
+                load_gantry_from_yaml(path)
         finally:
             os.unlink(path)
 
@@ -114,16 +114,16 @@ working_volume:
         path = _write_temp_yaml(yaml_content)
         try:
             with pytest.raises(Exception, match="x_min"):
-                load_machine_from_yaml(path)
+                load_gantry_from_yaml(path)
         finally:
             os.unlink(path)
 
     def test_extra_top_level_key_raises(self):
-        yaml_content = VALID_MACHINE_YAML + "extra_key: value\n"
+        yaml_content = VALID_GANTRY_YAML + "extra_key: value\n"
         path = _write_temp_yaml(yaml_content)
         try:
             with pytest.raises(Exception):
-                load_machine_from_yaml(path)
+                load_gantry_from_yaml(path)
         finally:
             os.unlink(path)
 
@@ -131,22 +131,22 @@ working_volume:
         path = _write_temp_yaml("")
         try:
             with pytest.raises(Exception):
-                load_machine_from_yaml(path)
+                load_gantry_from_yaml(path)
         finally:
             os.unlink(path)
 
 
-class TestLoadMachineFromYamlSafe:
+class TestLoadGantryFromYamlSafe:
 
-    def test_safe_returns_machine_config_on_valid_yaml(self):
-        path = _write_temp_yaml(VALID_MACHINE_YAML)
+    def test_safe_returns_gantry_config_on_valid_yaml(self):
+        path = _write_temp_yaml(VALID_GANTRY_YAML)
         try:
-            result = load_machine_from_yaml_safe(path)
-            assert isinstance(result, MachineConfig)
+            result = load_gantry_from_yaml_safe(path)
+            assert isinstance(result, GantryConfig)
         finally:
             os.unlink(path)
 
-    def test_safe_wraps_validation_error_in_machine_loader_error(self):
+    def test_safe_wraps_validation_error_in_gantry_loader_error(self):
         yaml_content = """\
 serial_port: /dev/ttyUSB0
 cnc:
@@ -154,14 +154,14 @@ cnc:
 """
         path = _write_temp_yaml(yaml_content)
         try:
-            with pytest.raises(MachineLoaderError):
-                load_machine_from_yaml_safe(path)
+            with pytest.raises(GantryLoaderError):
+                load_gantry_from_yaml_safe(path)
         finally:
             os.unlink(path)
 
-    def test_safe_wraps_file_not_found_in_machine_loader_error(self):
-        with pytest.raises(MachineLoaderError):
-            load_machine_from_yaml_safe("/nonexistent/path.yaml")
+    def test_safe_wraps_file_not_found_in_gantry_loader_error(self):
+        with pytest.raises(GantryLoaderError):
+            load_gantry_from_yaml_safe("/nonexistent/path.yaml")
 
     def test_safe_error_has_how_to_fix_guidance(self):
         yaml_content = """\
@@ -171,15 +171,15 @@ cnc:
 """
         path = _write_temp_yaml(yaml_content)
         try:
-            with pytest.raises(MachineLoaderError, match="How to fix"):
-                load_machine_from_yaml_safe(path)
+            with pytest.raises(GantryLoaderError, match="How to fix"):
+                load_gantry_from_yaml_safe(path)
         finally:
             os.unlink(path)
 
     def test_safe_wraps_yaml_parse_error(self):
         path = _write_temp_yaml("{{bad yaml")
         try:
-            with pytest.raises(MachineLoaderError, match="How to fix"):
-                load_machine_from_yaml_safe(path)
+            with pytest.raises(GantryLoaderError, match="How to fix"):
+                load_gantry_from_yaml_safe(path)
         finally:
             os.unlink(path)

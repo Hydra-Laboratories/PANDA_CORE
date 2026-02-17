@@ -1,4 +1,4 @@
-# PANDA — Genmitsu 3018 PROver v2 (larger machine)
+# PANDA — Genmitsu 3018 PROver v2 (larger gantry)
 serial_port: /dev/cu.usbserial-140
 cnc:
   homing_strategy: xy_hard_limits
