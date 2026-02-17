@@ -15,7 +15,7 @@ def main():
     print("CNC Homing Wrapper")
     print("--------------------------------------------------")
 
-    config_path = project_root / "configs/genmitsu_3018_PROver_v2.yaml"
+    config_path = project_root / "configs/gantries/genmitsu_3018_PROver_v2.yaml"
     if not config_path.exists():
         print(f"Config not found at {config_path}")
         return
@@ -29,7 +29,7 @@ def main():
         return
 
     gantry = Gantry(config=driver_config)
-    
+
     try:
         print("Connecting to CNC...")
         gantry.connect()
@@ -46,6 +46,7 @@ def main():
     finally:
         print("Disconnecting...")
         gantry.disconnect()
+
 
 if __name__ == "__main__":
     main()

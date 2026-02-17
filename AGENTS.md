@@ -5,7 +5,7 @@ This repository contains code to control a CNC router (mill) using a Python-base
 ## Key Components
 
 ### Source Code (`src/instrument_drivers/cnc_driver`)
-- **`driver.py`**: Contains the `Mill` class, which is the main interface for controlling the CNC machine.
+- **`driver.py`**: Contains the `Mill` class, which is the main interface for controlling the CNC gantry.
     - **Usage**: Use `with Mill() as mill:` to connect.
     - **Methods**: `mill.move_to_position(x, y, z)`, `mill.home()`, `mill.current_coordinates()`.
 - **`instruments.py`**: Defines `Coordinates`, `InstrumentManager`, and `Instruments`. Handles instrument offsets.
@@ -20,7 +20,7 @@ This repository contains code to control a CNC router (mill) using a Python-base
 
 1.  **Connecting**: Always use the context manager `with Mill() as mill:` to ensure proper connection and cleanup.
 2.  **Moving**: Use `mill.move_to_position(x, y, z)` for safe moves. The driver handles validation against the working volume (negative coordinates mostly).
-    - **Coordinates**: The machine typically operates in negative space relative to Home (0,0,0). e.g., X goes from 0 to -415.
+    - **Coordinates**: The gantry typically operates in negative space relative to Home (0,0,0). e.g., X goes from 0 to -415.
 3.  **Offsets**: Instruments have offsets managed by `InstrumentManager`.
 
 ### Instruments (`src/instruments`)
@@ -66,17 +66,26 @@ Driver for Opentrons OT-2 and Flex pipettes. Communicates with the pipette motor
 ### Protocol Engine (`src/protocol_engine`)
 A modular system for executing experiment sequences defined in code or YAML.
 
-- **`schema.py`**: Pydantic models acting as the "Source of Truth" for valid actions (`MoveAction`, `ImageAction`) and sequences. Supports loading from YAML.
-    - **Usage**: `ExperimentSequence.from_yaml("path/to/experiment.yaml")`
-- **`config.py`**: `DeckConfig` class managing machine bounds, safe heights, and hardware settings (Config Loading).
-    - **Config File**: `configs/genmitsu_3018_deck_config.yaml`
-- **`path_planner.py`**: Generates safe, optimized `PathPlan`s between waypoints.
-    - **Strategies**: 
-        - Naive (Lift -> Travel -> Lower)
-        - Optimized (Skip lift if safe, travel at start Z if safe)
-- **`compiler.py`**: Converts high-level `ExperimentSequence` into granular hardware `ProtocolSteps`.
-- **`camera.py`**: `Camera` class wrapping OpenCV for robust image capture (handles warmup, retries).
-- **`executor.py`**: `ProtocolExecutor` that orchestrates the `Mill` and `Camera` to run the compiled protocol.
+- **`protocol.py`**: `Protocol`, `ProtocolStep`, and `ProtocolContext` classes. `ProtocolContext` provides `board`, `deck`, and optionally `gantry` config to command handlers.
+- **`yaml_schema.py`**: Pydantic schemas for protocol YAML (step validation against registered commands).
+- **`loader.py`**: `load_protocol_from_yaml(path)` and `_safe` variant.
+- **`registry.py`**: `CommandRegistry` singleton and `@protocol_command()` decorator for registering commands.
+- **`setup.py`**: `setup_protocol(gantry_path, deck_path, board_path, protocol_path)` — loads all configs, validates bounds, and returns `(Protocol, ProtocolContext)` ready to run. Uses `OfflineGantry` by default for offline validation.
+- **`commands/`**: Protocol command implementations (`move.py`, `pipette.py`, `scan.py`).
+
+### Gantry Config (`src/gantry`)
+Gantry YAML loader and domain model for CNC gantry working volume and homing strategy.
+
+- **`yaml_schema.py`**: `GantryYamlSchema` with strict Pydantic validation (working volume bounds, homing strategy, serial port).
+- **`gantry_config.py`**: `GantryConfig` and `WorkingVolume` frozen dataclasses. `WorkingVolume.contains(x, y, z)` checks if a point is within bounds (inclusive).
+- **`loader.py`**: `load_gantry_from_yaml(path)` and `load_gantry_from_yaml_safe(path)`.
+- **Config files**: `configs/gantries/` (e.g., `genmitsu_3018_PROver_v2.yaml`).
+
+### Validation (`src/validation`)
+Bounds validation for protocol setup — ensures all deck positions and gantry-computed positions are within the gantry's working volume before the protocol runs.
+
+- **`bounds.py`**: `validate_deck_positions(gantry, deck)` and `validate_gantry_positions(gantry, deck, board)`. Returns lists of `BoundsViolation` objects. Gantry formula: `gantry_pos = deck_pos - instrument_offset`.
+- **`errors.py`**: `BoundsViolation` dataclass and `SetupValidationError` exception with all violations listed.
 
 ### Deck and Labware (`src/deck`)
 Deck configuration loading, runtime deck container, and labware geometry/positioning models.
@@ -90,9 +99,18 @@ Deck configuration loading, runtime deck container, and labware geometry/positio
   - **`src/deck/yaml_schema.py`**: Pydantic models for deck YAML: `DeckYamlSchema` (root, single key `labware`), `WellPlateYamlEntry` (two-point calibration points under `calibration.a1` and `calibration.a2`, axis-aligned only), `VialYamlEntry` (single vial location). Both require `model_name`. All use `extra='forbid'`.
   - **`src/deck/loader.py`**: `load_deck_from_yaml(path)` loads a deck YAML file and returns a `Deck` containing all labware. Well plates are built from calibration A1/A2 and x/y offsets (derived well positions); vials from a single explicit `location`.
   - **`src/deck/errors.py`**: `DeckLoaderError` for user-facing loader failures.
-- **Sample config**: `configs/deck.sample.yaml` — one well plate and one vial; use as reference for required fields and two-point calibration format.
-- **Sample inspection script**: `show_deck_objects.py` loads `configs/deck.sample.yaml` and prints the resulting object mapping.
-- **Usage**: Load a deck with `load_deck_from_yaml("configs/deck.sample.yaml")` to get a `Deck` object. Access labware: `deck["plate_1"]`. Resolve targets: `deck.resolve("plate_1.A1")` for absolute XYZ.
+- **Sample config**: `configs/decks/deck.sample.yaml` — one well plate and one vial; use as reference for required fields and two-point calibration format.
+- **Usage**: Load a deck with `load_deck_from_yaml("configs/decks/deck.sample.yaml")` to get a `Deck` object. Access labware: `deck["plate_1"]`. Resolve targets: `deck.resolve("plate_1.A1")` for absolute XYZ.
+
+### Config Directory Structure
+Config files are organized by type:
+```
+configs/
+  gantries/     # Gantry configs (serial port, homing, working volume)
+  decks/        # Deck configs (labware positions)
+  boards/       # Board configs (instrument offsets)
+  protocols/    # Protocol configs (command sequences)
+```
 
 ### Data Persistence (`data/`)
 SQLite-backed persistence layer for self-driving lab campaigns. All state lives in the database — Python objects are stateless to survive interrupts/crashes.
@@ -127,15 +145,22 @@ SQLite-backed persistence layer for self-driving lab campaigns. All state lives 
 
 1.  **Defining Experiments**: Create a YAML file in `experiments/` defining the sequence of moves and images.
 2.  **Running**: Execute `python verify_experiment.py experiments/your_experiment.yaml`.
-3.  **Connecting**: The system handles connection details (port, camera source) via `configs/genmitsu_3018_deck_config.yaml`.
+3.  **Connecting**: The system handles connection details (port, serial) via config files in `configs/gantries/`, `configs/decks/`, `configs/boards/`, and `configs/protocols/`.
 
 ### Setup (`setup/`)
 First-run scripts for verifying hardware after unboxing.
 
-- **`hello_world.py`**: Interactive jog test. Connects to the gantry (auto-scan, no config), homes the machine, then lets you move the router with arrow keys and see live position updates.
+- **`hello_world.py`**: Interactive jog test. Connects to the gantry (auto-scan, no config), homes the gantry, then lets you move the router with arrow keys and see live position updates.
     - **Usage**: `python3 setup/hello_world.py`
     - **Controls**: Arrow keys (X/Y ±1mm), Z key (Z down 1mm), X key (Z up 1mm), Q (quit)
     - **Dependencies**: `src/hardware/gantry.py` (Gantry class)
+- **`validate_setup.py`**: Validate a protocol setup by loading all 4 configs (gantry, deck, board, protocol) and checking that all deck and gantry positions are within the gantry's working volume.
+    - **Usage**: `python setup/validate_setup.py <gantry.yaml> <deck.yaml> <board.yaml> <protocol.yaml>`
+    - **Output**: Step-by-step loading status, labware/instrument summaries, bounds validation results, and a final PASS/FAIL verdict.
+    - **Dependencies**: `src/gantry`, `src/deck`, `src/board`, `src/protocol_engine`, `src/validation`
+- **`run_protocol.py`**: Load, validate, connect to hardware, and run a protocol end-to-end. Runs offline validation first, then connects to the gantry and executes the protocol.
+    - **Usage**: `python setup/run_protocol.py <gantry.yaml> <deck.yaml> <board.yaml> <protocol.yaml>`
+    - **Dependencies**: `src/gantry`, `src/deck`, `src/board`, `src/protocol_engine`, `src/validation`
 - **`keyboard_input.py`**: Helper module that reads single keypresses (including arrow keys) without requiring Enter. Uses `tty`/`termios` (Unix only).
 
 ## Environment

@@ -1,6 +1,6 @@
 """First-run interactive router test.
 
-Welcomes the user, homes the CNC machine, then lets them jog the
+Welcomes the user, homes the CNC gantry, then lets them jog the
 router interactively with keyboard keys while displaying position.
 """
 
@@ -21,14 +21,14 @@ from setup.keyboard_input import read_keypress_batch, flush_stdin
 
 CONFIGS_DIR = project_root / "configs"
 
-MACHINES = {
+GANTRIES = {
     "PANDA": {
         "label": "PANDA (XL — 415x300x200mm)",
-        "config_file": CONFIGS_DIR / "genmitsu_3018_PROver_v2.yaml",
+        "config_file": CONFIGS_DIR / "gantries" / "genmitsu_3018_PROver_v2.yaml",
     },
     "CUB": {
         "label": "CUB (Small — 300x200x80mm)",
-        "config_file": CONFIGS_DIR / "genmitsu_3018_PRO_Desktop.yaml",
+        "config_file": CONFIGS_DIR / "gantries" / "genmitsu_3018_PRO_Desktop.yaml",
     },
 }
 
@@ -49,24 +49,24 @@ def print_position(coords: dict) -> None:
     print(f"  Position -> X: {coords['x']:.1f}  Y: {coords['y']:.1f}  Z: {coords['z']:.1f}")
 
 
-def load_machine_config(config_file: Path) -> dict:
+def load_gantry_config(config_file: Path) -> dict:
     with open(config_file) as f:
         return yaml.safe_load(f)
 
 
-def select_machine() -> tuple:
-    """Returns (machine_entry, loaded_config)."""
+def select_gantry() -> tuple:
+    """Returns (gantry_entry, loaded_config)."""
     print("\nWhich system are you working with?")
-    print("  1) PANDA  — the larger XL machine (415x300x200mm)")
-    print("  2) CUB    — the smaller machine   (300x200x80mm)")
+    print("  1) PANDA  — the larger XL gantry (415x300x200mm)")
+    print("  2) CUB    — the smaller gantry   (300x200x80mm)")
 
     while True:
         choice = input("\nEnter 1 or 2: ").strip()
         if choice in ("1", "2"):
             key = "PANDA" if choice == "1" else "CUB"
-            machine = MACHINES[key]
-            config = load_machine_config(machine["config_file"])
-            return machine, config
+            gantry_entry = GANTRIES[key]
+            config = load_gantry_config(gantry_entry["config_file"])
+            return gantry_entry, config
         print("Invalid choice. Please enter 1 or 2.")
 
 
@@ -76,8 +76,8 @@ def main() -> None:
     print("  First-run interactive jog test")
     print("=" * 50)
 
-    machine, config = select_machine()
-    print(f"\nSelected: {machine['label']}")
+    gantry_entry, config = select_gantry()
+    print(f"\nSelected: {gantry_entry['label']}")
 
     gantry = Gantry(config=config)
 
@@ -94,7 +94,7 @@ def main() -> None:
     print("Connected successfully.")
 
     try:
-        input("\nPress ENTER to home the machine...")
+        input("\nPress ENTER to home the gantry...")
         print("Homing... (this may take a moment)")
         gantry.home()
         print("Homing complete.")

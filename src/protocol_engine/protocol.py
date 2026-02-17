@@ -5,11 +5,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 from deck.deck import Deck
 
-from board.board import Board
+from src.board.board import Board
+from src.gantry.gantry_config import GantryConfig
 
 
 @dataclass
@@ -23,6 +24,7 @@ class ProtocolContext:
 
     board: Board
     deck: Deck
+    gantry: Optional[GantryConfig] = None
     logger: logging.Logger = field(
         default_factory=lambda: logging.getLogger("protocol"),
     )

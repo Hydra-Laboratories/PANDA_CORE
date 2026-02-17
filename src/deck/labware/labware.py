@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class Coordinate3D(BaseModel):
-    """Simple 3D coordinate representation in deck space (absolute machine coordinates)."""
+    """Simple 3D coordinate representation in deck space (absolute gantry coordinates)."""
 
     model_config = ConfigDict(extra="forbid")
 

@@ -20,12 +20,38 @@ This project features a robust **Protocol Engine** for defining and executing au
 - **Labware Abstractions**: Centralized models for well plates and vials, making it easy to target logical positions (e.g., `A1`) and resolve them into absolute deck coordinates.
 
 ### Running an Experiment
-1. **Configure Hardware**: Update `configs/genmitsu_3018_deck_config.yaml` with your machine bounds, camera source, and serial port.
+1. **Configure Hardware**: Update config files in `configs/gantries/`, `configs/decks/`, `configs/boards/`, and `configs/protocols/` for your hardware setup.
 2. **Define Experiment**: Create a YAML file in `experiments/` (e.g., `experiments/my_experiment.yaml`).
 3. **Run**:
    ```bash
    python verify_experiment.py experiments/my_experiment.yaml
    ```
+
+## Config Directory Structure
+
+Config files are organized into subdirectories by type:
+
+```
+configs/
+  gantries/     # Gantry configs (serial port, homing, working volume)
+  decks/        # Deck configs (labware positions)
+  boards/       # Board configs (instrument offsets)
+  protocols/    # Protocol configs (command sequences)
+```
+
+## Gantry Config
+
+Gantry YAML defines the CNC gantry's working volume bounds, serial port, and homing strategy. Load with:
+
+```python
+from src.gantry import load_gantry_from_yaml
+
+gantry = load_gantry_from_yaml("configs/gantries/genmitsu_3018_PROver_v2.yaml")
+# gantry.working_volume.x_min, gantry.working_volume.x_max, etc.
+# gantry.homing_strategy, gantry.serial_port
+```
+
+See `configs/gantries/genmitsu_3018_PROver_v2.yaml` for the required schema.
 
 ## Labware Models and Deck YAML
 
@@ -40,18 +66,12 @@ Logical labware (well plates and vials) is modeled in `src/deck/labware/`:
 ```python
 from src.deck import load_deck_from_yaml
 
-deck = load_deck_from_yaml("configs/deck.sample.yaml")
+deck = load_deck_from_yaml("configs/decks/deck.sample.yaml")
 # deck["plate_1"] -> WellPlate; deck["vial_1"] -> Vial
 # deck.resolve("plate_1.A1")  # absolute XYZ coordinate
 ```
 
-See `configs/deck.sample.yaml` for the required schema. Validation is strict: missing, extra, or wrong-type fields raise `ValidationError`; two-point calibration for well plates must be axis-aligned (A1 and A2 share either x or y).
-
-To quickly inspect loaded objects from the sample deck YAML, run:
-
-```bash
-python show_deck_objects.py
-```
+See `configs/decks/deck.sample.yaml` for the required schema. Validation is strict: missing, extra, or wrong-type fields raise `ValidationError`; two-point calibration for well plates must be axis-aligned (A1 and A2 share either x or y).
 
 ## Instrument Drivers
 
@@ -100,6 +120,58 @@ mock.measure()
 print(mock.command_history)  # ['measure']
 ```
 
+<<<<<<< HEAD
+## Protocol Setup and Validation
+
+The `setup_protocol()` function loads all four configs, validates that all deck positions and gantry-computed positions are within the gantry's working volume, and returns a ready-to-run `Protocol` + `ProtocolContext`:
+
+```python
+from src.protocol_engine.setup import setup_protocol
+
+protocol, context = setup_protocol(
+    gantry_path="configs/gantries/genmitsu_3018_PROver_v2.yaml",
+    deck_path="configs/decks/mofcat_deck.yaml",
+    board_path="configs/boards/mofcat_board.yaml",
+    protocol_path="configs/protocols/protocol.sample.yaml",
+)
+# Protocol is ready to run once validation passes:
+protocol.run(context)
+```
+
+Validation checks:
+- All labware positions (every well, every vial) are within gantry working volume
+- For every (instrument, position) pair, the computed gantry position is within bounds
+- Raises `SetupValidationError` with all violations listed if any checks fail
+
+### Validate Setup (CLI)
+
+Run validation from the command line to see human-readable output:
+
+```bash
+python setup/validate_setup.py \
+    configs/gantries/genmitsu_3018_PROver_v2.yaml \
+    configs/decks/mofcat_deck.yaml \
+    configs/boards/mofcat_board.yaml \
+    configs/protocols/protocol.sample.yaml
+```
+
+The script prints step-by-step output: each config loaded with details (gantry bounds, labware list, instruments, protocol steps), followed by deck and gantry bounds validation results, and a final PASS/FAIL summary.
+
+### Run Protocol (CLI)
+
+Validate and run a protocol end-to-end (requires hardware connection):
+
+```bash
+python setup/run_protocol.py \
+    configs/gantries/genmitsu_3018_PROver_v2.yaml \
+    configs/decks/mofcat_deck.yaml \
+    configs/boards/mofcat_board.yaml \
+    configs/protocols/protocol.sample.yaml
+```
+
+This first runs offline validation (same output as `validate_setup.py`), then connects to the gantry and executes the protocol.
+
+=======
 ## Data Persistence
 
 Campaign data is persisted to a local SQLite database via `DataStore`. All state lives in SQLite (not in Python objects) so nothing is lost on interrupt or crash. Tracks campaigns, labware volumes/contents, per-well experiments, and instrument measurements.
@@ -135,6 +207,7 @@ An empty initialized database template is at `data/databases/panda_data.db` — 
 sqlite3 data/databases/panda_data.db ".schema"
 ```
 
+>>>>>>> main
 ## Development
 
 Run unit tests:

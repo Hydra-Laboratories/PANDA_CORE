@@ -162,3 +162,4 @@ src/protocol_engine/__pycache__/
 .env
 architecture.md
 test_scripts/
+src/gantry/gantry_driver/mill_port.txt
