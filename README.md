@@ -142,6 +142,20 @@ Validation checks:
 - For every (instrument, position) pair, the computed gantry position is within bounds
 - Raises `SetupValidationError` with all violations listed if any checks fail
 
+### Validate Setup (CLI)
+
+Run validation from the command line to see human-readable output:
+
+```bash
+python setup/validate_setup.py \
+    configs/machines/genmitsu_3018_PROver_v2.yaml \
+    configs/decks/mofcat_deck.yaml \
+    configs/boards/mofcat_board.yaml \
+    configs/protocols/protocol.sample.yaml
+```
+
+The script prints step-by-step output: each config loaded with details (machine bounds, labware list, instruments, protocol steps), followed by deck and gantry bounds validation results, and a final PASS/FAIL summary.
+
 ## Development
 
 Run unit tests:

@@ -130,6 +130,10 @@ First-run scripts for verifying hardware after unboxing.
     - **Usage**: `python3 setup/hello_world.py`
     - **Controls**: Arrow keys (X/Y ±1mm), Z key (Z down 1mm), X key (Z up 1mm), Q (quit)
     - **Dependencies**: `src/hardware/gantry.py` (Gantry class)
+- **`validate_setup.py`**: Validate a protocol setup by loading all 4 configs (machine, deck, board, protocol) and checking that all deck and gantry positions are within the machine's working volume.
+    - **Usage**: `python setup/validate_setup.py <machine.yaml> <deck.yaml> <board.yaml> <protocol.yaml>`
+    - **Output**: Step-by-step loading status, labware/instrument summaries, bounds validation results, and a final PASS/FAIL verdict.
+    - **Dependencies**: `src/machine`, `src/deck`, `src/board`, `src/protocol_engine`, `src/validation`
 - **`keyboard_input.py`**: Helper module that reads single keypresses (including arrow keys) without requiring Enter. Uses `tty`/`termios` (Unix only).
 
 ## Environment
