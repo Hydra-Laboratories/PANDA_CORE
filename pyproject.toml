@@ -13,6 +13,6 @@ dev = ["pytest"]
 
 [tool.setuptools.packages.find]
 where = ["src", "."]
-include = ["data", "data.*", "deck", "deck.*", "instruments", "instruments.*",
-           "protocol_engine", "protocol_engine.*", "board", "board.*",
-           "hardware", "hardware.*"]
+include = ["data", "data.*", "deck", "deck.*", "gantry", "gantry.*",
+           "instruments", "instruments.*", "protocol_engine", "protocol_engine.*",
+           "board", "board.*"]
