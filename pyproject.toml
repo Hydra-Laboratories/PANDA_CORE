@@ -12,4 +12,7 @@ dependencies = [
 dev = ["pytest"]
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "."]
+include = ["data", "data.*", "deck", "deck.*", "gantry", "gantry.*",
+           "instruments", "instruments.*", "protocol_engine", "protocol_engine.*",
+           "board", "board.*"]
