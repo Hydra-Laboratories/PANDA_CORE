@@ -27,6 +27,32 @@ This project features a robust **Protocol Engine** for defining and executing au
    python verify_experiment.py experiments/my_experiment.yaml
    ```
 
+## Config Directory Structure
+
+Config files are organized into subdirectories by type:
+
+```
+configs/
+  machines/     # Machine configs (serial port, homing, working volume)
+  decks/        # Deck configs (labware positions)
+  boards/       # Board configs (instrument offsets)
+  protocols/    # Protocol configs (command sequences)
+```
+
+## Machine Config
+
+Machine YAML defines the CNC machine's working volume bounds, serial port, and homing strategy. Load with:
+
+```python
+from src.machine import load_machine_from_yaml
+
+machine = load_machine_from_yaml("configs/machines/genmitsu_3018_PROver_v2.yaml")
+# machine.working_volume.x_min, machine.working_volume.x_max, etc.
+# machine.homing_strategy, machine.serial_port
+```
+
+See `configs/machines/genmitsu_3018_PROver_v2.yaml` for the required schema.
+
 ## Labware Models and Deck YAML
 
 Logical labware (well plates and vials) is modeled in `src/deck/labware/`:
@@ -40,18 +66,12 @@ Logical labware (well plates and vials) is modeled in `src/deck/labware/`:
 ```python
 from src.deck import load_deck_from_yaml
 
-deck = load_deck_from_yaml("configs/deck.sample.yaml")
+deck = load_deck_from_yaml("configs/decks/deck.sample.yaml")
 # deck["plate_1"] -> WellPlate; deck["vial_1"] -> Vial
 # deck.resolve("plate_1.A1")  # absolute XYZ coordinate
 ```
 
-See `configs/deck.sample.yaml` for the required schema. Validation is strict: missing, extra, or wrong-type fields raise `ValidationError`; two-point calibration for well plates must be axis-aligned (A1 and A2 share either x or y).
-
-To quickly inspect loaded objects from the sample deck YAML, run:
-
-```bash
-python show_deck_objects.py
-```
+See `configs/decks/deck.sample.yaml` for the required schema. Validation is strict: missing, extra, or wrong-type fields raise `ValidationError`; two-point calibration for well plates must be axis-aligned (A1 and A2 share either x or y).
 
 ## Instrument Drivers
 
@@ -99,6 +119,28 @@ mock.connect()
 mock.measure()
 print(mock.command_history)  # ['measure']
 ```
+
+## Protocol Setup and Validation
+
+The `setup_protocol()` function loads all four configs, validates that all deck positions and gantry-computed positions are within the machine's working volume, and returns a ready-to-run `Protocol` + `ProtocolContext`:
+
+```python
+from src.protocol_engine.setup import setup_protocol
+
+protocol, context = setup_protocol(
+    machine_path="configs/machines/genmitsu_3018_PROver_v2.yaml",
+    deck_path="configs/decks/mofcat_deck.yaml",
+    board_path="configs/boards/mofcat_board.yaml",
+    protocol_path="configs/protocols/protocol.sample.yaml",
+)
+# Protocol is ready to run once validation passes:
+protocol.run(context)
+```
+
+Validation checks:
+- All labware positions (every well, every vial) are within machine working volume
+- For every (instrument, position) pair, the computed gantry position is within bounds
+- Raises `SetupValidationError` with all violations listed if any checks fail
 
 ## Development
 

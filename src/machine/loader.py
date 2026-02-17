@@ -1,0 +1,92 @@
+"""Load machine YAML into a MachineConfig."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import yaml
+from pydantic import ValidationError
+
+from .errors import MachineLoaderError
+from .machine_config import MachineConfig, WorkingVolume
+from .yaml_schema import MachineYamlSchema
+
+
+def _format_loader_exception(path: Path, error: Exception) -> str:
+    """Return a concise, actionable error message."""
+    detail = str(error)
+
+    if isinstance(error, ValidationError):
+        first = error.errors()[0] if error.errors() else {}
+        detail = first.get("msg", detail)
+        location = ".".join(str(part) for part in first.get("loc", []))
+        error_type = first.get("type", "")
+
+        if "missing" in error_type or "Field required" in detail:
+            guidance = "Add the missing required YAML field shown in the error location."
+        elif "extra_forbidden" in error_type or "Extra inputs are not permitted" in detail:
+            guidance = "Remove unknown YAML fields; only 'serial_port', 'cnc', and 'working_volume' are allowed at root."
+        else:
+            guidance = "Review the YAML values against the machine schema."
+
+        prefix = f" at `{location}`" if location else ""
+        return f"Machine YAML error{prefix}: {detail}\nHow to fix: {guidance}"
+
+    if isinstance(error, yaml.YAMLError):
+        return (
+            f"Machine YAML parse error in `{path}`.\n"
+            "How to fix: Check YAML indentation, colons, and structure."
+        )
+
+    if isinstance(error, FileNotFoundError):
+        return (
+            f"Machine config file not found: `{path}`.\n"
+            "How to fix: Verify the file path exists."
+        )
+
+    return (
+        f"Machine loader error in `{path}`: {detail}\n"
+        "How to fix: Verify the file path and machine YAML contents."
+    )
+
+
+def load_machine_from_yaml(path: str | Path) -> MachineConfig:
+    """Load a machine YAML file and return a MachineConfig.
+
+    Raises:
+        FileNotFoundError: If the YAML file does not exist.
+        yaml.YAMLError: If the file is not valid YAML.
+        ValidationError: If the YAML does not match the schema.
+    """
+    path = Path(path)
+    with path.open() as f:
+        raw = yaml.safe_load(f)
+    if raw is None:
+        raw = {}
+
+    schema = MachineYamlSchema.model_validate(raw)
+    return MachineConfig(
+        serial_port=schema.serial_port,
+        homing_strategy=schema.cnc.homing_strategy,
+        working_volume=WorkingVolume(
+            x_min=schema.working_volume.x_min,
+            x_max=schema.working_volume.x_max,
+            y_min=schema.working_volume.y_min,
+            y_max=schema.working_volume.y_max,
+            z_min=schema.working_volume.z_min,
+            z_max=schema.working_volume.z_max,
+        ),
+    )
+
+
+def load_machine_from_yaml_safe(path: str | Path) -> MachineConfig:
+    """Load machine YAML with user-friendly exception formatting.
+
+    Raises:
+        MachineLoaderError: Concise, actionable message intended for CLI output.
+    """
+    resolved = Path(path)
+    try:
+        return load_machine_from_yaml(resolved)
+    except Exception as exc:
+        raise MachineLoaderError(_format_loader_exception(resolved, exc)) from exc

@@ -5,23 +5,26 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 from src.deck.deck import Deck
 
 from src.board.board import Board
+from src.machine.machine_config import MachineConfig
 
 
 @dataclass
 class ProtocolContext:
     """Runtime context injected into every command handler.
 
-    Provides access to the Board (gantry + instruments) and the Deck
-    (labware target resolution).
+    Provides access to the Board (gantry + instruments), the Deck
+    (labware target resolution), and optionally the MachineConfig
+    (working volume and hardware settings).
     """
 
     board: Board
     deck: Deck
+    machine: Optional[MachineConfig] = None
     logger: logging.Logger = field(
         default_factory=lambda: logging.getLogger("protocol"),
     )

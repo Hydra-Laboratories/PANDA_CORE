@@ -66,17 +66,26 @@ Driver for Opentrons OT-2 and Flex pipettes. Communicates with the pipette motor
 ### Protocol Engine (`src/protocol_engine`)
 A modular system for executing experiment sequences defined in code or YAML.
 
-- **`schema.py`**: Pydantic models acting as the "Source of Truth" for valid actions (`MoveAction`, `ImageAction`) and sequences. Supports loading from YAML.
-    - **Usage**: `ExperimentSequence.from_yaml("path/to/experiment.yaml")`
-- **`config.py`**: `DeckConfig` class managing machine bounds, safe heights, and hardware settings (Config Loading).
-    - **Config File**: `configs/genmitsu_3018_deck_config.yaml`
-- **`path_planner.py`**: Generates safe, optimized `PathPlan`s between waypoints.
-    - **Strategies**: 
-        - Naive (Lift -> Travel -> Lower)
-        - Optimized (Skip lift if safe, travel at start Z if safe)
-- **`compiler.py`**: Converts high-level `ExperimentSequence` into granular hardware `ProtocolSteps`.
-- **`camera.py`**: `Camera` class wrapping OpenCV for robust image capture (handles warmup, retries).
-- **`executor.py`**: `ProtocolExecutor` that orchestrates the `Mill` and `Camera` to run the compiled protocol.
+- **`protocol.py`**: `Protocol`, `ProtocolStep`, and `ProtocolContext` classes. `ProtocolContext` provides `board`, `deck`, and optionally `machine` to command handlers.
+- **`yaml_schema.py`**: Pydantic schemas for protocol YAML (step validation against registered commands).
+- **`loader.py`**: `load_protocol_from_yaml(path)` and `_safe` variant.
+- **`registry.py`**: `CommandRegistry` singleton and `@protocol_command()` decorator for registering commands.
+- **`setup.py`**: `setup_protocol(machine_path, deck_path, board_path, protocol_path)` — loads all configs, validates bounds, and returns `(Protocol, ProtocolContext)` ready to run. Uses a mock gantry by default for offline validation.
+- **`commands/`**: Protocol command implementations (`move.py`, `pipette.py`, `scan.py`).
+
+### Machine Config (`src/machine`)
+Machine YAML loader and domain model for CNC machine working volume and homing strategy.
+
+- **`yaml_schema.py`**: `MachineYamlSchema` with strict Pydantic validation (working volume bounds, homing strategy, serial port).
+- **`machine_config.py`**: `MachineConfig` and `WorkingVolume` frozen dataclasses. `WorkingVolume.contains(x, y, z)` checks if a point is within bounds (inclusive).
+- **`loader.py`**: `load_machine_from_yaml(path)` and `load_machine_from_yaml_safe(path)`.
+- **Config files**: `configs/machines/` (e.g., `genmitsu_3018_PROver_v2.yaml`).
+
+### Validation (`src/validation`)
+Bounds validation for protocol setup — ensures all deck positions and gantry-computed positions are within the machine's working volume before the protocol runs.
+
+- **`bounds.py`**: `validate_deck_positions(machine, deck)` and `validate_gantry_positions(machine, deck, board)`. Returns lists of `BoundsViolation` objects. Gantry formula: `gantry_pos = deck_pos - instrument_offset`.
+- **`errors.py`**: `BoundsViolation` dataclass and `SetupValidationError` exception with all violations listed.
 
 ### Deck and Labware (`src/deck`)
 Deck configuration loading, runtime deck container, and labware geometry/positioning models.
@@ -90,9 +99,18 @@ Deck configuration loading, runtime deck container, and labware geometry/positio
   - **`src/deck/yaml_schema.py`**: Pydantic models for deck YAML: `DeckYamlSchema` (root, single key `labware`), `WellPlateYamlEntry` (two-point calibration points under `calibration.a1` and `calibration.a2`, axis-aligned only), `VialYamlEntry` (single vial location). Both require `model_name`. All use `extra='forbid'`.
   - **`src/deck/loader.py`**: `load_deck_from_yaml(path)` loads a deck YAML file and returns a `Deck` containing all labware. Well plates are built from calibration A1/A2 and x/y offsets (derived well positions); vials from a single explicit `location`.
   - **`src/deck/errors.py`**: `DeckLoaderError` for user-facing loader failures.
-- **Sample config**: `configs/deck.sample.yaml` — one well plate and one vial; use as reference for required fields and two-point calibration format.
-- **Sample inspection script**: `show_deck_objects.py` loads `configs/deck.sample.yaml` and prints the resulting object mapping.
-- **Usage**: Load a deck with `load_deck_from_yaml("configs/deck.sample.yaml")` to get a `Deck` object. Access labware: `deck["plate_1"]`. Resolve targets: `deck.resolve("plate_1.A1")` for absolute XYZ.
+- **Sample config**: `configs/decks/deck.sample.yaml` — one well plate and one vial; use as reference for required fields and two-point calibration format.
+- **Usage**: Load a deck with `load_deck_from_yaml("configs/decks/deck.sample.yaml")` to get a `Deck` object. Access labware: `deck["plate_1"]`. Resolve targets: `deck.resolve("plate_1.A1")` for absolute XYZ.
+
+### Config Directory Structure
+Config files are organized by type:
+```
+configs/
+  machines/     # Machine configs (serial port, homing, working volume)
+  decks/        # Deck configs (labware positions)
+  boards/       # Board configs (instrument offsets)
+  protocols/    # Protocol configs (command sequences)
+```
 
 ### Experiments
 - **`experiments/`**: Directory for storing YAML experiment definitions.
