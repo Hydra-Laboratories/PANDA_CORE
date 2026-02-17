@@ -10,7 +10,9 @@ import pytest
 from deck.labware.labware import Coordinate3D
 from deck.labware.well_plate import WellPlate
 from instruments.base_instrument import BaseInstrument
+from instruments.uvvis_ccs.models import UVVisSpectrum
 from protocol_engine.errors import ProtocolExecutionError
+from protocol_engine.measurements import InstrumentMeasurement
 from protocol_engine.protocol import ProtocolContext
 
 
@@ -242,3 +244,25 @@ class TestScanCommand:
 
         for c in ctx.board.move.call_args_list:
             assert c.args[0] == "uvvis"
+
+    def test_logs_normalized_instrument_measurement(self):
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x2_plate()
+        sensor = _make_sensor()
+        sensor._return_value = UVVisSpectrum(
+            wavelengths=(400.0, 500.0),
+            intensities=(0.1, 0.2),
+            integration_time_s=0.24,
+        )
+        ctx = _mock_context(plate=plate, sensor=sensor)
+        ctx.data_store = MagicMock()
+        ctx.data_store.get_contents.return_value = []
+        ctx.data_store.create_experiment.return_value = 101
+        ctx.campaign_id = 77
+
+        scan(ctx, plate="plate_1", instrument="uvvis", method="measure")
+
+        assert ctx.data_store.log_measurement.call_count == 4
+        measurement = ctx.data_store.log_measurement.call_args_list[0].args[1]
+        assert isinstance(measurement, InstrumentMeasurement)

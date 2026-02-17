@@ -9,6 +9,7 @@ from typing import Any, List, Optional, Union
 
 from instruments.filmetrics.models import MeasurementResult
 from instruments.uvvis_ccs.models import UVVisSpectrum
+from protocol_engine.measurements import InstrumentMeasurement, MeasurementType
 
 _SCHEMA_SQL = """\
 CREATE TABLE IF NOT EXISTS campaigns (
@@ -121,13 +122,13 @@ class DataStore:
     def log_measurement(
         self,
         experiment_id: int,
-        result: Union[UVVisSpectrum, MeasurementResult, str],
+        result: Union[InstrumentMeasurement, UVVisSpectrum, MeasurementResult, str],
     ) -> int:
         """Log a measurement result, dispatching by type.
 
         Args:
             experiment_id: FK to the experiments table.
-            result: One of UVVisSpectrum, MeasurementResult, or str (image path).
+            result: An InstrumentMeasurement or legacy measurement value.
 
         Returns:
             The newly inserted measurement row ID.
@@ -135,6 +136,8 @@ class DataStore:
         Raises:
             TypeError: If *result* is not a recognised measurement type.
         """
+        if isinstance(result, InstrumentMeasurement):
+            return self._log_instrument_measurement(experiment_id, result)
         if isinstance(result, UVVisSpectrum):
             return self._log_uvvis(experiment_id, result)
         if isinstance(result, MeasurementResult):
@@ -145,16 +148,51 @@ class DataStore:
             f"Unsupported measurement type: {type(result).__name__}"
         )
 
+    def _log_instrument_measurement(
+        self,
+        experiment_id: int,
+        measurement: InstrumentMeasurement,
+    ) -> int:
+        if measurement.measurement_type == MeasurementType.UVVIS_SPECTRUM:
+            wavelengths = tuple(measurement.payload["wavelength_nm"])
+            intensities = tuple(measurement.payload["intensity_au"])
+            integration_time_s = float(measurement.metadata["integration_time_s"])
+            return self._log_uvvis_values(
+                experiment_id=experiment_id,
+                wavelengths=wavelengths,
+                intensities=intensities,
+                integration_time_s=integration_time_s,
+            )
+
+        raise TypeError(
+            "Unsupported instrument measurement type: "
+            f"{measurement.measurement_type}"
+        )
+
     def _log_uvvis(self, experiment_id: int, spectrum: UVVisSpectrum) -> int:
+        return self._log_uvvis_values(
+            experiment_id=experiment_id,
+            wavelengths=spectrum.wavelengths,
+            intensities=spectrum.intensities,
+            integration_time_s=spectrum.integration_time_s,
+        )
+
+    def _log_uvvis_values(
+        self,
+        experiment_id: int,
+        wavelengths: tuple[float, ...],
+        intensities: tuple[float, ...],
+        integration_time_s: float,
+    ) -> int:
         cursor = self._conn.execute(
             "INSERT INTO uvvis_measurements "
             "(experiment_id, wavelengths, intensities, integration_time_s) "
             "VALUES (?, ?, ?, ?)",
             (
                 experiment_id,
-                _pack_floats(spectrum.wavelengths),
-                _pack_floats(spectrum.intensities),
-                spectrum.integration_time_s,
+                _pack_floats(wavelengths),
+                _pack_floats(intensities),
+                integration_time_s,
             ),
         )
         self._conn.commit()
