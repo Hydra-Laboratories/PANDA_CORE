@@ -20,7 +20,7 @@ This project features a robust **Protocol Engine** for defining and executing au
 - **Labware Abstractions**: Centralized models for well plates and vials, making it easy to target logical positions (e.g., `A1`) and resolve them into absolute deck coordinates.
 
 ### Running an Experiment
-1. **Configure Hardware**: Update `configs/genmitsu_3018_deck_config.yaml` with your gantry bounds, camera source, and serial port.
+1. **Configure Hardware**: Update config files in `configs/gantries/`, `configs/decks/`, `configs/boards/`, and `configs/protocols/` for your hardware setup.
 2. **Define Experiment**: Create a YAML file in `experiments/` (e.g., `experiments/my_experiment.yaml`).
 3. **Run**:
    ```bash
@@ -168,7 +168,7 @@ python setup/run_protocol.py \
     configs/protocols/protocol.sample.yaml
 ```
 
-This first runs offline validation (same output as `validate_setup.py`), then connects to the gantry, homes, and executes the protocol.
+This first runs offline validation (same output as `validate_setup.py`), then connects to the gantry and executes the protocol.
 
 ## Development
 

@@ -1,5 +1,5 @@
 # Sample protocol demonstrating all available commands.
-# Load with: load_protocol_from_yaml("configs/protocols/protocol.sample.yaml")
+# Load with: load_protocol_from_yaml("configs/protocols/scan.yaml")
 # Execute with: protocol.run(ProtocolContext(board=board, deck=deck))
 
 protocol:

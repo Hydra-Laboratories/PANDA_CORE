@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+import logging
+from typing import List, Tuple
 
 from src.board.board import Board
 from src.deck.deck import Deck
@@ -11,6 +12,8 @@ from src.deck.labware.well_plate import WellPlate
 from src.gantry.gantry_config import GantryConfig, WorkingVolume
 
 from .errors import BoundsViolation
+
+logger = logging.getLogger(__name__)
 
 
 def _check_point(
@@ -46,6 +49,11 @@ def _get_all_positions(
         elif isinstance(labware, Vial):
             loc = labware.location
             positions.append((key, "location", loc.x, loc.y, loc.z))
+        else:
+            logger.warning(
+                "Skipping unknown labware type %r for key %r during bounds validation",
+                type(labware).__name__, key,
+            )
     return positions
 
 
