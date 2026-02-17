@@ -4,15 +4,19 @@ Welcomes the user, homes the CNC machine, then lets them jog the
 router interactively with keyboard keys while displaying position.
 """
 
+import logging
 import sys
+import time
 from pathlib import Path
 
 import yaml
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from src.gantry import Gantry
+from gantry import Gantry
 from setup.keyboard_input import read_keypress_batch, flush_stdin
 
 CONFIGS_DIR = project_root / "configs"
@@ -77,8 +81,10 @@ def main() -> None:
 
     gantry = Gantry(config=config)
 
+    t0 = time.monotonic()
     print("\nConnecting to gantry...")
     gantry.connect()
+    print(f"Connected in {time.monotonic() - t0:.1f}s")
 
     if not gantry.is_healthy():
         print("Error: Gantry is not healthy. Check the connection and try again.")

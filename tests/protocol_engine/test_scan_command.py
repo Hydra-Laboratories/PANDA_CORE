@@ -7,11 +7,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.deck.labware.labware import Coordinate3D
-from src.deck.labware.well_plate import WellPlate
-from src.instruments.base_instrument import BaseInstrument
-from src.protocol_engine.errors import ProtocolExecutionError
-from src.protocol_engine.protocol import ProtocolContext
+from deck.labware.labware import Coordinate3D
+from deck.labware.well_plate import WellPlate
+from instruments.base_instrument import BaseInstrument
+from protocol_engine.errors import ProtocolExecutionError
+from protocol_engine.protocol import ProtocolContext
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -115,7 +115,7 @@ def _mock_context(
 class TestScanCommand:
 
     def test_moves_instrument_to_each_well(self):
-        from src.protocol_engine.commands.scan import scan
+        from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()
         sensor = _make_sensor()
@@ -126,7 +126,7 @@ class TestScanCommand:
         assert ctx.board.move.call_count == 4
 
     def test_visits_wells_in_row_major_order(self):
-        from src.protocol_engine.commands.scan import scan
+        from protocol_engine.commands.scan import scan
 
         plate = _make_2x3_plate()
         sensor = _make_sensor()
@@ -141,7 +141,7 @@ class TestScanCommand:
         assert xs == [0.0, 10.0, 20.0, 0.0, 10.0, 20.0]
 
     def test_applies_measurement_height_offset(self):
-        from src.protocol_engine.commands.scan import scan
+        from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()  # wells at z=-5.0
         sensor = _make_sensor(measurement_height=3.0)
@@ -155,7 +155,7 @@ class TestScanCommand:
         assert zs == [-2.0, -2.0, -2.0, -2.0]
 
     def test_returns_dict_of_results_per_well(self):
-        from src.protocol_engine.commands.scan import scan
+        from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()
         sensor = _make_sensor()
@@ -168,7 +168,7 @@ class TestScanCommand:
         assert all(v is True for v in result.values())
 
     def test_captures_false_results(self):
-        from src.protocol_engine.commands.scan import scan
+        from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()
         sensor = _make_sensor()
@@ -180,7 +180,7 @@ class TestScanCommand:
         assert all(v is False for v in result.values())
 
     def test_calls_method_once_per_well(self):
-        from src.protocol_engine.commands.scan import scan
+        from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()
         sensor = _make_sensor()
@@ -191,7 +191,7 @@ class TestScanCommand:
         assert sensor.call_count == 4
 
     def test_passes_plate_to_method(self):
-        from src.protocol_engine.commands.scan import scan
+        from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()
         sensor = _make_sensor()
@@ -202,7 +202,7 @@ class TestScanCommand:
         assert all(p is plate for p in sensor.received_plates)
 
     def test_validates_plate_is_wellplate(self):
-        from src.protocol_engine.commands.scan import scan
+        from protocol_engine.commands.scan import scan
 
         sensor = _make_sensor()
         ctx = _mock_context(sensor=sensor)
@@ -213,7 +213,7 @@ class TestScanCommand:
             scan(ctx, plate="vial_1", instrument="uvvis", method="measure")
 
     def test_unknown_instrument_raises(self):
-        from src.protocol_engine.commands.scan import scan
+        from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()
         sensor = _make_sensor()
@@ -223,7 +223,7 @@ class TestScanCommand:
             scan(ctx, plate="plate_1", instrument="nonexistent", method="measure")
 
     def test_unknown_method_raises(self):
-        from src.protocol_engine.commands.scan import scan
+        from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()
         sensor = _make_sensor()
@@ -233,7 +233,7 @@ class TestScanCommand:
             scan(ctx, plate="plate_1", instrument="uvvis", method="nonexistent")
 
     def test_moves_with_correct_instrument_name(self):
-        from src.protocol_engine.commands.scan import scan
+        from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()
         sensor = _make_sensor()

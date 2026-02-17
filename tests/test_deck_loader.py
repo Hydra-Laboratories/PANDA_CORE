@@ -7,8 +7,8 @@ import pytest
 
 from pydantic import ValidationError
 
-from src.deck import WellPlate, Vial, Coordinate3D, Deck
-from src.deck.loader import (
+from deck import WellPlate, Vial, Coordinate3D, Deck
+from deck.loader import (
     DeckLoaderError,
     load_deck_from_yaml,
     load_deck_from_yaml_safe,

@@ -7,7 +7,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from src.gantry.gantry_driver.driver import Mill, wpos_pattern, mpos_pattern, Coordinates
+from gantry.gantry_driver.driver import Mill, wpos_pattern, mpos_pattern, Coordinates
 
 class TestCNCDriverLogic(unittest.TestCase):
     
@@ -35,9 +35,9 @@ class TestCNCDriverLogic(unittest.TestCase):
         self.assertIsNone(wpos_pattern.search(invalid_status))
         self.assertIsNone(mpos_pattern.search(invalid_status))
 
-    @patch('src.gantry.gantry_driver.driver.serial.Serial')
-    @patch('src.gantry.gantry_driver.driver.set_up_mill_logger')
-    @patch('src.gantry.gantry_driver.driver.set_up_command_logger')
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
     def test_generate_movement_commands(self, mock_cmd_logger, mock_mill_logger, mock_serial):
         """Test generation of G-code commands."""
         # Setup mock mill with basic config
@@ -74,9 +74,9 @@ class TestCNCDriverLogic(unittest.TestCase):
         self.assertIn("G01 Y10.0 F2000", commands_unsafe)
         self.assertNotIn("G01 X10.0 Y10.0", commands_unsafe)
 
-    @patch('src.gantry.gantry_driver.driver.serial.Serial')
-    @patch('src.gantry.gantry_driver.driver.set_up_mill_logger')
-    @patch('src.gantry.gantry_driver.driver.set_up_command_logger')
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
     def test_mock_connection(self, mock_cmd_logger, mock_mill_logger, mock_serial):
         """Test connecting with mocked serial port."""
         mock_serial_instance = MagicMock()

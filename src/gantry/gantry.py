@@ -30,7 +30,7 @@ class Gantry:
         try:
             # User requested to prioritize auto-scan.
             port = None  # Force auto-scan
-            
+
             self.logger.info(f"Connecting to gantry with port: {port} (None=Auto-scan)")
             self._mill.connect_to_mill(port=port)
             

@@ -4,14 +4,14 @@ from typing import Optional
 
 import serial
 
-from src.instruments.base_instrument import BaseInstrument
-from src.instruments.pipette.exceptions import (
+from instruments.base_instrument import BaseInstrument
+from instruments.pipette.exceptions import (
     PipetteCommandError,
     PipetteConfigError,
     PipetteConnectionError,
     PipetteTimeoutError,
 )
-from src.instruments.pipette.models import (
+from instruments.pipette.models import (
     AspirateResult,
     MixResult,
     PipetteConfig,

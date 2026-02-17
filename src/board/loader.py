@@ -8,15 +8,15 @@ from typing import Dict, Type
 import yaml
 from pydantic import ValidationError
 
-from src.gantry import Gantry
-from src.instruments.base_instrument import BaseInstrument
-from src.instruments.filmetrics.driver import Filmetrics
-from src.instruments.filmetrics.mock import MockFilmetrics
-from src.instruments.pipette.driver import Pipette
-from src.instruments.pipette.mock import MockPipette
-from src.instruments.uvvis_ccs.driver import UVVisCCS
-from src.instruments.uvvis_ccs.mock import MockUVVisCCS
-from src.board.board import Board
+from gantry import Gantry
+from instruments.base_instrument import BaseInstrument
+from instruments.filmetrics.driver import Filmetrics
+from instruments.filmetrics.mock import MockFilmetrics
+from instruments.pipette.driver import Pipette
+from instruments.pipette.mock import MockPipette
+from instruments.uvvis_ccs.driver import UVVisCCS
+from instruments.uvvis_ccs.mock import MockUVVisCCS
+from board.board import Board
 
 from .errors import BoardLoaderError
 from .yaml_schema import BoardYamlSchema

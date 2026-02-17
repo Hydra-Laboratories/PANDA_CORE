@@ -7,9 +7,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List
 
-from src.deck.deck import Deck
+from deck.deck import Deck
 
-from src.board.board import Board
+from board.board import Board
 
 
 @dataclass
@@ -58,7 +58,7 @@ class Protocol:
 
     Usage from pure Python (no YAML)::
 
-        from src.protocol_engine.commands.move import move
+        from protocol_engine.commands.move import move
 
         steps = [
             ProtocolStep(

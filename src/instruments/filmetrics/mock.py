@@ -1,7 +1,7 @@
 from typing import Optional
 
-from src.instruments.base_instrument import BaseInstrument
-from src.instruments.filmetrics.models import MeasurementResult
+from instruments.base_instrument import BaseInstrument
+from instruments.filmetrics.models import MeasurementResult
 
 
 class MockFilmetrics(BaseInstrument):

@@ -3,12 +3,12 @@ import subprocess
 import time
 from typing import Optional
 
-from src.instruments.base_instrument import BaseInstrument
-from src.instruments.filmetrics.exceptions import (
+from instruments.base_instrument import BaseInstrument
+from instruments.filmetrics.exceptions import (
     FilmetricsConnectionError,
     FilmetricsCommandError,
 )
-from src.instruments.filmetrics.models import MeasurementResult
+from instruments.filmetrics.models import MeasurementResult
 
 _SUCCESS_SENTINELS = ("complete", "successfully")
 _ERROR_SENTINELS = ("error", "exception")
