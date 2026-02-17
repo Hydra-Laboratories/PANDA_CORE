@@ -5,7 +5,7 @@
 protocol:
   # ── Move ──────────────────────────────────────────────────────────
   - move:
-      instrument: pipette
+      instrument: uvvis
       position: plate_1.A1
 
   # ── Pipette operations ────────────────────────────────────────────
@@ -33,7 +33,7 @@ protocol:
   - drop_tip:
       position: waste_1
 
-  # ── Scan ──────────────────────────────────────────────────────────
+  ── Scan ──────────────────────────────────────────────────────────
   - scan:
       plate: wellplate_1
       instrument: uvvis

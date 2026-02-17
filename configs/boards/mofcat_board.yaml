@@ -6,7 +6,7 @@ instruments:
     serial_number: "M00801544"
     dll_path: "TLCCS_64.dll"
     default_integration_time_s: 0.24
-    offset_x: -15.0
+    offset_x: 0.0
     offset_y: 0.0
-    depth: -5.0
+    depth: 0.0
     measurement_height: 3.0

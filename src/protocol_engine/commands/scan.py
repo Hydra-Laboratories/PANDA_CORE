@@ -64,6 +64,6 @@ def scan(
         well = plate_obj.get_well_center(well_id)
         target = (well.x, well.y, well.z + instr.measurement_height)
         context.board.move(instrument, target)
-        results[well_id] = callable_method(plate_obj)
+        results[well_id] = callable_method()
 
     return results

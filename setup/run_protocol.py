@@ -90,10 +90,10 @@ def main() -> None:
         if not gantry.is_healthy():
             print("WARNING: Gantry health check failed, attempting to proceed...")
 
-        print("Homing...")
-        gantry.home()
-        print("Homing complete.")
-        print()
+        # print("Homing...")
+        # gantry.home()
+        # print("Homing complete.")
+        # print()
 
         print(SEPARATOR)
         print("Running protocol...")
