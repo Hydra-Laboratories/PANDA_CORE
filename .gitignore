@@ -136,6 +136,11 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+# SQLite databases (runtime data) — except the empty template
+*.db-journal
+*.db-wal
+*.db-shm
+
 # OS X
 .DS_Store
 

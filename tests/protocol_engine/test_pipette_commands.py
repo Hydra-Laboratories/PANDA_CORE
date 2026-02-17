@@ -46,6 +46,38 @@ def _get_pipette(ctx: ProtocolContext) -> MagicMock:
     return ctx.board.instruments["pipette"]
 
 
+# ─── _parse_position tests ───────────────────────────────────────────────────
+
+
+class TestParsePosition:
+
+    def test_plate_and_well(self):
+        from protocol_engine.commands.pipette import _parse_position
+
+        assert _parse_position("plate_1.A1") == ("plate_1", "A1")
+
+    def test_vial_no_well(self):
+        from protocol_engine.commands.pipette import _parse_position
+
+        assert _parse_position("vial_1") == ("vial_1", None)
+
+    def test_dotted_well_takes_first_split(self):
+        from protocol_engine.commands.pipette import _parse_position
+
+        assert _parse_position("plate_1.A1.extra") == ("plate_1", "A1.extra")
+
+    def test_return_type(self):
+        from protocol_engine.commands.pipette import _parse_position
+
+        result = _parse_position("plate_1.B2")
+        assert isinstance(result, tuple)
+        assert isinstance(result[0], str)
+        assert isinstance(result[1], str)
+
+        result_none = _parse_position("vial_1")
+        assert result_none[1] is None
+
+
 # ─── aspirate tests ──────────────────────────────────────────────────────────
 
 

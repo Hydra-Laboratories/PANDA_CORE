@@ -77,9 +77,8 @@ class _FakeSensor(BaseInstrument):
     def health_check(self) -> bool:
         return True
 
-    def measure(self, plate: WellPlate) -> bool:
+    def measure(self) -> bool:
         self.call_count += 1
-        self.received_plates.append(plate)
         return self._return_value
 
 
@@ -190,7 +189,7 @@ class TestScanCommand:
 
         assert sensor.call_count == 4
 
-    def test_passes_plate_to_method(self):
+    def test_method_called_with_no_args(self):
         from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()
@@ -199,7 +198,7 @@ class TestScanCommand:
 
         scan(ctx, plate="plate_1", instrument="uvvis", method="measure")
 
-        assert all(p is plate for p in sensor.received_plates)
+        assert sensor.call_count == 4
 
     def test_validates_plate_is_wellplate(self):
         from protocol_engine.commands.scan import scan

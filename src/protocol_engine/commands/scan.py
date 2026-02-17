@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict
+import json
+import logging
+from typing import TYPE_CHECKING, Any, Dict
 
 from deck.labware.well_plate import WellPlate
 
@@ -11,6 +13,8 @@ from ..registry import protocol_command
 
 if TYPE_CHECKING:
     from ..protocol import ProtocolContext
+
+logger = logging.getLogger(__name__)
 
 
 def _row_major_key(well_id: str) -> tuple:
@@ -24,12 +28,15 @@ def scan(
     plate: str,
     instrument: str,
     method: str,
-) -> Dict[str, bool]:
+) -> Dict[str, Any]:
     """Scan every well on *plate* using *instrument*'s *method*.
 
-    Iterates wells in row-major order (A1, A2, …, B1, B2, …).
+    Iterates wells in row-major order (A1, A2, ..., B1, B2, ...).
     For each well, moves the instrument into position (applying
     measurement_height offset) then calls the method.
+
+    When a ``DataStore`` is configured on *context*, each measurement
+    is persisted as an experiment + measurement row in the database.
 
     Args:
         context:    Runtime context (board, deck, logger).
@@ -38,7 +45,7 @@ def scan(
         method:     Name of the method on the instrument to call per well.
 
     Returns:
-        Mapping of well ID to boolean result of each method call.
+        Mapping of well ID to the result of each method call.
     """
     plate_obj = context.deck[plate]
     if not isinstance(plate_obj, WellPlate):
@@ -59,11 +66,28 @@ def scan(
         )
     callable_method = getattr(instr, method)
 
-    results: Dict[str, bool] = {}
+    results: Dict[str, Any] = {}
     for well_id in sorted(plate_obj.wells, key=_row_major_key):
         well = plate_obj.get_well_center(well_id)
         target = (well.x, well.y, well.z + instr.measurement_height)
         context.board.move(instrument, target)
-        results[well_id] = callable_method()
+        result = callable_method()
+        results[well_id] = result
+
+        if context.data_store is not None and context.campaign_id is not None:
+            try:
+                contents = context.data_store.get_contents(
+                    context.campaign_id, plate, well_id,
+                )
+                contents_json = json.dumps(contents) if contents else "[]"
+                exp_id = context.data_store.create_experiment(
+                    campaign_id=context.campaign_id,
+                    labware_name=plate_obj.name,
+                    well_id=well_id,
+                    contents_json=contents_json,
+                )
+                context.data_store.log_measurement(exp_id, result)
+            except Exception:
+                logger.exception("Failed to log measurement for well %s", well_id)
 
     return results

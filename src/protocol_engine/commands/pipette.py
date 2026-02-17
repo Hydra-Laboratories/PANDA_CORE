@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional
+import logging
+from typing import TYPE_CHECKING, Any, List, Optional
 
 from deck.labware.well_plate import WellPlate
 
 from ..errors import ProtocolExecutionError
 from ..registry import protocol_command
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..protocol import ProtocolContext
@@ -23,13 +26,40 @@ def _get_pipette(context: ProtocolContext):
     return context.board.instruments["pipette"]
 
 
+def _parse_position(position: str) -> tuple[str, Optional[str]]:
+    """Split ``"plate_1.A1"`` into ``("plate_1", "A1")`` or ``"vial_1"`` into ``("vial_1", None)``."""
+    parts = position.split(".", 1)
+    if len(parts) == 2:
+        return (parts[0], parts[1])
+    return (parts[0], None)
+
+
+def _record_dispense_to_store(
+    context: ProtocolContext,
+    labware_key: str,
+    well_id: Optional[str],
+    source_name: str,
+    volume_ul: float,
+) -> None:
+    """Persist a dispense to the DataStore if one is configured."""
+    if context.data_store is not None and context.campaign_id is not None:
+        try:
+            context.data_store.record_dispense(
+                context.campaign_id, labware_key, well_id, source_name, volume_ul,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to record dispense for %s well %s", labware_key, well_id,
+            )
+
+
 @protocol_command("aspirate")
 def aspirate(
     context: ProtocolContext,
     position: str,
     volume_ul: float,
     speed: float = 50.0,
-) -> None:
+) -> Any:
     """Move pipette to *position*, then aspirate."""
     coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
@@ -37,14 +67,17 @@ def aspirate(
     return pipette.aspirate(volume_ul, speed)
 
 
-@protocol_command("dispense")
 def dispense(
     context: ProtocolContext,
     position: str,
     volume_ul: float,
     speed: float = 50.0,
-) -> None:
-    """Move pipette to *position*, then dispense."""
+) -> Any:
+    """Move pipette to *position*, then dispense.
+
+    Not exposed as a YAML protocol command — use ``transfer`` instead,
+    which correctly tracks source labware for DB logging.
+    """
     coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
     context.board.move("pipette", coord)
@@ -71,7 +104,7 @@ def mix(
     volume_ul: float,
     repetitions: int = 3,
     speed: float = 50.0,
-) -> None:
+) -> Any:
     """Move pipette to *position*, then mix."""
     coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
@@ -109,6 +142,10 @@ def transfer(
     context.board.move("pipette", dest_coord)
     pipette.dispense(volume_ul, speed)
 
+    source_key, _ = _parse_position(source)
+    dest_key, dest_well = _parse_position(destination)
+    _record_dispense_to_store(context, dest_key, dest_well, source_key, volume_ul)
+
 
 @protocol_command("drop_tip")
 def drop_tip(
@@ -123,7 +160,7 @@ def drop_tip(
     pipette.drop_tip(speed)
 
 
-# ── Compound helpers ──────────────────────────────────────────────────────
+# -- Compound helpers ----------------------------------------------------------
 
 
 def _linspace(start: float, end: float, n: int) -> list:
@@ -137,8 +174,8 @@ def _linspace(start: float, end: float, n: int) -> list:
 def _wells_for_axis(plate: WellPlate, axis: str) -> list:
     """Return well IDs along *axis* in natural order.
 
-    If *axis* is a letter (e.g. ``"A"``), returns the row (A1, A2, …).
-    If *axis* is a digit string (e.g. ``"3"``), returns the column (A3, B3, …).
+    If *axis* is a letter (e.g. ``"A"``), returns the row (A1, A2, ...).
+    If *axis* is a digit string (e.g. ``"3"``), returns the column (A3, B3, ...).
     """
     if axis.isalpha():
         wells = [w for w in plate.wells if w[0] == axis.upper()]
@@ -161,15 +198,6 @@ def serial_transfer(
 
     Provide exactly one of *volumes* (explicit list) or *volume_range*
     ([min, max] linearly spaced across the axis).
-
-    Args:
-        context:      Runtime context.
-        source:       Deck target to aspirate from (e.g. ``"vial_1"``).
-        plate:        Deck key of the well plate.
-        axis:         Row letter (``"A"``) or column number (``"1"``).
-        volumes:      Explicit list of volumes matching the axis length.
-        volume_range: ``[min, max]`` — linearly spaced across the axis.
-        speed:        Pipette speed (default 50.0).
     """
     _get_pipette(context)
 

@@ -120,6 +120,7 @@ mock.measure()
 print(mock.command_history)  # ['measure']
 ```
 
+<<<<<<< HEAD
 ## Protocol Setup and Validation
 
 The `setup_protocol()` function loads all four configs, validates that all deck positions and gantry-computed positions are within the gantry's working volume, and returns a ready-to-run `Protocol` + `ProtocolContext`:
@@ -170,6 +171,43 @@ python setup/run_protocol.py \
 
 This first runs offline validation (same output as `validate_setup.py`), then connects to the gantry and executes the protocol.
 
+=======
+## Data Persistence
+
+Campaign data is persisted to a local SQLite database via `DataStore`. All state lives in SQLite (not in Python objects) so nothing is lost on interrupt or crash. Tracks campaigns, labware volumes/contents, per-well experiments, and instrument measurements.
+
+```python
+from data import DataStore
+from protocol_engine.protocol import ProtocolContext
+
+store = DataStore(db_path="my_campaign.db")
+campaign_id = store.create_campaign(
+    description="MOF-5 screening run",
+    deck_config="configs/deck.yaml",
+    protocol_config="protocols/screen.yaml",
+)
+
+# Register labware so the DB tracks volume and contents per well/vial
+store.register_labware(campaign_id, "plate_1", deck["plate_1"])
+store.register_labware(campaign_id, "vial_1", deck["vial_1"])
+
+# Pass into ProtocolContext — commands auto-log measurements and dispenses
+context = ProtocolContext(
+    board=board,
+    deck=deck,
+    data_store=store,
+    campaign_id=campaign_id,
+)
+protocol.run(context)
+store.close()
+```
+
+An empty initialized database template is at `data/databases/panda_data.db` — inspect the schema with:
+```bash
+sqlite3 data/databases/panda_data.db ".schema"
+```
+
+>>>>>>> main
 ## Development
 
 Run unit tests:
