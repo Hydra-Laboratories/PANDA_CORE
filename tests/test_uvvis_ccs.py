@@ -2,16 +2,16 @@ import ctypes as C
 import pytest
 from unittest.mock import patch, MagicMock, PropertyMock
 
-from src.instruments.base_instrument import BaseInstrument, InstrumentError
-from src.instruments.uvvis_ccs.models import UVVisSpectrum, NUM_PIXELS
-from src.instruments.uvvis_ccs.exceptions import (
+from instruments.base_instrument import BaseInstrument, InstrumentError
+from instruments.uvvis_ccs.models import UVVisSpectrum, NUM_PIXELS
+from instruments.uvvis_ccs.exceptions import (
     UVVisCCSError,
     UVVisCCSConnectionError,
     UVVisCCSMeasurementError,
     UVVisCCSTimeoutError,
 )
-from src.instruments.uvvis_ccs.driver import UVVisCCS
-from src.instruments.uvvis_ccs.mock import MockUVVisCCS, _synthetic_spectrum
+from instruments.uvvis_ccs.driver import UVVisCCS
+from instruments.uvvis_ccs.mock import MockUVVisCCS, _synthetic_spectrum
 
 
 # ─── UVVisSpectrum model tests ───────────────────────────────────────────────

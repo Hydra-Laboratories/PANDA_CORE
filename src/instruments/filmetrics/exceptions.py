@@ -1,4 +1,4 @@
-from src.instruments.base_instrument import InstrumentError
+from instruments.base_instrument import InstrumentError
 
 
 class FilmetricsError(InstrumentError):

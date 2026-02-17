@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from src.gantry import Gantry
-from src.instruments.base_instrument import BaseInstrument
+from gantry import Gantry
+from instruments.base_instrument import BaseInstrument
 
 # A position is either an (x, y, z) tuple or any object with x, y, z attributes
 # (e.g. a labware object sitting at a fixed deck location).

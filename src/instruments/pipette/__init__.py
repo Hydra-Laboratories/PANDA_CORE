@@ -1,6 +1,6 @@
-from src.instruments.pipette.driver import Pipette
-from src.instruments.pipette.mock import MockPipette
-from src.instruments.pipette.models import (
+from instruments.pipette.driver import Pipette
+from instruments.pipette.mock import MockPipette
+from instruments.pipette.models import (
     PipetteConfig,
     PipetteFamily,
     PipetteStatus,
@@ -8,7 +8,7 @@ from src.instruments.pipette.models import (
     MixResult,
     PIPETTE_MODELS,
 )
-from src.instruments.pipette.exceptions import (
+from instruments.pipette.exceptions import (
     PipetteError,
     PipetteConnectionError,
     PipetteCommandError,

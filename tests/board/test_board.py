@@ -1,8 +1,8 @@
 import pytest
 from unittest.mock import MagicMock
 
-from src.instruments.base_instrument import BaseInstrument
-from src.board import Board
+from instruments.base_instrument import BaseInstrument
+from board import Board
 
 
 def _mock_gantry(x=0.0, y=0.0, z=0.0):

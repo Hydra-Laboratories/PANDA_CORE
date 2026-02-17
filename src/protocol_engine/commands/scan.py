@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Dict
 
-from src.deck.labware.well_plate import WellPlate
+from deck.labware.well_plate import WellPlate
 
 from ..errors import ProtocolExecutionError
 from ..registry import protocol_command

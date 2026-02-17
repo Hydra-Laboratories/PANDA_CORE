@@ -3,8 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from src.protocol_engine.registry import CommandRegistry, protocol_command
-from src.protocol_engine.yaml_schema import ProtocolStepSchema, ProtocolYamlSchema
+from protocol_engine.registry import CommandRegistry, protocol_command
+from protocol_engine.yaml_schema import ProtocolStepSchema, ProtocolYamlSchema
 
 
 @pytest.fixture(autouse=True)

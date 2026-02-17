@@ -2,7 +2,7 @@ import pytest
 
 from pydantic import ValidationError
 
-from src.deck import (
+from deck import (
     WellPlate,
     Vial,
     Coordinate3D,

@@ -335,19 +335,17 @@ class Mill:
 
     def check_for_alarm_state(self):
         """Check if the mill is in an alarm state."""
+        self.ser_mill.write(b"?")
+        time.sleep(0.1)
         status = self.read()
         self.logger.debug("Status: %s", status)
         if not status:
-            self.logger.warning("Initial status reading from the mill is blank")
-            self.logger.warning("Querying the mill for status")
-
+            self.logger.warning("No response to status query, retrying")
             status = self.current_status()
             self.logger.debug("Status: %s", status)
             if not status:
                 self.logger.error("Failed to get status from the mill")
                 raise MillConnectionError("Failed to get status from the mill")
-        else:
-            status = status[-1].decode().rstrip()
         if "alarm" in status.lower():
             self.logger.warning("Mill is in alarm state. Requesting user input")
             reset_alarm = "y"
@@ -755,7 +753,7 @@ class Mill:
         time.sleep(0.2)
         status = self.read()
         attempts = 0
-        while status[0] != "<" and attempts < 3:
+        while (not status or status[0] != "<") and attempts < 3:
             if "alarm" in status.lower() or "error" in status.lower():
                 self.logger.error("Error in status: %s", status)
                 raise StatusReturnError(f"Error in status: {status}")

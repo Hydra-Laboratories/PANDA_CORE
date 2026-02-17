@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from src.protocol_engine.registry import (
+from protocol_engine.registry import (
     CommandRegistry,
     _build_schema_from_signature,
     protocol_command,

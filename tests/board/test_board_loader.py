@@ -4,13 +4,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.board.errors import BoardLoaderError
-from src.board.loader import load_board_from_yaml, load_board_from_yaml_safe
-from src.board.yaml_schema import BoardYamlSchema, InstrumentYamlEntry
-from src.instruments.filmetrics.mock import MockFilmetrics
-from src.instruments.pipette.mock import MockPipette
-from src.instruments.uvvis_ccs.mock import MockUVVisCCS
-from src.board import Board
+from board.errors import BoardLoaderError
+from board.loader import load_board_from_yaml, load_board_from_yaml_safe
+from board.yaml_schema import BoardYamlSchema, InstrumentYamlEntry
+from instruments.filmetrics.mock import MockFilmetrics
+from instruments.pipette.mock import MockPipette
+from instruments.uvvis_ccs.mock import MockUVVisCCS
+from board import Board
 
 
 def _mock_gantry():

@@ -1,7 +1,7 @@
 from typing import Optional
 
-from src.instruments.base_instrument import BaseInstrument
-from src.instruments.uvvis_ccs.models import NUM_PIXELS, UVVisSpectrum
+from instruments.base_instrument import BaseInstrument
+from instruments.uvvis_ccs.models import NUM_PIXELS, UVVisSpectrum
 
 
 def _synthetic_spectrum(

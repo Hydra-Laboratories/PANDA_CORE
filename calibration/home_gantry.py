@@ -7,7 +7,7 @@ import yaml
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.gantry import Gantry
+from gantry import Gantry
 
 
 def main():

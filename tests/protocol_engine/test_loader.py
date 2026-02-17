@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from src.protocol_engine.errors import ProtocolLoaderError
-from src.protocol_engine.loader import load_protocol_from_yaml, load_protocol_from_yaml_safe
-from src.protocol_engine.protocol import Protocol
+from protocol_engine.errors import ProtocolLoaderError
+from protocol_engine.loader import load_protocol_from_yaml, load_protocol_from_yaml_safe
+from protocol_engine.protocol import Protocol
 
 
 # ─── Valid protocol YAML fixtures ─────────────────────────────────────────────
