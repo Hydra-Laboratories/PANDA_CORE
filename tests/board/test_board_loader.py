@@ -10,7 +10,7 @@ from src.board.yaml_schema import BoardYamlSchema, InstrumentYamlEntry
 from src.instruments.filmetrics.mock import MockFilmetrics
 from src.instruments.pipette.mock import MockPipette
 from src.instruments.uvvis_ccs.mock import MockUVVisCCS
-from src.protocol_engine.board import Board
+from src.board import Board
 
 
 def _mock_gantry():

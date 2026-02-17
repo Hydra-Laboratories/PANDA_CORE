@@ -16,7 +16,7 @@ from src.instruments.pipette.driver import Pipette
 from src.instruments.pipette.mock import MockPipette
 from src.instruments.uvvis_ccs.driver import UVVisCCS
 from src.instruments.uvvis_ccs.mock import MockUVVisCCS
-from src.protocol_engine.board import Board
+from src.board.board import Board
 
 from .errors import BoardLoaderError
 from .yaml_schema import BoardYamlSchema

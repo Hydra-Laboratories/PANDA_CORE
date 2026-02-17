@@ -1,5 +1,7 @@
 """Tests for the move protocol command — unit and end-to-end."""
 
+from __future__ import annotations
+
 import logging
 import tempfile
 from pathlib import Path

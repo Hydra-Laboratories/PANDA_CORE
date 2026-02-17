@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, List
 
 from src.deck.deck import Deck
 
-from .board import Board
+from src.board.board import Board
 
 
 @dataclass

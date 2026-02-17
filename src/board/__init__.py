@@ -1,3 +1,4 @@
+from .board import Board
 from .errors import BoardLoaderError
 from .loader import (
     INSTRUMENT_REGISTRY,
@@ -7,6 +8,7 @@ from .loader import (
 from .yaml_schema import BoardYamlSchema, InstrumentYamlEntry
 
 __all__ = [
+    "Board",
     "BoardLoaderError",
     "BoardYamlSchema",
     "InstrumentYamlEntry",
