@@ -17,7 +17,8 @@ class ProtocolContext:
     """Runtime context injected into every command handler.
 
     Provides access to the Board (gantry + instruments) and the Deck
-    (labware target resolution).
+    (labware target resolution).  Optionally carries a DataStore for
+    persisting measurements and a campaign_id for the current run.
     """
 
     board: Board
@@ -25,6 +26,8 @@ class ProtocolContext:
     logger: logging.Logger = field(
         default_factory=lambda: logging.getLogger("protocol"),
     )
+    data_store: Any = None
+    campaign_id: int | None = None
 
 
 @dataclass

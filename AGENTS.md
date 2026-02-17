@@ -94,6 +94,30 @@ Deck configuration loading, runtime deck container, and labware geometry/positio
 - **Sample inspection script**: `show_deck_objects.py` loads `configs/deck.sample.yaml` and prints the resulting object mapping.
 - **Usage**: Load a deck with `load_deck_from_yaml("configs/deck.sample.yaml")` to get a `Deck` object. Access labware: `deck["plate_1"]`. Resolve targets: `deck.resolve("plate_1.A1")` for absolute XYZ.
 
+### Data Persistence (`data/`)
+SQLite-backed persistence layer for self-driving lab campaigns. All state lives in the database — Python objects are stateless to survive interrupts/crashes.
+
+- **`data/data_store.py`**: `DataStore` class — owns a SQLite connection and provides the full persistence API.
+    - **Constructor**: `DataStore(db_path="data/databases/panda_data.db")` — opens/creates DB and initialises schema. Use `":memory:"` for testing.
+    - **Empty template**: `data/databases/panda_data.db` — pre-initialized empty database committed to the repo for schema inspection (`sqlite3 data/databases/panda_data.db ".schema"`).
+    - **Context manager**: `with DataStore(...) as store:` for automatic cleanup.
+    - **Campaign API**: `create_campaign(description, deck_config=None, board_config=None, gantry_config=None, protocol_config=None) -> int`
+    - **Experiment API**: `create_experiment(campaign_id, labware_name, well_id, contents_json=None) -> int`
+    - **Measurement API**: `log_measurement(experiment_id, result) -> int` — dispatches by type:
+        - `UVVisSpectrum` → `uvvis_measurements` (wavelengths/intensities stored as little-endian BLOB via `struct.pack`)
+        - `MeasurementResult` → `filmetrics_measurements` (thickness_nm, goodness_of_fit)
+        - `str` (image path) → `camera_measurements`
+    - **Labware API** (volume and content tracking, persisted to `labware` table):
+        - `register_labware(campaign_id, labware_key, labware)` — registers a Vial (1 row) or WellPlate (1 row per well) with total/working volume from the model.
+        - `record_dispense(campaign_id, labware_key, well_id, source_name, volume_ul)` — increments `current_volume_ul` and appends to `contents` JSON.
+        - `get_contents(campaign_id, labware_key, well_id) -> list | None` — returns parsed contents list.
+    - **Schema tables**: `campaigns`, `experiments`, `uvvis_measurements`, `filmetrics_measurements`, `camera_measurements`, `labware`
+
+#### Protocol Integration
+- **`ProtocolContext.data_store`**: Optional `DataStore` instance. When set (along with `campaign_id`), `scan` and `transfer` commands automatically persist measurements and labware state.
+- **`ProtocolContext.campaign_id`**: Optional `int`. FK to the `campaigns` table.
+- Commands work identically when `data_store` is `None` — no code changes needed for existing protocols.
+
 ### Experiments
 - **`experiments/`**: Directory for storing YAML experiment definitions.
 - **`verify_experiment.py`**: Main runner script. Loads an experiment (YAML), compiles it, and executes it on the hardware.
