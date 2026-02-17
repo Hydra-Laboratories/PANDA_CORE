@@ -8,7 +8,7 @@ import yaml
 from pydantic import ValidationError
 
 from .errors import GantryLoaderError
-from .gantry_config import GantryConfig, WorkingVolume
+from .gantry_config import GantryConfig, HomingStrategy, WorkingVolume
 from .yaml_schema import GantryYamlSchema
 
 
@@ -67,7 +67,7 @@ def load_gantry_from_yaml(path: str | Path) -> GantryConfig:
     schema = GantryYamlSchema.model_validate(raw)
     return GantryConfig(
         serial_port=schema.serial_port,
-        homing_strategy=schema.cnc.homing_strategy,
+        homing_strategy=HomingStrategy(schema.cnc.homing_strategy),
         working_volume=WorkingVolume(
             x_min=schema.working_volume.x_min,
             x_max=schema.working_volume.x_max,

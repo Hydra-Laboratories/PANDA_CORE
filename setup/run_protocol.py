@@ -11,14 +11,15 @@ Example:
         configs/protocols/protocol.sample.yaml
 
 Steps:
-    1. Load gantry config and create gantry
-    2. Load all configs and validate bounds (via setup_protocol)
-    3. Connect to gantry and home
+    1. Validate all configs and bounds (offline, no hardware)
+    2. Load gantry config and create gantry
+    3. Connect to gantry
     4. Run the protocol
     5. Disconnect
 """
 
 import sys
+import traceback
 from pathlib import Path
 
 import yaml
@@ -49,9 +50,13 @@ def main() -> None:
     gantry_path, deck_path, board_path, protocol_path = sys.argv[1:5]
 
     # Phase 1: Validate (offline, before touching hardware)
-    print(run_validation(gantry_path, deck_path, board_path, protocol_path))
+    result = run_validation(gantry_path, deck_path, board_path, protocol_path)
+    print(result.output)
+    if not result.passed:
+        print("\nAborting — validation did not pass.")
+        sys.exit(1)
 
-    # Phase 2: Load gantry config for gantry construction
+    # Phase 2: Load gantry config for hardware construction
     print()
     print(SEPARATOR)
     print("Setting up for execution...")
@@ -82,13 +87,15 @@ def main() -> None:
     print(f"Protocol loaded: {len(protocol)} steps")
     print()
 
-    # Phase 4: Connect + home + run
+    # Phase 4: Connect + run
     try:
         print("Connecting to gantry...")
         gantry.connect()
 
         if not gantry.is_healthy():
-            print("WARNING: Gantry health check failed, attempting to proceed...")
+            print("ERROR: Gantry health check failed. Aborting.")
+            gantry.disconnect()
+            sys.exit(1)
 
         print(SEPARATOR)
         print("Running protocol...")
@@ -104,8 +111,11 @@ def main() -> None:
 
     except KeyboardInterrupt:
         print("\nAborted by user.")
+        sys.exit(130)
     except Exception as exc:
         print(f"\nERROR during execution: {exc}")
+        traceback.print_exc()
+        sys.exit(1)
     finally:
         print("Disconnecting...")
         gantry.disconnect()

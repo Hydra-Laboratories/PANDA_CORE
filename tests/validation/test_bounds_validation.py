@@ -10,7 +10,7 @@ from src.deck.labware.labware import Coordinate3D
 from src.deck.labware.vial import Vial
 from src.deck.labware.well_plate import WellPlate
 from src.instruments.base_instrument import BaseInstrument
-from src.gantry.gantry_config import GantryConfig, WorkingVolume
+from src.gantry.gantry_config import GantryConfig, HomingStrategy, WorkingVolume
 from src.validation.bounds import validate_deck_positions, validate_gantry_positions
 
 
@@ -27,7 +27,7 @@ def _make_gantry(
 ) -> GantryConfig:
     return GantryConfig(
         serial_port="/dev/ttyUSB0",
-        homing_strategy="standard",
+        homing_strategy=HomingStrategy.STANDARD,
         working_volume=WorkingVolume(
             x_min=x_min, x_max=x_max,
             y_min=y_min, y_max=y_max,

@@ -3,6 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
+
+
+class HomingStrategy(str, Enum):
+    """Supported CNC homing strategies."""
+
+    XY_HARD_LIMITS = "xy_hard_limits"
+    STANDARD = "standard"
 
 
 @dataclass(frozen=True)
@@ -20,6 +28,15 @@ class WorkingVolume:
     z_min: float
     z_max: float
 
+    def __post_init__(self) -> None:
+        for axis in ("x", "y", "z"):
+            lo = getattr(self, f"{axis}_min")
+            hi = getattr(self, f"{axis}_max")
+            if lo >= hi:
+                raise ValueError(
+                    f"{axis}_min ({lo}) must be < {axis}_max ({hi})"
+                )
+
     def contains(self, x: float, y: float, z: float) -> bool:
         """Return True if (x, y, z) is within this working volume (inclusive)."""
         return (
@@ -34,5 +51,5 @@ class GantryConfig:
     """Loaded gantry configuration."""
 
     serial_port: str
-    homing_strategy: str
+    homing_strategy: HomingStrategy
     working_volume: WorkingVolume

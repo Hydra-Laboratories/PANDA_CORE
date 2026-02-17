@@ -12,6 +12,7 @@ Example:
 """
 
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 project_root = Path(__file__).resolve().parent.parent
@@ -23,11 +24,19 @@ from src.deck.labware.vial import Vial
 from src.deck.labware.well_plate import WellPlate
 from src.deck.loader import load_deck_from_yaml
 from src.gantry.loader import load_gantry_from_yaml
+from src.gantry.offline import OfflineGantry
 from src.protocol_engine.loader import load_protocol_from_yaml
-from src.protocol_engine.setup import _default_mock_gantry
 from src.validation.bounds import validate_deck_positions, validate_gantry_positions
 
 SEPARATOR = "-" * 60
+
+
+@dataclass
+class ValidationResult:
+    """Result of running protocol setup validation."""
+
+    output: str
+    passed: bool
 
 
 def _labware_summary(deck: Deck) -> list[str]:
@@ -63,8 +72,8 @@ def run_validation(
     deck_path: str,
     board_path: str,
     protocol_path: str,
-) -> str:
-    """Run full setup validation and return formatted output."""
+) -> ValidationResult:
+    """Run full setup validation and return structured result."""
     lines: list[str] = []
 
     def out(text: str = "") -> None:
@@ -85,7 +94,7 @@ def run_validation(
         out(SEPARATOR)
         out("RESULT: ERROR — could not load gantry config")
         out(SEPARATOR)
-        return "\n".join(lines)
+        return ValidationResult(output="\n".join(lines), passed=False)
 
     vol = gantry_config.working_volume
     out(f"  OK: {gantry_path}")
@@ -104,7 +113,7 @@ def run_validation(
         out(SEPARATOR)
         out("RESULT: ERROR — could not load deck config")
         out(SEPARATOR)
-        return "\n".join(lines)
+        return ValidationResult(output="\n".join(lines), passed=False)
 
     out(f"  OK: {deck_path}")
     out(f"  Labware ({len(deck)}):")
@@ -115,15 +124,15 @@ def run_validation(
     # 3. Board
     out("[3/4] Loading board config...")
     try:
-        mock_gantry = _default_mock_gantry()
-        board = load_board_from_yaml(board_path, mock_gantry)
+        offline_gantry = OfflineGantry()
+        board = load_board_from_yaml(board_path, offline_gantry)
     except Exception as exc:
         out(f"  ERROR: {exc}")
         out()
         out(SEPARATOR)
         out("RESULT: ERROR — could not load board config")
         out(SEPARATOR)
-        return "\n".join(lines)
+        return ValidationResult(output="\n".join(lines), passed=False)
 
     out(f"  OK: {board_path}")
     out(f"  Instruments ({len(board.instruments)}):")
@@ -141,7 +150,7 @@ def run_validation(
         out(SEPARATOR)
         out("RESULT: ERROR — could not load protocol")
         out(SEPARATOR)
-        return "\n".join(lines)
+        return ValidationResult(output="\n".join(lines), passed=False)
 
     out(f"  OK: {protocol_path}")
     out(f"  Steps: {len(protocol)}")
@@ -186,12 +195,13 @@ def run_validation(
     out(SEPARATOR)
     if all_violations:
         out(f"RESULT: FAIL — {len(all_violations)} violation(s) found")
-    else:
-        out("RESULT: PASS — all positions within gantry bounds")
-        out("Protocol is ready to run.")
-    out(SEPARATOR)
+        out(SEPARATOR)
+        return ValidationResult(output="\n".join(lines), passed=False)
 
-    return "\n".join(lines)
+    out("RESULT: PASS — all positions within gantry bounds")
+    out("Protocol is ready to run.")
+    out(SEPARATOR)
+    return ValidationResult(output="\n".join(lines), passed=True)
 
 
 def main() -> None:
@@ -207,8 +217,10 @@ def main() -> None:
         sys.exit(1)
 
     gantry_path, deck_path, board_path, protocol_path = sys.argv[1:5]
-    output = run_validation(gantry_path, deck_path, board_path, protocol_path)
-    print(output)
+    result = run_validation(gantry_path, deck_path, board_path, protocol_path)
+    print(result.output)
+    if not result.passed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

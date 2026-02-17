@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from src.gantry.gantry_config import GantryConfig, WorkingVolume
+import pytest
+
+from src.gantry.gantry_config import GantryConfig, HomingStrategy, WorkingVolume
 
 
 def _make_volume(
@@ -71,6 +73,22 @@ class TestWorkingVolume:
         assert vol.contains(-150.0, -200.001, -40.0) is False
         assert vol.contains(-300.001, -100.0, -40.0) is False
 
+    def test_rejects_reversed_x_bounds(self):
+        with pytest.raises(ValueError, match="x_min"):
+            _make_volume(x_min=0.0, x_max=-300.0)
+
+    def test_rejects_reversed_y_bounds(self):
+        with pytest.raises(ValueError, match="y_min"):
+            _make_volume(y_min=0.0, y_max=-200.0)
+
+    def test_rejects_reversed_z_bounds(self):
+        with pytest.raises(ValueError, match="z_min"):
+            _make_volume(z_min=0.0, z_max=-80.0)
+
+    def test_rejects_equal_bounds(self):
+        with pytest.raises(ValueError, match="x_min"):
+            _make_volume(x_min=0.0, x_max=0.0)
+
     def test_frozen_dataclass(self):
         vol = _make_volume()
         try:
@@ -86,17 +104,26 @@ class TestGantryConfig:
         vol = _make_volume()
         config = GantryConfig(
             serial_port="/dev/ttyUSB0",
-            homing_strategy="xy_hard_limits",
+            homing_strategy=HomingStrategy.XY_HARD_LIMITS,
             working_volume=vol,
         )
         assert config.serial_port == "/dev/ttyUSB0"
-        assert config.homing_strategy == "xy_hard_limits"
+        assert config.homing_strategy == HomingStrategy.XY_HARD_LIMITS
         assert config.working_volume is vol
+
+    def test_homing_strategy_is_enum(self):
+        config = GantryConfig(
+            serial_port="/dev/ttyUSB0",
+            homing_strategy=HomingStrategy.STANDARD,
+            working_volume=_make_volume(),
+        )
+        assert isinstance(config.homing_strategy, HomingStrategy)
+        assert config.homing_strategy.value == "standard"
 
     def test_frozen_dataclass(self):
         config = GantryConfig(
             serial_port="/dev/ttyUSB0",
-            homing_strategy="standard",
+            homing_strategy=HomingStrategy.STANDARD,
             working_volume=_make_volume(),
         )
         try:

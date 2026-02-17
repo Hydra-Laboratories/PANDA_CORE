@@ -70,7 +70,7 @@ A modular system for executing experiment sequences defined in code or YAML.
 - **`yaml_schema.py`**: Pydantic schemas for protocol YAML (step validation against registered commands).
 - **`loader.py`**: `load_protocol_from_yaml(path)` and `_safe` variant.
 - **`registry.py`**: `CommandRegistry` singleton and `@protocol_command()` decorator for registering commands.
-- **`setup.py`**: `setup_protocol(gantry_path, deck_path, board_path, protocol_path)` — loads all configs, validates bounds, and returns `(Protocol, ProtocolContext)` ready to run. Uses a mock gantry by default for offline validation.
+- **`setup.py`**: `setup_protocol(gantry_path, deck_path, board_path, protocol_path)` — loads all configs, validates bounds, and returns `(Protocol, ProtocolContext)` ready to run. Uses `OfflineGantry` by default for offline validation.
 - **`commands/`**: Protocol command implementations (`move.py`, `pipette.py`, `scan.py`).
 
 ### Gantry Config (`src/gantry`)
@@ -121,7 +121,7 @@ configs/
 
 1.  **Defining Experiments**: Create a YAML file in `experiments/` defining the sequence of moves and images.
 2.  **Running**: Execute `python verify_experiment.py experiments/your_experiment.yaml`.
-3.  **Connecting**: The system handles connection details (port, camera source) via `configs/genmitsu_3018_deck_config.yaml`.
+3.  **Connecting**: The system handles connection details (port, serial) via config files in `configs/gantries/`, `configs/decks/`, `configs/boards/`, and `configs/protocols/`.
 
 ### Setup (`setup/`)
 First-run scripts for verifying hardware after unboxing.
@@ -134,7 +134,7 @@ First-run scripts for verifying hardware after unboxing.
     - **Usage**: `python setup/validate_setup.py <gantry.yaml> <deck.yaml> <board.yaml> <protocol.yaml>`
     - **Output**: Step-by-step loading status, labware/instrument summaries, bounds validation results, and a final PASS/FAIL verdict.
     - **Dependencies**: `src/gantry`, `src/deck`, `src/board`, `src/protocol_engine`, `src/validation`
-- **`run_protocol.py`**: Load, validate, connect to hardware, and run a protocol end-to-end. Runs offline validation first, then connects to the gantry, homes, and executes the protocol.
+- **`run_protocol.py`**: Load, validate, connect to hardware, and run a protocol end-to-end. Runs offline validation first, then connects to the gantry and executes the protocol.
     - **Usage**: `python setup/run_protocol.py <gantry.yaml> <deck.yaml> <board.yaml> <protocol.yaml>`
     - **Dependencies**: `src/gantry`, `src/deck`, `src/board`, `src/protocol_engine`, `src/validation`
 - **`keyboard_input.py`**: Helper module that reads single keypresses (including arrow keys) without requiring Enter. Uses `tty`/`termios` (Unix only).

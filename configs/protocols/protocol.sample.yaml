@@ -33,7 +33,7 @@ protocol:
   - drop_tip:
       position: waste_1
 
-  ── Scan ──────────────────────────────────────────────────────────
+  # ── Scan ──────────────────────────────────────────────────────────
   - scan:
       plate: wellplate_1
       instrument: uvvis
