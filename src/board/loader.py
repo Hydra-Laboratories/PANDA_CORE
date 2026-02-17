@@ -3,23 +3,38 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Type
+from typing import Dict, TYPE_CHECKING, Type
 
 import yaml
 from pydantic import ValidationError
 
-from gantry import Gantry
-from instruments.base_instrument import BaseInstrument
-from instruments.filmetrics.driver import Filmetrics
-from instruments.filmetrics.mock import MockFilmetrics
-from instruments.pipette.driver import Pipette
-from instruments.pipette.mock import MockPipette
-from instruments.uvvis_ccs.driver import UVVisCCS
-from instruments.uvvis_ccs.mock import MockUVVisCCS
-from board.board import Board
+try:
+    from instruments.base_instrument import BaseInstrument
+    from instruments.filmetrics.driver import Filmetrics
+    from instruments.filmetrics.mock import MockFilmetrics
+    from instruments.pipette.driver import Pipette
+    from instruments.pipette.mock import MockPipette
+    from instruments.uvvis_ccs.driver import UVVisCCS
+    from instruments.uvvis_ccs.mock import MockUVVisCCS
+except ModuleNotFoundError:  # pragma: no cover - compatibility path for setup scripts
+    from src.instruments.base_instrument import BaseInstrument
+    from src.instruments.filmetrics.driver import Filmetrics
+    from src.instruments.filmetrics.mock import MockFilmetrics
+    from src.instruments.pipette.driver import Pipette
+    from src.instruments.pipette.mock import MockPipette
+    from src.instruments.uvvis_ccs.driver import UVVisCCS
+    from src.instruments.uvvis_ccs.mock import MockUVVisCCS
+
+from .board import Board
 
 from .errors import BoardLoaderError
 from .yaml_schema import BoardYamlSchema
+
+if TYPE_CHECKING:
+    try:
+        from gantry import Gantry
+    except ModuleNotFoundError:  # pragma: no cover - compatibility path for setup scripts
+        from src.gantry import Gantry
 
 INSTRUMENT_REGISTRY: Dict[str, Type[BaseInstrument]] = {
     "uvvis_ccs": UVVisCCS,

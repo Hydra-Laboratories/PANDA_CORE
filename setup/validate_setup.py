@@ -17,6 +17,7 @@ from pathlib import Path
 
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "src"))
 
 from src.board.loader import load_board_from_yaml
 from src.deck.deck import Deck

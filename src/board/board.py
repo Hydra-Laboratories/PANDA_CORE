@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-from gantry import Gantry
-from instruments.base_instrument import BaseInstrument
+try:
+    from instruments.base_instrument import BaseInstrument
+except ModuleNotFoundError:  # pragma: no cover - compatibility path for setup scripts
+    from src.instruments.base_instrument import BaseInstrument
+
+if TYPE_CHECKING:
+    try:
+        from gantry import Gantry
+    except ModuleNotFoundError:  # pragma: no cover - compatibility path for setup scripts
+        from src.gantry import Gantry
 
 # A position is either an (x, y, z) tuple or any object with x, y, z attributes
 # (e.g. a labware object sitting at a fixed deck location).
