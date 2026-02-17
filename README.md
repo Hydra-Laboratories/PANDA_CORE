@@ -20,7 +20,7 @@ This project features a robust **Protocol Engine** for defining and executing au
 - **Labware Abstractions**: Centralized models for well plates and vials, making it easy to target logical positions (e.g., `A1`) and resolve them into absolute deck coordinates.
 
 ### Running an Experiment
-1. **Configure Hardware**: Update `configs/genmitsu_3018_deck_config.yaml` with your machine bounds, camera source, and serial port.
+1. **Configure Hardware**: Update `configs/genmitsu_3018_deck_config.yaml` with your gantry bounds, camera source, and serial port.
 2. **Define Experiment**: Create a YAML file in `experiments/` (e.g., `experiments/my_experiment.yaml`).
 3. **Run**:
    ```bash
@@ -33,25 +33,25 @@ Config files are organized into subdirectories by type:
 
 ```
 configs/
-  machines/     # Machine configs (serial port, homing, working volume)
+  gantries/     # Gantry configs (serial port, homing, working volume)
   decks/        # Deck configs (labware positions)
   boards/       # Board configs (instrument offsets)
   protocols/    # Protocol configs (command sequences)
 ```
 
-## Machine Config
+## Gantry Config
 
-Machine YAML defines the CNC machine's working volume bounds, serial port, and homing strategy. Load with:
+Gantry YAML defines the CNC gantry's working volume bounds, serial port, and homing strategy. Load with:
 
 ```python
-from src.machine import load_machine_from_yaml
+from src.gantry import load_gantry_from_yaml
 
-machine = load_machine_from_yaml("configs/machines/genmitsu_3018_PROver_v2.yaml")
-# machine.working_volume.x_min, machine.working_volume.x_max, etc.
-# machine.homing_strategy, machine.serial_port
+gantry = load_gantry_from_yaml("configs/gantries/genmitsu_3018_PROver_v2.yaml")
+# gantry.working_volume.x_min, gantry.working_volume.x_max, etc.
+# gantry.homing_strategy, gantry.serial_port
 ```
 
-See `configs/machines/genmitsu_3018_PROver_v2.yaml` for the required schema.
+See `configs/gantries/genmitsu_3018_PROver_v2.yaml` for the required schema.
 
 ## Labware Models and Deck YAML
 
@@ -122,13 +122,13 @@ print(mock.command_history)  # ['measure']
 
 ## Protocol Setup and Validation
 
-The `setup_protocol()` function loads all four configs, validates that all deck positions and gantry-computed positions are within the machine's working volume, and returns a ready-to-run `Protocol` + `ProtocolContext`:
+The `setup_protocol()` function loads all four configs, validates that all deck positions and gantry-computed positions are within the gantry's working volume, and returns a ready-to-run `Protocol` + `ProtocolContext`:
 
 ```python
 from src.protocol_engine.setup import setup_protocol
 
 protocol, context = setup_protocol(
-    machine_path="configs/machines/genmitsu_3018_PROver_v2.yaml",
+    gantry_path="configs/gantries/genmitsu_3018_PROver_v2.yaml",
     deck_path="configs/decks/mofcat_deck.yaml",
     board_path="configs/boards/mofcat_board.yaml",
     protocol_path="configs/protocols/protocol.sample.yaml",
@@ -138,7 +138,7 @@ protocol.run(context)
 ```
 
 Validation checks:
-- All labware positions (every well, every vial) are within machine working volume
+- All labware positions (every well, every vial) are within gantry working volume
 - For every (instrument, position) pair, the computed gantry position is within bounds
 - Raises `SetupValidationError` with all violations listed if any checks fail
 
@@ -148,13 +148,13 @@ Run validation from the command line to see human-readable output:
 
 ```bash
 python setup/validate_setup.py \
-    configs/machines/genmitsu_3018_PROver_v2.yaml \
+    configs/gantries/genmitsu_3018_PROver_v2.yaml \
     configs/decks/mofcat_deck.yaml \
     configs/boards/mofcat_board.yaml \
     configs/protocols/protocol.sample.yaml
 ```
 
-The script prints step-by-step output: each config loaded with details (machine bounds, labware list, instruments, protocol steps), followed by deck and gantry bounds validation results, and a final PASS/FAIL summary.
+The script prints step-by-step output: each config loaded with details (gantry bounds, labware list, instruments, protocol steps), followed by deck and gantry bounds validation results, and a final PASS/FAIL summary.
 
 ### Run Protocol (CLI)
 
@@ -162,7 +162,7 @@ Validate and run a protocol end-to-end (requires hardware connection):
 
 ```bash
 python setup/run_protocol.py \
-    configs/machines/genmitsu_3018_PROver_v2.yaml \
+    configs/gantries/genmitsu_3018_PROver_v2.yaml \
     configs/decks/mofcat_deck.yaml \
     configs/boards/mofcat_board.yaml \
     configs/protocols/protocol.sample.yaml

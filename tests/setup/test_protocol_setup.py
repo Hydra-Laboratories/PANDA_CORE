@@ -10,8 +10,8 @@ import pytest
 
 from src.board.errors import BoardLoaderError
 from src.deck.errors import DeckLoaderError
-from src.machine.errors import MachineLoaderError
-from src.machine.machine_config import MachineConfig
+from src.gantry.errors import GantryLoaderError
+from src.gantry.gantry_config import GantryConfig
 from src.protocol_engine.errors import ProtocolLoaderError
 from src.protocol_engine.protocol import Protocol, ProtocolContext
 from src.protocol_engine.registry import CommandRegistry
@@ -33,7 +33,7 @@ def _ensure_commands_registered():
 
 # ── YAML templates ──────────────────────────────────────────────────────
 
-MACHINE_YAML = """\
+GANTRY_YAML = """\
 serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
@@ -92,23 +92,23 @@ class _TempYamlFiles:
 
     def __init__(
         self,
-        machine: str = MACHINE_YAML,
+        gantry: str = GANTRY_YAML,
         deck: str = DECK_YAML,
         board: str = BOARD_YAML,
         protocol: str = PROTOCOL_YAML,
     ):
-        self._machine = machine
+        self._gantry = gantry
         self._deck = deck
         self._board = board
         self._protocol = protocol
         self.paths: list[str] = []
 
     def __enter__(self):
-        self.machine_path = _write_temp_yaml(self._machine)
+        self.gantry_path = _write_temp_yaml(self._gantry)
         self.deck_path = _write_temp_yaml(self._deck)
         self.board_path = _write_temp_yaml(self._board)
         self.protocol_path = _write_temp_yaml(self._protocol)
-        self.paths = [self.machine_path, self.deck_path, self.board_path, self.protocol_path]
+        self.paths = [self.gantry_path, self.deck_path, self.board_path, self.protocol_path]
         return self
 
     def __exit__(self, *args):
@@ -125,7 +125,7 @@ class TestSetupProtocol:
     def test_setup_returns_protocol_and_context(self):
         with _TempYamlFiles() as f:
             protocol, context = setup_protocol(
-                f.machine_path, f.deck_path, f.board_path, f.protocol_path,
+                f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
             )
             assert isinstance(protocol, Protocol)
             assert isinstance(context, ProtocolContext)
@@ -133,29 +133,29 @@ class TestSetupProtocol:
     def test_context_has_board_with_instruments(self):
         with _TempYamlFiles() as f:
             _, context = setup_protocol(
-                f.machine_path, f.deck_path, f.board_path, f.protocol_path,
+                f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
             )
             assert "pipette" in context.board.instruments
 
     def test_context_has_deck_with_labware(self):
         with _TempYamlFiles() as f:
             _, context = setup_protocol(
-                f.machine_path, f.deck_path, f.board_path, f.protocol_path,
+                f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
             )
             assert "vial_1" in context.deck
 
-    def test_context_has_machine_config(self):
+    def test_context_has_gantry_config(self):
         with _TempYamlFiles() as f:
             _, context = setup_protocol(
-                f.machine_path, f.deck_path, f.board_path, f.protocol_path,
+                f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
             )
-            assert isinstance(context.machine, MachineConfig)
-            assert context.machine.working_volume.x_min == -300.0
+            assert isinstance(context.gantry, GantryConfig)
+            assert context.gantry.working_volume.x_min == -300.0
 
     def test_protocol_has_expected_steps(self):
         with _TempYamlFiles() as f:
             protocol, _ = setup_protocol(
-                f.machine_path, f.deck_path, f.board_path, f.protocol_path,
+                f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
             )
             assert len(protocol) == 1
             assert protocol.steps[0].command_name == "move"
@@ -179,7 +179,7 @@ labware:
         with _TempYamlFiles(deck=out_of_bounds_deck) as f:
             with pytest.raises(SetupValidationError) as exc_info:
                 setup_protocol(
-                    f.machine_path, f.deck_path, f.board_path, f.protocol_path,
+                    f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
                 )
             assert len(exc_info.value.violations) >= 1
 
@@ -203,42 +203,42 @@ labware:
         with _TempYamlFiles(deck=near_edge_deck) as f:
             with pytest.raises(SetupValidationError) as exc_info:
                 setup_protocol(
-                    f.machine_path, f.deck_path, f.board_path, f.protocol_path,
+                    f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
                 )
             assert any(v.coordinate_type == "gantry" for v in exc_info.value.violations)
 
-    def test_raises_on_missing_machine_file(self):
+    def test_raises_on_missing_gantry_file(self):
         with _TempYamlFiles() as f:
-            with pytest.raises(MachineLoaderError):
+            with pytest.raises(GantryLoaderError):
                 setup_protocol(
-                    "/nonexistent/machine.yaml", f.deck_path, f.board_path, f.protocol_path,
+                    "/nonexistent/gantry.yaml", f.deck_path, f.board_path, f.protocol_path,
                 )
 
     def test_raises_on_missing_deck_file(self):
         with _TempYamlFiles() as f:
             with pytest.raises(DeckLoaderError):
                 setup_protocol(
-                    f.machine_path, "/nonexistent/deck.yaml", f.board_path, f.protocol_path,
+                    f.gantry_path, "/nonexistent/deck.yaml", f.board_path, f.protocol_path,
                 )
 
     def test_raises_on_missing_board_file(self):
         with _TempYamlFiles() as f:
             with pytest.raises(BoardLoaderError):
                 setup_protocol(
-                    f.machine_path, f.deck_path, "/nonexistent/board.yaml", f.protocol_path,
+                    f.gantry_path, f.deck_path, "/nonexistent/board.yaml", f.protocol_path,
                 )
 
     def test_raises_on_missing_protocol_file(self):
         with _TempYamlFiles() as f:
             with pytest.raises(ProtocolLoaderError):
                 setup_protocol(
-                    f.machine_path, f.deck_path, f.board_path, "/nonexistent/protocol.yaml",
+                    f.gantry_path, f.deck_path, f.board_path, "/nonexistent/protocol.yaml",
                 )
 
     def test_uses_mock_gantry_by_default(self):
         with _TempYamlFiles() as f:
             _, context = setup_protocol(
-                f.machine_path, f.deck_path, f.board_path, f.protocol_path,
+                f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
             )
             # Board should have a gantry (mock) — verify it exists
             assert context.board.gantry is not None

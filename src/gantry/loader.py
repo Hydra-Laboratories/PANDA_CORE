@@ -1,4 +1,4 @@
-"""Load machine YAML into a MachineConfig."""
+"""Load gantry YAML into a GantryConfig."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from .errors import MachineLoaderError
-from .machine_config import MachineConfig, WorkingVolume
-from .yaml_schema import MachineYamlSchema
+from .errors import GantryLoaderError
+from .gantry_config import GantryConfig, WorkingVolume
+from .yaml_schema import GantryYamlSchema
 
 
 def _format_loader_exception(path: Path, error: Exception) -> str:
@@ -27,31 +27,31 @@ def _format_loader_exception(path: Path, error: Exception) -> str:
         elif "extra_forbidden" in error_type or "Extra inputs are not permitted" in detail:
             guidance = "Remove unknown YAML fields; only 'serial_port', 'cnc', and 'working_volume' are allowed at root."
         else:
-            guidance = "Review the YAML values against the machine schema."
+            guidance = "Review the YAML values against the gantry schema."
 
         prefix = f" at `{location}`" if location else ""
-        return f"Machine YAML error{prefix}: {detail}\nHow to fix: {guidance}"
+        return f"Gantry YAML error{prefix}: {detail}\nHow to fix: {guidance}"
 
     if isinstance(error, yaml.YAMLError):
         return (
-            f"Machine YAML parse error in `{path}`.\n"
+            f"Gantry YAML parse error in `{path}`.\n"
             "How to fix: Check YAML indentation, colons, and structure."
         )
 
     if isinstance(error, FileNotFoundError):
         return (
-            f"Machine config file not found: `{path}`.\n"
+            f"Gantry config file not found: `{path}`.\n"
             "How to fix: Verify the file path exists."
         )
 
     return (
-        f"Machine loader error in `{path}`: {detail}\n"
-        "How to fix: Verify the file path and machine YAML contents."
+        f"Gantry loader error in `{path}`: {detail}\n"
+        "How to fix: Verify the file path and gantry YAML contents."
     )
 
 
-def load_machine_from_yaml(path: str | Path) -> MachineConfig:
-    """Load a machine YAML file and return a MachineConfig.
+def load_gantry_from_yaml(path: str | Path) -> GantryConfig:
+    """Load a gantry YAML file and return a GantryConfig.
 
     Raises:
         FileNotFoundError: If the YAML file does not exist.
@@ -64,8 +64,8 @@ def load_machine_from_yaml(path: str | Path) -> MachineConfig:
     if raw is None:
         raw = {}
 
-    schema = MachineYamlSchema.model_validate(raw)
-    return MachineConfig(
+    schema = GantryYamlSchema.model_validate(raw)
+    return GantryConfig(
         serial_port=schema.serial_port,
         homing_strategy=schema.cnc.homing_strategy,
         working_volume=WorkingVolume(
@@ -79,14 +79,14 @@ def load_machine_from_yaml(path: str | Path) -> MachineConfig:
     )
 
 
-def load_machine_from_yaml_safe(path: str | Path) -> MachineConfig:
-    """Load machine YAML with user-friendly exception formatting.
+def load_gantry_from_yaml_safe(path: str | Path) -> GantryConfig:
+    """Load gantry YAML with user-friendly exception formatting.
 
     Raises:
-        MachineLoaderError: Concise, actionable message intended for CLI output.
+        GantryLoaderError: Concise, actionable message intended for CLI output.
     """
     resolved = Path(path)
     try:
-        return load_machine_from_yaml(resolved)
+        return load_gantry_from_yaml(resolved)
     except Exception as exc:
-        raise MachineLoaderError(_format_loader_exception(resolved, exc)) from exc
+        raise GantryLoaderError(_format_loader_exception(resolved, exc)) from exc

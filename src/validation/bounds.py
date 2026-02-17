@@ -1,4 +1,4 @@
-"""Bounds validation: deck positions and gantry-computed positions vs. machine volume."""
+"""Bounds validation: deck positions and gantry-computed positions vs. gantry volume."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from src.board.board import Board
 from src.deck.deck import Deck
 from src.deck.labware.vial import Vial
 from src.deck.labware.well_plate import WellPlate
-from src.machine.machine_config import MachineConfig, WorkingVolume
+from src.gantry.gantry_config import GantryConfig, WorkingVolume
 
 from .errors import BoundsViolation
 
@@ -50,14 +50,14 @@ def _get_all_positions(
 
 
 def validate_deck_positions(
-    machine: MachineConfig, deck: Deck,
+    gantry: GantryConfig, deck: Deck,
 ) -> List[BoundsViolation]:
-    """Check every labware position is within the machine working volume.
+    """Check every labware position is within the gantry working volume.
 
     Returns a list of violations (empty if all pass).
     """
     violations: List[BoundsViolation] = []
-    volume = machine.working_volume
+    volume = gantry.working_volume
     for lw_key, pos_id, x, y, z in _get_all_positions(deck):
         for axis, bound_name, bound_value in _check_point(volume, x, y, z):
             violations.append(BoundsViolation(
@@ -74,7 +74,7 @@ def validate_deck_positions(
 
 
 def validate_gantry_positions(
-    machine: MachineConfig, deck: Deck, board: Board,
+    gantry: GantryConfig, deck: Deck, board: Board,
 ) -> List[BoundsViolation]:
     """For each (instrument, deck_position), compute gantry position and check bounds.
 
@@ -86,7 +86,7 @@ def validate_gantry_positions(
     Returns a list of violations (empty if all pass).
     """
     violations: List[BoundsViolation] = []
-    volume = machine.working_volume
+    volume = gantry.working_volume
     for instr_name, instrument in board.instruments.items():
         for lw_key, pos_id, x, y, z in _get_all_positions(deck):
             gx = x - instrument.offset_x

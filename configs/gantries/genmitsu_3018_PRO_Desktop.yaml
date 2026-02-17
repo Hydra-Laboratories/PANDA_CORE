@@ -1,4 +1,4 @@
-# CUB — Genmitsu 3018 PRO Desktop (smaller machine)
+# CUB — Genmitsu 3018 PRO Desktop (smaller gantry)
 serial_port: /dev/cu.usbserial-2130
 cnc:
   homing_strategy: xy_hard_limits

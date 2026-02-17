@@ -1,11 +1,11 @@
 """Validate a protocol setup by loading all configs and checking bounds.
 
 Usage:
-    python setup/validate_setup.py <machine.yaml> <deck.yaml> <board.yaml> <protocol.yaml>
+    python setup/validate_setup.py <gantry.yaml> <deck.yaml> <board.yaml> <protocol.yaml>
 
 Example:
     python setup/validate_setup.py \\
-        configs/machines/genmitsu_3018_PROver_v2.yaml \\
+        configs/gantries/genmitsu_3018_PROver_v2.yaml \\
         configs/decks/mofcat_deck.yaml \\
         configs/boards/mofcat_board.yaml \\
         configs/protocols/protocol.sample.yaml
@@ -22,7 +22,7 @@ from src.deck.deck import Deck
 from src.deck.labware.vial import Vial
 from src.deck.labware.well_plate import WellPlate
 from src.deck.loader import load_deck_from_yaml
-from src.machine.loader import load_machine_from_yaml
+from src.gantry.loader import load_gantry_from_yaml
 from src.protocol_engine.loader import load_protocol_from_yaml
 from src.protocol_engine.setup import _default_mock_gantry
 from src.validation.bounds import validate_deck_positions, validate_gantry_positions
@@ -59,7 +59,7 @@ def _instrument_summary(board) -> list[str]:
 
 
 def run_validation(
-    machine_path: str,
+    gantry_path: str,
     deck_path: str,
     board_path: str,
     protocol_path: str,
@@ -75,23 +75,23 @@ def run_validation(
     out(SEPARATOR)
     out()
 
-    # 1. Machine
-    out("[1/4] Loading machine config...")
+    # 1. Gantry
+    out("[1/4] Loading gantry config...")
     try:
-        machine = load_machine_from_yaml(machine_path)
+        gantry_config = load_gantry_from_yaml(gantry_path)
     except Exception as exc:
         out(f"  ERROR: {exc}")
         out()
         out(SEPARATOR)
-        out("RESULT: ERROR — could not load machine config")
+        out("RESULT: ERROR — could not load gantry config")
         out(SEPARATOR)
         return "\n".join(lines)
 
-    vol = machine.working_volume
-    out(f"  OK: {machine_path}")
+    vol = gantry_config.working_volume
+    out(f"  OK: {gantry_path}")
     out(f"  Working volume: X[{vol.x_min}, {vol.x_max}]  "
         f"Y[{vol.y_min}, {vol.y_max}]  Z[{vol.z_min}, {vol.z_max}]")
-    out(f"  Homing strategy: {machine.homing_strategy}")
+    out(f"  Homing strategy: {gantry_config.homing_strategy}")
     out()
 
     # 2. Deck
@@ -115,8 +115,8 @@ def run_validation(
     # 3. Board
     out("[3/4] Loading board config...")
     try:
-        gantry = _default_mock_gantry()
-        board = load_board_from_yaml(board_path, gantry)
+        mock_gantry = _default_mock_gantry()
+        board = load_board_from_yaml(board_path, mock_gantry)
     except Exception as exc:
         out(f"  ERROR: {exc}")
         out()
@@ -151,7 +151,7 @@ def run_validation(
 
     # 5. Deck bounds validation
     out("Validating deck positions...")
-    deck_violations = validate_deck_positions(machine, deck)
+    deck_violations = validate_deck_positions(gantry_config, deck)
     if deck_violations:
         out(f"  FAIL — {len(deck_violations)} violation(s):")
         for v in deck_violations:
@@ -167,7 +167,7 @@ def run_validation(
 
     # 6. Gantry bounds validation
     out("Validating gantry positions...")
-    gantry_violations = validate_gantry_positions(machine, deck, board)
+    gantry_violations = validate_gantry_positions(gantry_config, deck, board)
     if gantry_violations:
         out(f"  FAIL — {len(gantry_violations)} violation(s):")
         for v in gantry_violations:
@@ -187,7 +187,7 @@ def run_validation(
     if all_violations:
         out(f"RESULT: FAIL — {len(all_violations)} violation(s) found")
     else:
-        out("RESULT: PASS — all positions within machine bounds")
+        out("RESULT: PASS — all positions within gantry bounds")
         out("Protocol is ready to run.")
     out(SEPARATOR)
 
@@ -196,18 +196,18 @@ def run_validation(
 
 def main() -> None:
     if len(sys.argv) != 5:
-        print("Usage: python setup/validate_setup.py <machine.yaml> <deck.yaml> <board.yaml> <protocol.yaml>")
+        print("Usage: python setup/validate_setup.py <gantry.yaml> <deck.yaml> <board.yaml> <protocol.yaml>")
         print()
         print("Example:")
         print("  python setup/validate_setup.py \\")
-        print("    configs/machines/genmitsu_3018_PROver_v2.yaml \\")
+        print("    configs/gantries/genmitsu_3018_PROver_v2.yaml \\")
         print("    configs/decks/mofcat_deck.yaml \\")
         print("    configs/boards/mofcat_board.yaml \\")
         print("    configs/protocols/protocol.sample.yaml")
         sys.exit(1)
 
-    machine_path, deck_path, board_path, protocol_path = sys.argv[1:5]
-    output = run_validation(machine_path, deck_path, board_path, protocol_path)
+    gantry_path, deck_path, board_path, protocol_path = sys.argv[1:5]
+    output = run_validation(gantry_path, deck_path, board_path, protocol_path)
     print(output)
 
 

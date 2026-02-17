@@ -8,7 +8,7 @@ from typing import List, Optional
 
 @dataclass(frozen=True)
 class BoundsViolation:
-    """One position that falls outside the machine working volume."""
+    """One position that falls outside the gantry working volume."""
 
     labware_key: str
     position_id: str

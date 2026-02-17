@@ -1,4 +1,4 @@
-"""Machine configuration domain models."""
+"""Gantry configuration domain models."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class WorkingVolume:
-    """Machine working volume bounds in millimeters.
+    """Gantry working volume bounds in millimeters.
 
     All coordinates use CNC convention: origin at (0, 0, 0),
     working area extends into negative space.
@@ -30,8 +30,8 @@ class WorkingVolume:
 
 
 @dataclass(frozen=True)
-class MachineConfig:
-    """Loaded machine configuration."""
+class GantryConfig:
+    """Loaded gantry configuration."""
 
     serial_port: str
     homing_strategy: str
