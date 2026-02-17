@@ -1,0 +1,10 @@
+protocol:
+  - move:
+      instrument: pipette
+      position: plate_1.A1
+  - move:
+      instrument: pipette
+      position: plate_1.C8
+  - move:
+      instrument: pipette
+      position: plate_1.B1
