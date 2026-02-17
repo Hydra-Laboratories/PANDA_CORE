@@ -156,6 +156,20 @@ python setup/validate_setup.py \
 
 The script prints step-by-step output: each config loaded with details (machine bounds, labware list, instruments, protocol steps), followed by deck and gantry bounds validation results, and a final PASS/FAIL summary.
 
+### Run Protocol (CLI)
+
+Validate and run a protocol end-to-end (requires hardware connection):
+
+```bash
+python setup/run_protocol.py \
+    configs/machines/genmitsu_3018_PROver_v2.yaml \
+    configs/decks/mofcat_deck.yaml \
+    configs/boards/mofcat_board.yaml \
+    configs/protocols/protocol.sample.yaml
+```
+
+This first runs offline validation (same output as `validate_setup.py`), then connects to the gantry, homes, and executes the protocol.
+
 ## Development
 
 Run unit tests:

@@ -134,6 +134,9 @@ First-run scripts for verifying hardware after unboxing.
     - **Usage**: `python setup/validate_setup.py <machine.yaml> <deck.yaml> <board.yaml> <protocol.yaml>`
     - **Output**: Step-by-step loading status, labware/instrument summaries, bounds validation results, and a final PASS/FAIL verdict.
     - **Dependencies**: `src/machine`, `src/deck`, `src/board`, `src/protocol_engine`, `src/validation`
+- **`run_protocol.py`**: Load, validate, connect to hardware, and run a protocol end-to-end. Runs offline validation first, then connects to the gantry, homes, and executes the protocol.
+    - **Usage**: `python setup/run_protocol.py <machine.yaml> <deck.yaml> <board.yaml> <protocol.yaml>`
+    - **Dependencies**: `src/gantry`, `src/machine`, `src/deck`, `src/board`, `src/protocol_engine`, `src/validation`
 - **`keyboard_input.py`**: Helper module that reads single keypresses (including arrow keys) without requiring Enter. Uses `tty`/`termios` (Unix only).
 
 ## Environment
