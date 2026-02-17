@@ -83,6 +83,7 @@ class VialYamlEntry(BaseModel):
     location: _YamlPoint3D
     capacity_ul: float
     working_volume_ul: float
+    initial_volume_ul: float = 0.0
 
     @model_validator(mode="after")
     def _validate_vial_volumes(self) -> "VialYamlEntry":
@@ -90,6 +91,10 @@ class VialYamlEntry(BaseModel):
             raise ValueError("working_volume_ul must be <= capacity_ul.")
         if self.capacity_ul <= 0 or self.working_volume_ul <= 0:
             raise ValueError("capacity_ul and working_volume_ul must be positive.")
+        if self.initial_volume_ul < 0:
+            raise ValueError("initial_volume_ul must be non-negative.")
+        if self.initial_volume_ul > self.capacity_ul:
+            raise ValueError("initial_volume_ul must be <= capacity_ul.")
         return self
 
 

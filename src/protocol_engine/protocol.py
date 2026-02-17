@@ -30,6 +30,7 @@ class ProtocolContext:
     )
     data_store: Any = None
     campaign_id: int | None = None
+    volume_tracker: Any = None
 
 
 @dataclass

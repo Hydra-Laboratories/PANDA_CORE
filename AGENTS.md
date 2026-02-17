@@ -94,7 +94,7 @@ Deck configuration loading, runtime deck container, and labware geometry/positio
 - **Labware models** (`src/deck/labware/`):
   - **`labware.py`**: `Coordinate3D` and `Labware` base model. `Labware` provides high-level shared behavior (e.g., `get_location`, `get_initial_position`) and common validation helpers; concrete required fields live in subclasses. All models use strict schema (`extra='forbid'`).
   - **`well_plate.py`**: `WellPlate(Labware)` for multi-well plates (e.g., SBS 96-well). Required fields include `name`, `model_name`, dimensions, layout (`rows`, `columns`), `wells`, and volume fields (`capacity_ul`, `working_volume_ul`). Also provides `get_well_center(well_id)`.
-  - **`vial.py`**: `Vial(Labware)` for a single vial. Required fields include `name`, `model_name`, geometry (`height_mm`, `diameter_mm`), single `location`, and volume fields (`capacity_ul`, `working_volume_ul`), plus `get_vial_center()`.
+  - **`vial.py`**: `Vial(Labware)` for a single vial. Required fields include `name`, `model_name`, geometry (`height_mm`, `diameter_mm`), single `location`, volume fields (`capacity_ul`, `working_volume_ul`), and optional `initial_volume_ul` (default 0.0), plus `get_vial_center()`.
 - **Deck configuration (YAML)**: Deck layout is defined in a **deck YAML** file (labware only; no gantry settings). Strict schema: only allowed fields; missing, extra, or wrong-type fields raise `ValidationError`.
   - **`src/deck/yaml_schema.py`**: Pydantic models for deck YAML: `DeckYamlSchema` (root, single key `labware`), `WellPlateYamlEntry` (two-point calibration points under `calibration.a1` and `calibration.a2`, axis-aligned only), `VialYamlEntry` (single vial location). Both require `model_name`. All use `extra='forbid'`.
   - **`src/deck/loader.py`**: `load_deck_from_yaml(path)` loads a deck YAML file and returns a `Deck` containing all labware. Well plates are built from calibration A1/A2 and x/y offsets (derived well positions); vials from a single explicit `location`.
@@ -134,7 +134,25 @@ SQLite-backed persistence layer for self-driving lab campaigns. All state lives 
 #### Protocol Integration
 - **`ProtocolContext.data_store`**: Optional `DataStore` instance. When set (along with `campaign_id`), `scan` and `transfer` commands automatically persist measurements and labware state.
 - **`ProtocolContext.campaign_id`**: Optional `int`. FK to the `campaigns` table.
-- Commands work identically when `data_store` is `None` — no code changes needed for existing protocols.
+- **`ProtocolContext.volume_tracker`**: Optional `VolumeTracker` instance. When set, all pipetting commands validate volumes before hardware execution.
+- Commands work identically when `data_store` or `volume_tracker` is `None` — no code changes needed for existing protocols.
+
+### Volume Tracking (`src/protocol_engine/volume_tracker.py`)
+In-memory volume state tracker that validates all pipetting operations before hardware execution.
+
+- **`VolumeTracker`**: Tracks current volumes for every registered labware location and validates aspirate/dispense operations against capacity and available volume.
+    - **Registration**: `register_labware(labware_key, labware, initial_volume_ul=0.0, initial_volumes=None)` — registers a WellPlate (one entry per well) or Vial (single entry). Supports initial volumes for reagent vials.
+    - **Queries**: `get_volume(key, well_id)`, `get_capacity(key, well_id)`, `get_available_capacity(key, well_id)`
+    - **Validation**: `validate_aspirate(key, well_id, volume)`, `validate_dispense(key, well_id, volume)`, `validate_pipette_volume(volume, min_ul, max_ul)`
+    - **Record (validate + mutate)**: `record_aspirate(key, well_id, volume)`, `record_dispense(key, well_id, volume)`
+- **Error hierarchy** (`src/protocol_engine/errors.py`):
+    - `VolumeError(ProtocolExecutionError)` — base class
+    - `OverflowVolumeError` — dispensing would exceed capacity
+    - `UnderflowVolumeError` — aspirating more than available
+    - `InvalidVolumeError` — negative, zero, NaN, or infinite volume
+    - `PipetteVolumeError` — volume outside pipette min/max range
+- **Pipette command integration**: All pipetting commands (`aspirate`, `dispense`, `transfer`, `mix`, `serial_transfer`) validate volumes before moving hardware. Validation is fail-fast — if a check fails, the gantry never moves.
+- **Initial volumes in YAML**: Vial YAML entries support an optional `initial_volume_ul` field (defaults to 0.0) so reagent source vials can declare their starting volume.
 
 ### Experiments
 - **`experiments/`**: Directory for storing YAML experiment definitions.

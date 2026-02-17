@@ -19,6 +19,9 @@ class Vial(Labware):
     location: Coordinate3D = Field(..., description="Absolute XYZ center of this vial.")
     capacity_ul: float = Field(..., description="Vial capacity in microliters.")
     working_volume_ul: float = Field(..., description="Working volume per vial in microliters.")
+    initial_volume_ul: float = Field(
+        0.0, description="Initial volume in microliters (e.g. for reagent vials).",
+    )
 
     @field_validator("name", "model_name")
     def _validate_non_empty_text(cls, value: str) -> str:
@@ -30,10 +33,18 @@ class Vial(Labware):
             raise ValueError(f"{info.field_name} must be positive.")
         return value
 
+    @field_validator("initial_volume_ul")
+    def _validate_non_negative_initial(cls, value: float) -> float:
+        if value < 0:
+            raise ValueError("initial_volume_ul must be non-negative.")
+        return value
+
     @model_validator(mode="after")
     def _validate_working_le_capacity(self) -> "Vial":
         if self.working_volume_ul > self.capacity_ul:
             raise ValueError("working_volume_ul must be <= capacity_ul.")
+        if self.initial_volume_ul > self.capacity_ul:
+            raise ValueError("initial_volume_ul must be <= capacity_ul.")
         return self
 
     @field_validator("height_mm", "diameter_mm")
