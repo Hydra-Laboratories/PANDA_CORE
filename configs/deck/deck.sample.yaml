@@ -37,3 +37,4 @@ labware:
       y: 40.0
     capacity_ul: 1500.0
     working_volume_ul: 1200.0
+    initial_volume_ul: 1000.0
