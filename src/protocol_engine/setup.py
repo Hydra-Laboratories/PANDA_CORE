@@ -5,17 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Tuple
 
-from src.board.board import Board
-from src.board.loader import load_board_from_yaml_safe
-from src.deck.deck import Deck
-from src.deck.loader import load_deck_from_yaml_safe
-from src.gantry.gantry_config import GantryConfig
-from src.gantry.loader import load_gantry_from_yaml_safe
-from src.gantry.offline import OfflineGantry
-from src.protocol_engine.loader import load_protocol_from_yaml_safe
-from src.protocol_engine.protocol import Protocol, ProtocolContext
-from src.validation.bounds import validate_deck_positions, validate_gantry_positions
-from src.validation.errors import SetupValidationError
+from board.board import Board
+from board.loader import load_board_from_yaml_safe
+from deck.deck import Deck
+from deck.loader import load_deck_from_yaml_safe
+from gantry.gantry_config import GantryConfig
+from gantry.loader import load_gantry_from_yaml_safe
+from gantry.offline import OfflineGantry
+from protocol_engine.loader import load_protocol_from_yaml_safe
+from protocol_engine.protocol import Protocol, ProtocolContext
+from validation.bounds import validate_deck_positions, validate_gantry_positions
+from validation.errors import SetupValidationError
 
 
 def setup_protocol(
