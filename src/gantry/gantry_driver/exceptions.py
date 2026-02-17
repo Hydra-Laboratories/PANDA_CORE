@@ -27,3 +27,11 @@ class LocationNotFound(Exception):
 
 class CNCMillException(Exception):
     """Base exception for CNC mill errors."""
+
+
+class OutOfBoundsMoveError(CNCMillException):
+    """Raised when a target move falls outside machine bounds."""
+
+
+class AlarmRecoveryError(CNCMillException):
+    """Raised when automatic alarm recovery fails."""

@@ -24,11 +24,13 @@ import serial
 import serial.tools.list_ports
 
 from .exceptions import (
+    AlarmRecoveryError,
     CommandExecutionError,
     LocationNotFound,
     MillConfigError,
     MillConfigNotFound,
     MillConnectionError,
+    OutOfBoundsMoveError,
     StatusReturnError,
 )
 
@@ -49,10 +51,12 @@ MAX_TRAVEL_LIMIT = 320.0  # mm
 HOMING_BACKOFF = 2.0      # mm
 HOMING_FAST_FEED = 500
 HOMING_STEP_SIZE = 50.0   # mm
+ALARM_RECOVERY_BACKOFF_MM = 2.0
 
 # Compile regex patterns for extracting coordinates from the mill status
 wpos_pattern = re.compile(r"WPos:([\d.-]+),([\d.-]+),([\d.-]+)")
 mpos_pattern = re.compile(r"MPos:([\d.-]+),([\d.-]+),([\d.-]+)")
+wco_pattern = re.compile(r"WCO:([\d.-]+),([\d.-]+),([\d.-]+)")
 
 axis_conf_table = [
     {"setting_value": 0, "reverse_x": 0, "reverse_y": 0, "reverse_z": 0},
@@ -128,10 +132,12 @@ class Mill:
         self.active_connection = False
         self.instrument_manager: InstrumentManager = InstrumentManager()
         self.working_volume: Coordinates = self.read_working_volume()
+        self._configured_bounds: Optional[dict] = None
         self.safe_z_height = -10.0  # TODO: In the PANDA wrapper, set the safe floor height to the max height of any active object on the mill + the pipette length
         self.max_z_height = 0.0
         self.command_logger = set_up_command_logger(self.logger_location)
         self.interactive_mode = False
+        self._recovering_from_alarm = False
 
     def read_working_volume(self):
         """Checks the mill config for soft limits to be enabled, and then if so check the x, y, and z max travel limits"""
@@ -149,6 +155,16 @@ class Mill:
             self.logger.warning("Using default working volume")
             working_volume = Coordinates(x=-415.0, y=-300.0, z=-200.0)
         return working_volume
+
+    def set_working_volume_bounds(self, bounds: dict) -> None:
+        """Set explicit working-volume bounds from external configuration."""
+        required = {"x_min", "x_max", "y_min", "y_max", "z_min", "z_max"}
+        missing = required - set(bounds.keys())
+        if missing:
+            raise ValueError(f"Missing working_volume keys: {sorted(missing)}")
+
+        parsed = {key: float(value) for key, value in bounds.items() if key in required}
+        self._configured_bounds = parsed
 
     def change_logging_level(self, level):
         """Change the logging level."""
@@ -349,16 +365,9 @@ class Mill:
         else:
             status = status[-1].decode().rstrip()
         if "alarm" in status.lower():
-            self.logger.warning("Mill is in alarm state. Requesting user input")
-            reset_alarm = "y"
-            if reset_alarm[0].lower() == "y":
-                self.logger.info("Resetting the mill")
-                self.reset()
-            else:
-                self.logger.error(
-                    "Mill is in alarm state, user chose not to reset the mill"
-                )
-                raise MillConnectionError("Mill is in alarm state")
+            self.logger.warning("Mill is in alarm state; attempting automatic recovery")
+            if not self._recover_from_alarm_state(context="connect"):
+                raise MillConnectionError("Mill is in alarm state and could not be recovered")
         if "error" in status.lower():
             self.logger.error("Error in status: %s", status)
             raise MillConnectionError(f"Error in status: {status}")
@@ -510,6 +519,14 @@ class Mill:
                     self.logger.error("Error in status: %s", mill_response)
                     self.set_feed_rate(DEFAULT_FEED_RATE)
                     mill_response = self.execute_command(command, suppress_errors=suppress_errors)
+                elif self._contains_alarm_text(mill_response) and not self._recovering_from_alarm:
+                    recovered = self._recover_from_alarm_state(context=f"command:{command}")
+                    if not recovered:
+                        raise StatusReturnError(f"Alarm in status and recovery failed: {mill_response}")
+                    raise StatusReturnError(
+                        "Alarm detected during command execution; machine was recovered to a safe state. "
+                        f"Original command aborted: {command}"
+                    )
                 else:
                     if not suppress_errors:
                         self.logger.error(
@@ -517,6 +534,8 @@ class Mill:
                         )
                     raise StatusReturnError(f"Error in status: {mill_response}")
 
+        except (StatusReturnError, OutOfBoundsMoveError, AlarmRecoveryError):
+            raise
         except Exception as exep:
             if not suppress_errors:
                 self.logger.error("Error executing command %s: %s", command, str(exep))
@@ -651,6 +670,9 @@ class Mill:
             if "alarm" in status:
                 if not suppress_errors:
                     self.logger.error("Alarm in status: %s", status)
+                recovered = self._recover_from_alarm_state(context="wait_for_completion")
+                if recovered:
+                    return self.current_status()
                 raise StatusReturnError(f"Alarm in status: {status}")
             if time.time() - start_time > timeout:
                 self.logger.warning("Command execution timed out")
@@ -764,26 +786,38 @@ class Mill:
             status = self.read()
             attempts += 1
 
-        status_mode = int(self.config["$10"])
-
-        if int(status_mode) not in [0, 1, 2, 3]:
-            self.logger.error("Invalid status mode")
-            raise ValueError("Invalid status mode")
-
         max_attempts = 3
-        homing_pull_off = float(self.config["$27"])
-
-        pattern = wpos_pattern if status_mode in [0, 2] else mpos_pattern
-        coord_type = "WPos" if status_mode in [0, 2] else "MPos"
 
         for i in range(max_attempts):
-            match = pattern.search(status)
+            coord_type = None
+            match = wpos_pattern.search(status)
             if match:
-                x_coord = round(float(match.group(1)), 3)
-                y_coord = round(float(match.group(2)), 3)
-                z_coord = round(float(match.group(3)), 3)
-                if coord_type == "MPos":
-                    pass
+                coord_type = "WPos"
+            else:
+                # Fall back to deriving work coordinates when only MPos + WCO are available.
+                mpos_match = mpos_pattern.search(status)
+                wco_match = wco_pattern.search(status)
+                if mpos_match and wco_match:
+                    match = (
+                        str(float(mpos_match.group(1)) - float(wco_match.group(1))),
+                        str(float(mpos_match.group(2)) - float(wco_match.group(2))),
+                        str(float(mpos_match.group(3)) - float(wco_match.group(3))),
+                    )
+                    coord_type = "WPos(derived)"
+                elif mpos_match:
+                    # Last-resort fallback when WPos cannot be obtained.
+                    match = mpos_match
+                    coord_type = "MPos(fallback)"
+
+            if match:
+                if isinstance(match, tuple):
+                    x_coord = round(float(match[0]), 3)
+                    y_coord = round(float(match[1]), 3)
+                    z_coord = round(float(match[2]), 3)
+                else:
+                    x_coord = round(float(match.group(1)), 3)
+                    y_coord = round(float(match.group(2)), 3)
+                    z_coord = round(float(match.group(3)), 3)
                 self.logger.info(
                     "%s coordinates: X = %s, Y = %s, Z = %s",
                     coord_type,
@@ -1056,8 +1090,93 @@ class Mill:
         )
 
     def _validate_target_coordinates(self, target_coordinates: Coordinates):
-        # Validation disabled by request
-        pass
+        bounds = self._get_machine_bounds()
+        axis_values = {
+            "x": target_coordinates.x,
+            "y": target_coordinates.y,
+            "z": target_coordinates.z,
+        }
+
+        violations = []
+        for axis, value in axis_values.items():
+            axis_min = bounds[f"{axis}_min"]
+            axis_max = bounds[f"{axis}_max"]
+            if value < axis_min or value > axis_max:
+                violations.append(
+                    f"{axis}={value:.3f} outside [{axis_min:.3f}, {axis_max:.3f}]"
+                )
+
+        if violations:
+            violations_text = "; ".join(violations)
+            raise OutOfBoundsMoveError(
+                "Target move is outside machine bounds. "
+                f"target=({target_coordinates.x:.3f}, {target_coordinates.y:.3f}, {target_coordinates.z:.3f}); "
+                f"bounds=x[{bounds['x_min']:.3f},{bounds['x_max']:.3f}] "
+                f"y[{bounds['y_min']:.3f},{bounds['y_max']:.3f}] "
+                f"z[{bounds['z_min']:.3f},{bounds['z_max']:.3f}]. "
+                f"Violations: {violations_text}. "
+                "Use coordinates within configured working_volume."
+            )
+
+    def _get_machine_bounds(self) -> dict:
+        if self._configured_bounds is not None:
+            return self._configured_bounds
+        return {
+            "x_min": float(self.working_volume.x),
+            "x_max": 0.0,
+            "y_min": float(self.working_volume.y),
+            "y_max": 0.0,
+            "z_min": float(self.working_volume.z),
+            "z_max": 0.0,
+        }
+
+    def _contains_alarm_text(self, value: str) -> bool:
+        return "alarm" in value.lower()
+
+    def _recover_from_alarm_state(self, context: str) -> bool:
+        """
+        Try to unlock and back off from alarm by 2mm toward machine interior.
+        Returns True when a recovery command sequence was sent successfully.
+        """
+        try:
+            self._recovering_from_alarm = True
+            self.reset()
+            current = self.current_coordinates()
+            backoff = self._compute_alarm_backoff(current)
+            if backoff == Coordinates(0.0, 0.0, 0.0):
+                self.logger.warning("Alarm recovery in %s had no available backoff vector", context)
+                return True
+
+            self.execute_command("G91", suppress_errors=True)
+            self.execute_command(
+                f"G01 X{backoff.x} Y{backoff.y} Z{backoff.z} F{DEFAULT_FEED_RATE}",
+                suppress_errors=True,
+            )
+            self.execute_command("G90", suppress_errors=True)
+            return True
+        except Exception as exc:
+            self.logger.error("Alarm recovery failed in %s: %s", context, exc)
+            raise AlarmRecoveryError(
+                f"Automatic alarm recovery failed in {context}: {exc}"
+            ) from exc
+        finally:
+            self._recovering_from_alarm = False
+
+    def _compute_alarm_backoff(self, current: Coordinates) -> Coordinates:
+        bounds = self._get_machine_bounds()
+        return Coordinates(
+            x=self._axis_backoff_toward_interior(current.x, bounds["x_min"], bounds["x_max"]),
+            y=self._axis_backoff_toward_interior(current.y, bounds["y_min"], bounds["y_max"]),
+            z=self._axis_backoff_toward_interior(current.z, bounds["z_min"], bounds["z_max"]),
+        )
+
+    def _axis_backoff_toward_interior(self, value: float, axis_min: float, axis_max: float) -> float:
+        distance_to_min = abs(value - axis_min)
+        distance_to_max = abs(axis_max - value)
+
+        if distance_to_max <= distance_to_min:
+            return -ALARM_RECOVERY_BACKOFF_MM
+        return ALARM_RECOVERY_BACKOFF_MM
 
     def _generate_movement_commands(
         self,

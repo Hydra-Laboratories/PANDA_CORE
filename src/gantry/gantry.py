@@ -17,7 +17,10 @@ class Gantry:
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         # partial initialization of Mill without port 
         # (port is late-bound in connect())
-        self._mill = Mill() 
+        self._mill = Mill()
+        working_volume = self.config.get("working_volume")
+        if isinstance(working_volume, dict):
+            self._mill.set_working_volume_bounds(working_volume)
     
     def connect(self) -> None:
         """
