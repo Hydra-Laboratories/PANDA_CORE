@@ -753,7 +753,7 @@ class Mill:
         time.sleep(0.2)
         status = self.read()
         attempts = 0
-        while status[0] != "<" and attempts < 3:
+        while (not status or status[0] != "<") and attempts < 3:
             if "alarm" in status.lower() or "error" in status.lower():
                 self.logger.error("Error in status: %s", status)
                 raise StatusReturnError(f"Error in status: {status}")
