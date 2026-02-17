@@ -2,8 +2,8 @@
 
 import pytest
 
-from src.deck import Coordinate3D, WellPlate, Vial
-from src.deck.deck import Deck
+from deck import Coordinate3D, WellPlate, Vial
+from deck.deck import Deck
 
 
 # ----- Fixtures -----

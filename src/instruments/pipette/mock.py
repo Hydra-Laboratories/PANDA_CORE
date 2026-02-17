@@ -1,8 +1,8 @@
 from typing import Optional
 
-from src.instruments.base_instrument import BaseInstrument
-from src.instruments.pipette.exceptions import PipetteConfigError
-from src.instruments.pipette.models import (
+from instruments.base_instrument import BaseInstrument
+from instruments.pipette.exceptions import PipetteConfigError
+from instruments.pipette.models import (
     AspirateResult,
     MixResult,
     PipetteConfig,

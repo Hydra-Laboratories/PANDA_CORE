@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.protocol_engine.protocol import Protocol, ProtocolContext, ProtocolStep
+from protocol_engine.protocol import Protocol, ProtocolContext, ProtocolStep
 
 
 def _mock_context():

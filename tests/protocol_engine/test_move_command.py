@@ -9,9 +9,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.deck.labware.labware import Coordinate3D
-from src.protocol_engine.loader import load_protocol_from_yaml
-from src.protocol_engine.protocol import Protocol, ProtocolContext, ProtocolStep
+from deck.labware.labware import Coordinate3D
+from protocol_engine.loader import load_protocol_from_yaml
+from protocol_engine.protocol import Protocol, ProtocolContext, ProtocolStep
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -41,7 +41,7 @@ class TestMoveCommand:
 
     def test_move_resolves_position(self):
         # Import here so the registry is populated
-        from src.protocol_engine.commands.move import move
+        from protocol_engine.commands.move import move
 
         ctx = _mock_context()
         move(ctx, instrument="pipette", position="plate_1.A1")
@@ -49,7 +49,7 @@ class TestMoveCommand:
         ctx.deck.resolve.assert_called_once_with("plate_1.A1")
 
     def test_move_calls_board_move_with_instrument_and_coord(self):
-        from src.protocol_engine.commands.move import move
+        from protocol_engine.commands.move import move
 
         coord = Coordinate3D(x=-10.0, y=-20.0, z=-5.0)
         ctx = _mock_context(resolve_return=coord)
@@ -59,7 +59,7 @@ class TestMoveCommand:
         ctx.board.move.assert_called_once_with("pipette", coord)
 
     def test_move_passes_instrument_name_through(self):
-        from src.protocol_engine.commands.move import move
+        from protocol_engine.commands.move import move
 
         ctx = _mock_context()
         move(ctx, instrument="filmetrics", position="vial_1")
@@ -69,7 +69,7 @@ class TestMoveCommand:
         assert call_args[0][0] == "filmetrics"
 
     def test_move_invalid_target_propagates_error(self):
-        from src.protocol_engine.commands.move import move
+        from protocol_engine.commands.move import move
 
         ctx = _mock_context()
         ctx.deck.resolve.side_effect = KeyError("No labware 'bad' on deck.")

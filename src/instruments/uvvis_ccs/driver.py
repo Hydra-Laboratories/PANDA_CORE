@@ -2,13 +2,13 @@ import ctypes as C
 import time
 from typing import Optional
 
-from src.instruments.base_instrument import BaseInstrument
-from src.instruments.uvvis_ccs.exceptions import (
+from instruments.base_instrument import BaseInstrument
+from instruments.uvvis_ccs.exceptions import (
     UVVisCCSConnectionError,
     UVVisCCSMeasurementError,
     UVVisCCSTimeoutError,
 )
-from src.instruments.uvvis_ccs.models import NUM_PIXELS, UVVisSpectrum
+from instruments.uvvis_ccs.models import NUM_PIXELS, UVVisSpectrum
 
 # Status bitmask flags returned by tlccs_getDeviceStatus
 _STATUS_IDLE = 0x0002
