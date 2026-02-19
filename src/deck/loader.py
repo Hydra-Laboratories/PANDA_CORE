@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Type, Union
 
@@ -83,56 +84,77 @@ def _row_labels(rows: int) -> list[str]:
     return labels
 
 
-def _derive_wells_from_calibration(entry: WellPlateYamlEntry) -> Dict[str, Coordinate3D]:
-    """Build well ID -> Coordinate3D from calibration A1/A2 and offsets."""
+@dataclass(frozen=True)
+class _PlateOrientation:
+    """Resolved per-step deltas for column and row traversal.
+
+    Separating orientation resolution from well generation makes the
+    coordinate math easier to follow and test independently.
+    """
+    col_delta_x: float
+    col_delta_y: float
+    row_delta_x: float
+    row_delta_y: float
+
+
+def _resolve_plate_orientation(entry: WellPlateYamlEntry) -> _PlateOrientation:
+    """Determine column/row axis mapping from the two-point calibration.
+
+    Returns a ``_PlateOrientation`` whose deltas are used to compute each
+    well position relative to A1 in ``_derive_wells_from_calibration``.
+
+    Raises ``ValueError`` when the A2 calibration step does not match
+    the declared offset or the points are not axis-aligned.
+    """
     a1 = entry.a1_point
     a2 = entry.calibration.a2
-    rounding = 3
-    wells: Dict[str, Coordinate3D] = {}
-    row_labels = _row_labels(entry.rows)
-    column_indices = list(range(1, entry.columns + 1))
 
     same_x = abs(a1.x - a2.x) < 1e-9
     same_y = abs(a1.y - a2.y) < 1e-9
 
     if same_y:
-        # Columns along X: A2 is (a1.x + col_step, a1.y)
         col_step = a2.x - a1.x
-        # Ensure calibration A2 corresponds to physical well A2 (one adjacent column step).
         if abs(col_step - entry.x_offset_mm) > 1e-9:
             raise ValueError(
-                "Calibration A2 must match one adjacent column step from A1 (delta x must equal x_offset_mm)."
+                "Calibration A2 must match one adjacent column step from A1 "
+                "(delta x must equal x_offset_mm)."
             )
-        row_step = entry.y_offset_mm
-        for row_idx, row_label in enumerate(row_labels):
-            for col_idx, col_num in enumerate(column_indices):
-                x = a1.x + col_step * col_idx
-                y = a1.y + row_step * row_idx
-                wells[f"{row_label}{col_num}"] = Coordinate3D(
-                    x=round(x, rounding),
-                    y=round(y, rounding),
-                    z=round(a1.z, rounding),
-                )
-    elif same_x:
-        # Columns along Y: A2 is (a1.x, a1.y + col_step)
+        return _PlateOrientation(
+            col_delta_x=col_step, col_delta_y=0.0,
+            row_delta_x=0.0, row_delta_y=entry.y_offset_mm,
+        )
+
+    if same_x:
         col_step = a2.y - a1.y
-        # Ensure calibration A2 corresponds to physical well A2 (one adjacent column step).
         if abs(col_step - entry.y_offset_mm) > 1e-9:
             raise ValueError(
-                "Calibration A2 must match one adjacent column step from A1 (delta y must equal y_offset_mm)."
+                "Calibration A2 must match one adjacent column step from A1 "
+                "(delta y must equal y_offset_mm)."
             )
-        row_step = entry.x_offset_mm
-        for row_idx, row_label in enumerate(row_labels):
-            for col_idx, col_num in enumerate(column_indices):
-                x = a1.x + row_step * row_idx
-                y = a1.y + col_step * col_idx
-                wells[f"{row_label}{col_num}"] = Coordinate3D(
-                    x=round(x, rounding),
-                    y=round(y, rounding),
-                    z=round(a1.z, rounding),
-                )
-    else:
-        raise ValueError("Calibration must be axis-aligned (same x or same y).")
+        return _PlateOrientation(
+            col_delta_x=0.0, col_delta_y=col_step,
+            row_delta_x=entry.x_offset_mm, row_delta_y=0.0,
+        )
+
+    raise ValueError("Calibration must be axis-aligned (same x or same y).")
+
+
+def _derive_wells_from_calibration(entry: WellPlateYamlEntry) -> Dict[str, Coordinate3D]:
+    """Build well ID -> Coordinate3D from calibration A1/A2 and offsets."""
+    a1 = entry.a1_point
+    orientation = _resolve_plate_orientation(entry)
+    rounding = 3
+    wells: Dict[str, Coordinate3D] = {}
+
+    for row_idx, row_label in enumerate(_row_labels(entry.rows)):
+        for col_idx, col_num in enumerate(range(1, entry.columns + 1)):
+            x = a1.x + orientation.col_delta_x * col_idx + orientation.row_delta_x * row_idx
+            y = a1.y + orientation.col_delta_y * col_idx + orientation.row_delta_y * row_idx
+            wells[f"{row_label}{col_num}"] = Coordinate3D(
+                x=round(x, rounding),
+                y=round(y, rounding),
+                z=round(a1.z, rounding),
+            )
 
     return wells
 
