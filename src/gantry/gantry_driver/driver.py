@@ -50,9 +50,15 @@ HOMING_BACKOFF = 2.0      # mm
 HOMING_FAST_FEED = 500
 HOMING_STEP_SIZE = 50.0   # mm
 
-# Compile regex patterns for extracting coordinates from the mill status
+# Compile regex pattern for extracting Work Position coordinates from the mill status.
+# All coordinates in the PANDA system are Work Position (WPos).
 wpos_pattern = re.compile(r"WPos:([\d.-]+),([\d.-]+),([\d.-]+)")
-mpos_pattern = re.compile(r"MPos:([\d.-]+),([\d.-]+),([\d.-]+)")
+
+# Pattern for parsing G54 work coordinate offset from $# response
+g54_pattern = re.compile(r"\[G54:([\d.-]+),([\d.-]+),([\d.-]+)\]")
+
+# Maximum acceptable distance from origin after homing (mm per axis)
+POST_HOMING_TOLERANCE = 10.0
 
 axis_conf_table = [
     {"setting_value": 0, "reverse_x": 0, "reverse_y": 0, "reverse_z": 0},
@@ -160,6 +166,8 @@ class Mill:
         self.set_feed_rate(5000)
         self.clear_buffers()
         self.check_max_z_height()
+        coords = self.current_coordinates()
+        self.validate_post_homing_coordinates(coords)
 
     def check_max_z_height(self):
         """
@@ -330,6 +338,8 @@ class Mill:
 
         self.check_for_alarm_state()
         self.clear_buffers()
+        self.enforce_wpos_mode()
+        self.enforce_absolute_positioning()
         self.set_feed_rate(DEFAULT_FEED_RATE)
         return self.ser_mill
 
@@ -560,6 +570,8 @@ class Mill:
 
             time.sleep(0.5)
 
+        self.enforce_absolute_positioning()
+
     def home_xy_hard_limits(self):
         """
         Custom homing strategy for machines without valid Z homing.
@@ -736,6 +748,89 @@ class Mill:
         command = f"${setting}={value}"
         return self.execute_command(command)
 
+    def enforce_wpos_mode(self):
+        """Enforce Work Position (WPos) reporting by setting $10=0.
+
+        This ensures the GRBL status report always returns WPos
+        so that all coordinates in the system are consistently in
+        the work coordinate system.
+        """
+        self.logger.info("Enforcing WPos reporting mode ($10=0)")
+        self.execute_command("$10=0")
+        self.config["$10"] = "0"
+
+    def enforce_absolute_positioning(self):
+        """Enforce absolute positioning mode (G90).
+
+        This prevents stale G91 (relative) state from corrupting
+        subsequent moves.
+        """
+        self.logger.info("Enforcing absolute positioning (G90)")
+        self.execute_command("G90")
+
+    def validate_post_homing_coordinates(self, coords: Coordinates):
+        """Validate that coordinates are near the expected origin after homing.
+
+        After homing, WPos should be near 0,0,0 (within homing pull-off
+        and any minor offsets). If coordinates are wildly off, something
+        went wrong during homing.
+
+        Args:
+            coords: The coordinates to validate.
+
+        Raises:
+            StatusReturnError: If coordinates are too far from origin.
+        """
+        if (
+            abs(coords.x) > POST_HOMING_TOLERANCE
+            or abs(coords.y) > POST_HOMING_TOLERANCE
+            or abs(coords.z) > POST_HOMING_TOLERANCE
+        ):
+            msg = (
+                f"Post-homing coordinates {coords} are too far from origin. "
+                f"Expected within {POST_HOMING_TOLERANCE}mm per axis."
+            )
+            self.logger.error(msg)
+            raise StatusReturnError(msg)
+        self.logger.info("Post-homing coordinates validated: %s", coords)
+
+    def machine_coordinates(self) -> Coordinates:
+        """Get the current Machine Position (MPos) for diagnostics.
+
+        Computes MPos = WPos + WCO (Work Coordinate Offset).
+        This is NOT used for normal operation — all movement commands
+        use Work Position. Use this only for debugging or diagnostics.
+
+        Returns:
+            Coordinates: The machine position.
+        """
+        wpos = self.current_coordinates()
+        wco = self._query_work_coordinate_offset()
+        return Coordinates(
+            x=wpos.x + wco.x,
+            y=wpos.y + wco.y,
+            z=wpos.z + wco.z,
+        )
+
+    def _query_work_coordinate_offset(self) -> Coordinates:
+        """Query the G54 work coordinate offset from GRBL.
+
+        Sends $# and parses the G54 offset line.
+
+        Returns:
+            Coordinates: The G54 work coordinate offset.
+        """
+        response = self.execute_command("$#")
+        match = g54_pattern.search(str(response))
+        if match:
+            return Coordinates(
+                x=float(match.group(1)),
+                y=float(match.group(2)),
+                z=float(match.group(3)),
+            )
+        self.logger.warning("Could not parse G54 offset, assuming zero")
+        return Coordinates(0.0, 0.0, 0.0)
+
     def current_coordinates(
         self, instrument: Optional[str] = None, instrument_only: bool = True
     ) -> Union[Coordinates, Tuple[Coordinates, Coordinates]]:
@@ -762,29 +857,16 @@ class Mill:
             status = self.read()
             attempts += 1
 
-        status_mode = int(self.config["$10"])
-
-        if int(status_mode) not in [0, 1, 2, 3]:
-            self.logger.error("Invalid status mode")
-            raise ValueError("Invalid status mode")
-
         max_attempts = 3
-        homing_pull_off = float(self.config["$27"])
-
-        pattern = wpos_pattern if status_mode in [0, 2] else mpos_pattern
-        coord_type = "WPos" if status_mode in [0, 2] else "MPos"
 
         for i in range(max_attempts):
-            match = pattern.search(status)
+            match = wpos_pattern.search(status)
             if match:
                 x_coord = round(float(match.group(1)), 3)
                 y_coord = round(float(match.group(2)), 3)
                 z_coord = round(float(match.group(3)), 3)
-                if coord_type == "MPos":
-                    pass
                 self.logger.info(
-                    "%s coordinates: X = %s, Y = %s, Z = %s",
-                    coord_type,
+                    "WPos coordinates: X = %s, Y = %s, Z = %s",
                     x_coord,
                     y_coord,
                     z_coord,
@@ -792,12 +874,11 @@ class Mill:
                 break
             else:
                 self.logger.warning(
-                    "%s coordinates not found in the line. Trying again...",
-                    coord_type,
+                    "WPos coordinates not found in the line. Trying again...",
                 )
             if i == max_attempts - 1:
                 self.logger.error(
-                    "Error occurred while getting %s coordinates", coord_type
+                    "Error occurred while getting WPos coordinates"
                 )
                 raise LocationNotFound
 

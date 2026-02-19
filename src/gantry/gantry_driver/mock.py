@@ -111,10 +111,10 @@ class MockMill(RealMill):
             raise MillConfigError("Error reading mill config") from exep
 
     def __wait_for_completion(self, incoming_status, timeout=5):
-        return f"<Idle|MPos:{self.ser_mill.current_x - 3},{self.ser_mill.current_y - 3},{self.ser_mill.current_z - 3}|Bf:15,127|FS:0,0>"
+        return f"<Idle|WPos:{self.ser_mill.current_x - 3},{self.ser_mill.current_y - 3},{self.ser_mill.current_z - 3}|Bf:15,127|FS:0,0>"
 
     def __current_status(self):
-        return f"<Idle|MPos:{self.ser_mill.current_x},{self.ser_mill.current_y},{self.ser_mill.current_z}|Bf:15,127|FS:0,0>"
+        return f"<Idle|WPos:{self.ser_mill.current_x},{self.ser_mill.current_y},{self.ser_mill.current_z}|Bf:15,127|FS:0,0>"
 
     def home(self):
         """Simulate homing the mill"""
@@ -196,21 +196,21 @@ class MockSerialToMill:
 
     def read(self, size):
         """Simulate reading from the serial connection"""
-        msg = f"<Idle|MPos:{self.current_x - 3},{self.current_y - 3},{self.current_z - 3}|Bf:15,127|FS:0,0>".encode()
+        msg = f"<Idle|WPos:{self.current_x - 3},{self.current_y - 3},{self.current_z - 3}|Bf:15,127|FS:0,0>".encode()
         return msg[:size]
 
     def read_all(self):
         """Simulate reading from the serial connection"""
-        return f"<Idle|MPos:{self.current_x - 3},{self.current_y - 3},{self.current_z - 3}|Bf:15,127|FS:0,0>\n".encode()
+        return f"<Idle|WPos:{self.current_x - 3},{self.current_y - 3},{self.current_z - 3}|Bf:15,127|FS:0,0>\n".encode()
 
     def readline(self):
         """Simulate reading from the serial connection"""
-        return f"<Idle|MPos:{self.current_x - 3},{self.current_y - 3},{self.current_z - 3}|Bf:15,127|FS:0,0>\n".encode()
+        return f"<Idle|WPos:{self.current_x - 3},{self.current_y - 3},{self.current_z - 3}|Bf:15,127|FS:0,0>\n".encode()
 
     def readlines(self):
         """Simulate reading from the serial connection"""
         return [
-            f"<Idle|MPos:{self.current_x},{self.current_y},{self.current_z}|Bf:15,127|FS:0,0>\n".encode()
+            f"<Idle|WPos:{self.current_x},{self.current_y},{self.current_z}|Bf:15,127|FS:0,0>\n".encode()
         ]
 
     def flushInput(self):
