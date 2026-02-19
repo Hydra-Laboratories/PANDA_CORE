@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from typing import TYPE_CHECKING, Any, List, Optional
 
 from deck.labware.well_plate import WellPlate
@@ -47,9 +48,10 @@ def _record_dispense_to_store(
             context.data_store.record_dispense(
                 context.campaign_id, labware_key, well_id, source_name, volume_ul,
             )
-        except Exception:
-            logger.exception(
-                "Failed to record dispense for %s well %s", labware_key, well_id,
+        except (sqlite3.Error, ValueError, KeyError) as exc:
+            logger.warning(
+                "Failed to record dispense for %s well %s: %s",
+                labware_key, well_id, exc,
             )
 
 

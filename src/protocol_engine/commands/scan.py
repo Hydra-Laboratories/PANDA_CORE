@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from typing import TYPE_CHECKING, Any, Dict
 
 from deck.labware.well_plate import WellPlate
@@ -87,7 +88,9 @@ def scan(
                     contents_json=contents_json,
                 )
                 context.data_store.log_measurement(exp_id, result)
-            except Exception:
-                logger.exception("Failed to log measurement for well %s", well_id)
+            except (sqlite3.Error, TypeError, ValueError) as exc:
+                logger.warning(
+                    "Failed to log measurement for well %s: %s", well_id, exc,
+                )
 
     return results

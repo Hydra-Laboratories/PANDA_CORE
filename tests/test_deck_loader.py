@@ -10,9 +10,12 @@ from pydantic import ValidationError
 from deck import WellPlate, Vial, Coordinate3D, Deck
 from deck.loader import (
     DeckLoaderError,
+    _PlateOrientation,
+    _resolve_plate_orientation,
     load_deck_from_yaml,
     load_deck_from_yaml_safe,
 )
+from deck.yaml_schema import WellPlateYamlEntry, _YamlCalibrationPoints, _YamlPoint3D
 
 
 # ----- Valid deck YAML fixtures -----
@@ -669,3 +672,78 @@ def test_empty_labware_dict_allowed():
         assert len(deck) == 0
     finally:
         Path(path).unlink(missing_ok=True)
+
+
+# ----- _resolve_plate_orientation unit tests -----
+
+
+def _make_entry(
+    a1_x=0.0, a1_y=0.0, a2_x=10.0, a2_y=0.0,
+    x_offset=10.0, y_offset=-8.0, z=-5.0,
+) -> WellPlateYamlEntry:
+    """Build a minimal WellPlateYamlEntry for orientation tests."""
+    return WellPlateYamlEntry(
+        name="t", model_name="t",
+        rows=2, columns=2,
+        length_mm=20.0, width_mm=20.0, height_mm=10.0,
+        a1=_YamlPoint3D(x=a1_x, y=a1_y, z=z),
+        calibration=_YamlCalibrationPoints(
+            a2=_YamlPoint3D(x=a2_x, y=a2_y, z=z),
+        ),
+        x_offset_mm=x_offset, y_offset_mm=y_offset,
+        capacity_ul=100.0, working_volume_ul=80.0,
+    )
+
+
+class TestResolvePlateOrientation:
+
+    def test_horizontal_columns_along_x(self):
+        entry = _make_entry(a1_x=0.0, a1_y=0.0, a2_x=10.0, a2_y=0.0,
+                            x_offset=10.0, y_offset=-8.0)
+        orient = _resolve_plate_orientation(entry)
+        assert orient == _PlateOrientation(
+            col_delta_x=10.0, col_delta_y=0.0,
+            row_delta_x=0.0, row_delta_y=-8.0,
+        )
+
+    def test_vertical_columns_along_y(self):
+        entry = _make_entry(a1_x=0.0, a1_y=0.0, a2_x=0.0, a2_y=8.0,
+                            x_offset=10.0, y_offset=8.0)
+        orient = _resolve_plate_orientation(entry)
+        assert orient == _PlateOrientation(
+            col_delta_x=0.0, col_delta_y=8.0,
+            row_delta_x=10.0, row_delta_y=0.0,
+        )
+
+    def test_negative_x_column_step(self):
+        entry = _make_entry(a1_x=10.0, a1_y=0.0, a2_x=0.0, a2_y=0.0,
+                            x_offset=-10.0, y_offset=-8.0)
+        orient = _resolve_plate_orientation(entry)
+        assert orient.col_delta_x == pytest.approx(-10.0)
+        assert orient.col_delta_y == pytest.approx(0.0)
+
+    def test_negative_y_column_step(self):
+        entry = _make_entry(a1_x=0.0, a1_y=8.0, a2_x=0.0, a2_y=0.0,
+                            x_offset=10.0, y_offset=-8.0)
+        orient = _resolve_plate_orientation(entry)
+        assert orient.col_delta_y == pytest.approx(-8.0)
+        assert orient.col_delta_x == pytest.approx(0.0)
+
+    def test_mismatched_x_offset_raises(self):
+        entry = _make_entry(a1_x=0.0, a1_y=0.0, a2_x=10.0, a2_y=0.0,
+                            x_offset=5.0, y_offset=-8.0)
+        with pytest.raises(ValueError, match="delta x must equal x_offset_mm"):
+            _resolve_plate_orientation(entry)
+
+    def test_mismatched_y_offset_raises(self):
+        entry = _make_entry(a1_x=0.0, a1_y=0.0, a2_x=0.0, a2_y=8.0,
+                            x_offset=10.0, y_offset=4.0)
+        with pytest.raises(ValueError, match="delta y must equal y_offset_mm"):
+            _resolve_plate_orientation(entry)
+
+    def test_returns_frozen_dataclass(self):
+        entry = _make_entry()
+        orient = _resolve_plate_orientation(entry)
+        assert isinstance(orient, _PlateOrientation)
+        with pytest.raises(AttributeError):
+            orient.col_delta_x = 99.0
