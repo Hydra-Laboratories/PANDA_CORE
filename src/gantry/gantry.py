@@ -1,6 +1,12 @@
 from typing import Optional, Dict, Any, Tuple
 import logging
 from .gantry_driver.driver import Mill
+from .gantry_driver.exceptions import (
+    CommandExecutionError,
+    LocationNotFound,
+    MillConnectionError,
+    StatusReturnError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,14 +40,14 @@ class Gantry:
             self.logger.info(f"Connecting to gantry with port: {port} (None=Auto-scan)")
             self._mill.connect_to_mill(port=port)
             
-        except Exception as e:
+        except MillConnectionError as e:
             self.logger.error(f"Error connecting to gantry: {e}")
             raise
 
     def disconnect(self) -> None:
         try:
             self._mill.disconnect()
-        except Exception as e:
+        except MillConnectionError as e:
             self.logger.error(f"Error disconnecting gantry: {e}")
             # We don't necessarily raise here as disconnect is often cleanup
 
@@ -61,7 +67,7 @@ class Gantry:
                 return False
                 
             return True
-        except Exception:
+        except (MillConnectionError, StatusReturnError):
             return False
 
     def home(self) -> None:
@@ -75,7 +81,7 @@ class Gantry:
                 self._mill.home_xy_hard_limits()
             else:
                 self._mill.home()
-        except Exception as e:
+        except (MillConnectionError, StatusReturnError) as e:
             self.logger.error(f"Error homing gantry: {e}")
             raise
 
@@ -87,7 +93,7 @@ class Gantry:
         """
         try:
             self._mill.safe_move(x_coord=x, y_coord=y, z_coord=z)
-        except Exception as e:
+        except (MillConnectionError, StatusReturnError, CommandExecutionError, ValueError) as e:
             self.logger.error(f"Error moving gantry to ({x}, {y}, {z}): {e}")
             raise
 
@@ -95,7 +101,7 @@ class Gantry:
         """Return the current status string of the mill."""
         try:
             return self._mill.current_status()
-        except Exception as e:
+        except (MillConnectionError, StatusReturnError) as e:
             self.logger.error(f"Error getting status: {e}")
             return "Error"
 
@@ -103,7 +109,7 @@ class Gantry:
         """Immediately stop all gantry motion (GRBL feed hold)."""
         try:
             self._mill.stop()
-        except Exception as e:
+        except (MillConnectionError, CommandExecutionError) as e:
             self.logger.error(f"Error stopping gantry: {e}")
 
     def get_coordinates(self) -> Dict[str, float]:
@@ -111,6 +117,6 @@ class Gantry:
         try:
             coords = self._mill.current_coordinates()
             return {"x": coords.x, "y": coords.y, "z": coords.z}
-        except Exception as e:
+        except (MillConnectionError, StatusReturnError, LocationNotFound) as e:
             self.logger.error(f"Error getting coordinates: {e}")
             return {"x": 0.0, "y": 0.0, "z": 0.0}
