@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Dict
 from deck.labware.well_plate import WellPlate
 
 from ..errors import ProtocolExecutionError
+from ..measurements import normalize_measurement
 from ..registry import protocol_command
 
 if TYPE_CHECKING:
@@ -87,7 +88,13 @@ def scan(
                     well_id=well_id,
                     contents_json=contents_json,
                 )
-                context.data_store.log_measurement(exp_id, result)
+                measurement = normalize_measurement(
+                    instrument_name=instrument,
+                    method_name=method,
+                    raw_result=result,
+                )
+                context.data_store.log_measurement(exp_id, measurement)
+
             except (sqlite3.Error, TypeError, ValueError) as exc:
                 logger.warning(
                     "Failed to log measurement for well %s: %s", well_id, exc,
