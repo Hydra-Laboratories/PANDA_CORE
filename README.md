@@ -120,7 +120,6 @@ mock.measure()
 print(mock.command_history)  # ['measure']
 ```
 
-<<<<<<< HEAD
 ## Protocol Setup and Validation
 
 The `setup_protocol()` function loads all four configs, validates that all deck positions and gantry-computed positions are within the gantry's working volume, and returns a ready-to-run `Protocol` + `ProtocolContext`:
@@ -155,8 +154,6 @@ python setup/validate_setup.py \
     configs/protocols/protocol.sample.yaml
 ```
 
-The script prints step-by-step output: each config loaded with details (gantry bounds, labware list, instruments, protocol steps), followed by deck and gantry bounds validation results, and a final PASS/FAIL summary.
-
 ### Run Protocol (CLI)
 
 Validate and run a protocol end-to-end (requires hardware connection):
@@ -169,9 +166,6 @@ python setup/run_protocol.py \
     configs/protocols/protocol.sample.yaml
 ```
 
-This first runs offline validation (same output as `validate_setup.py`), then connects to the gantry and executes the protocol.
-
-=======
 ## Data Persistence
 
 Campaign data is persisted to a local SQLite database via `DataStore`. All state lives in SQLite (not in Python objects) so nothing is lost on interrupt or crash. Tracks campaigns, labware volumes/contents, per-well experiments, and instrument measurements.
@@ -202,12 +196,43 @@ protocol.run(context)
 store.close()
 ```
 
-An empty initialized database template is at `data/databases/panda_data.db` — inspect the schema with:
-```bash
-sqlite3 data/databases/panda_data.db ".schema"
+## Volume Tracking
+
+The `VolumeTracker` provides in-memory volume validation for all pipetting operations. It tracks the current volume and capacity for every registered labware location and validates aspirate/dispense operations before hardware execution.
+
+```python
+from protocol_engine.volume_tracker import VolumeTracker
+
+tracker = VolumeTracker()
+tracker.register_labware("vial_1", deck["vial_1"], initial_volume_ul=5000.0)
+tracker.register_labware("plate_1", deck["plate_1"])
+
+context = ProtocolContext(
+    board=board,
+    deck=deck,
+    volume_tracker=tracker,
+)
+protocol.run(context)  # All pipetting commands now validate volumes
 ```
 
->>>>>>> main
+Validations enforced:
+- **Underflow**: Cannot aspirate more than available volume from a source
+- **Overflow**: Cannot dispense beyond a well/vial's capacity
+- **Pipette range**: Volumes must be within the pipette's min/max range
+- **Invalid values**: Rejects negative, zero, NaN, and infinite volumes
+
+Vials support an optional `initial_volume_ul` in deck YAML to declare starting reagent volumes:
+
+```yaml
+vial_1:
+  type: vial
+  name: reagent_vial
+  model_name: standard_vial
+  # ... geometry fields ...
+  capacity_ul: 5000.0
+  working_volume_ul: 4000.0
+  initial_volume_ul: 3000.0  # optional, defaults to 0.0
+```
 ## Development
 
 Run unit tests:

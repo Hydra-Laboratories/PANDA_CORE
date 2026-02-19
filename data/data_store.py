@@ -268,6 +268,38 @@ class DataStore:
         )
         self._conn.commit()
 
+    def record_aspirate(
+        self,
+        campaign_id: int,
+        labware_key: str,
+        well_id: Optional[str],
+        volume_ul: float,
+    ) -> None:
+        """Record an aspirate from a labware slot, decrementing volume."""
+        if well_id is not None:
+            where = "campaign_id = ? AND labware_key = ? AND well_id = ?"
+            params = (campaign_id, labware_key, well_id)
+        else:
+            where = "campaign_id = ? AND labware_key = ? AND well_id IS NULL"
+            params = (campaign_id, labware_key)
+
+        row = self._conn.execute(
+            f"SELECT id FROM labware WHERE {where}", params
+        ).fetchone()
+
+        if row is None:
+            raise ValueError(
+                f"Labware '{labware_key}' well '{well_id}' not registered "
+                f"for campaign {campaign_id}"
+            )
+
+        self._conn.execute(
+            f"UPDATE labware SET current_volume_ul = current_volume_ul - ?, "
+            f"updated_at = datetime('now') WHERE {where}",
+            (volume_ul,) + params,
+        )
+        self._conn.commit()
+
     def get_contents(
         self,
         campaign_id: int,
