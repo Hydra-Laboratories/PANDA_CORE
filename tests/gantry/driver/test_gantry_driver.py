@@ -7,13 +7,13 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from gantry.gantry_driver.driver import Mill, wpos_pattern, mpos_pattern, Coordinates
+from gantry.gantry_driver.driver import Mill, wpos_pattern, Coordinates
 
 class TestCNCDriverLogic(unittest.TestCase):
-    
+
     def test_regex_patterns(self):
-        """Test that regex patterns correctly parse GRBL status strings."""
-        
+        """Test that wpos_pattern correctly parses GRBL WPos status strings."""
+
         # Test WPos pattern
         wpos_status = "<Idle|WPos:10.500,20.123,-5.000|FS:0,0|WCO:0,0,0>"
         match = wpos_pattern.search(wpos_status)
@@ -21,19 +21,15 @@ class TestCNCDriverLogic(unittest.TestCase):
         self.assertEqual(match.group(1), "10.500")
         self.assertEqual(match.group(2), "20.123")
         self.assertEqual(match.group(3), "-5.000")
-        
-        # Test MPos pattern
+
+        # WPos pattern should NOT match MPos strings
         mpos_status = "<Idle|MPos:-400.123,-299.999,-10.000|FS:0,0>"
-        match = mpos_pattern.search(mpos_status)
-        self.assertIsNotNone(match)
-        self.assertEqual(match.group(1), "-400.123")
-        self.assertEqual(match.group(2), "-299.999")
-        self.assertEqual(match.group(3), "-10.000")
-        
+        match = wpos_pattern.search(mpos_status)
+        self.assertIsNone(match)
+
         # Test failure cases
         invalid_status = "<Idle|FS:0,0>"
         self.assertIsNone(wpos_pattern.search(invalid_status))
-        self.assertIsNone(mpos_pattern.search(invalid_status))
 
     @patch('gantry.gantry_driver.driver.serial.Serial')
     @patch('gantry.gantry_driver.driver.set_up_mill_logger')
@@ -92,6 +88,8 @@ class TestCNCDriverLogic(unittest.TestCase):
             mill.check_for_alarm_state = MagicMock()
             mill.clear_buffers = MagicMock()
             mill.set_feed_rate = MagicMock()
+            mill.enforce_wpos_mode = MagicMock()
+            mill.enforce_absolute_positioning = MagicMock()
             mill.connect_to_mill(port='/dev/test')
             
             self.assertTrue(mill.active_connection)
