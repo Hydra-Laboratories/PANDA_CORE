@@ -11,14 +11,14 @@ from src.gantry.yaml_schema import GantryYamlSchema
 def _valid_gantry_dict() -> dict:
     return {
         "serial_port": "/dev/cu.usbserial-2130",
-        "cnc": {"homing_strategy": "xy_hard_limits"},
+        "cnc": {"homing_strategy": "xy_hard_limits", "total_z_height": 90.0},
         "working_volume": {
-            "x_min": -300.0,
-            "x_max": 0.0,
-            "y_min": -200.0,
-            "y_max": 0.0,
-            "z_min": -80.0,
-            "z_max": 0.0,
+            "x_min": 0.0,
+            "x_max": 300.0,
+            "y_min": 0.0,
+            "y_max": 200.0,
+            "z_min": 0.0,
+            "z_max": 80.0,
         },
     }
 
@@ -31,12 +31,13 @@ class TestGantryYamlSchema:
 
         assert schema.serial_port == "/dev/cu.usbserial-2130"
         assert schema.cnc.homing_strategy == "xy_hard_limits"
-        assert schema.working_volume.x_min == -300.0
-        assert schema.working_volume.x_max == 0.0
-        assert schema.working_volume.y_min == -200.0
-        assert schema.working_volume.y_max == 0.0
-        assert schema.working_volume.z_min == -80.0
-        assert schema.working_volume.z_max == 0.0
+        assert schema.cnc.total_z_height == 90.0
+        assert schema.working_volume.x_min == 0.0
+        assert schema.working_volume.x_max == 300.0
+        assert schema.working_volume.y_min == 0.0
+        assert schema.working_volume.y_max == 200.0
+        assert schema.working_volume.z_min == 0.0
+        assert schema.working_volume.z_max == 80.0
 
     def test_standard_homing_strategy_accepted(self):
         data = _valid_gantry_dict()
@@ -77,22 +78,22 @@ class TestGantryYamlSchema:
 
     def test_x_min_ge_x_max_raises(self):
         data = _valid_gantry_dict()
-        data["working_volume"]["x_min"] = 0.0
-        data["working_volume"]["x_max"] = -300.0
+        data["working_volume"]["x_min"] = 300.0
+        data["working_volume"]["x_max"] = 0.0
         with pytest.raises(ValidationError, match="x_min"):
             GantryYamlSchema.model_validate(data)
 
     def test_y_min_ge_y_max_raises(self):
         data = _valid_gantry_dict()
-        data["working_volume"]["y_min"] = 10.0
-        data["working_volume"]["y_max"] = -200.0
+        data["working_volume"]["y_min"] = 200.0
+        data["working_volume"]["y_max"] = 0.0
         with pytest.raises(ValidationError, match="y_min"):
             GantryYamlSchema.model_validate(data)
 
     def test_z_min_ge_z_max_raises(self):
         data = _valid_gantry_dict()
-        data["working_volume"]["z_min"] = 0.0
-        data["working_volume"]["z_max"] = -80.0
+        data["working_volume"]["z_min"] = 80.0
+        data["working_volume"]["z_max"] = 0.0
         with pytest.raises(ValidationError, match="z_min"):
             GantryYamlSchema.model_validate(data)
 
@@ -101,6 +102,24 @@ class TestGantryYamlSchema:
         data["working_volume"]["x_min"] = 0.0
         data["working_volume"]["x_max"] = 0.0
         with pytest.raises(ValidationError, match="x_min"):
+            GantryYamlSchema.model_validate(data)
+
+    def test_missing_total_z_height_raises(self):
+        data = _valid_gantry_dict()
+        del data["cnc"]["total_z_height"]
+        with pytest.raises(ValidationError, match="total_z_height"):
+            GantryYamlSchema.model_validate(data)
+
+    def test_total_z_height_must_be_positive(self):
+        data = _valid_gantry_dict()
+        data["cnc"]["total_z_height"] = 0.0
+        with pytest.raises(ValidationError, match="total_z_height"):
+            GantryYamlSchema.model_validate(data)
+
+    def test_total_z_height_must_cover_working_z_max(self):
+        data = _valid_gantry_dict()
+        data["cnc"]["total_z_height"] = 79.9
+        with pytest.raises(ValidationError, match="total_z_height"):
             GantryYamlSchema.model_validate(data)
 
     def test_extra_top_level_key_rejected(self):

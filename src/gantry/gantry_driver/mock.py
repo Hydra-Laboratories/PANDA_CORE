@@ -53,8 +53,8 @@ class MockMill(RealMill):
         super().__init__()
         self.logger_location = Path(__file__).parent / "mock_logs"
         self.ser_mill: MockSerialToMill = self.connect_to_mill()
-        self.working_volume: Coordinates = Coordinates(x=-415.0, y=-300.0, z=-200.0)
-        self.safe_floor_height = -10.0
+        self.working_volume: Coordinates = Coordinates(x=415.0, y=300.0, z=200.0)
+        self.safe_floor_height = 10.0
 
         self.change_logging_level("DEBUG")
 
@@ -120,6 +120,11 @@ class MockMill(RealMill):
         """Simulate homing the mill"""
         self.logger.info("Homing the mill")
         self.ser_mill.write(b"$H\n")
+
+    def home_manual_origin(self):
+        """Simulate manual origin homing."""
+        self.logger.info("Manual origin homing (mock): setting homed = True")
+        self.homed = True
 
 
 class MockSerialToMill:

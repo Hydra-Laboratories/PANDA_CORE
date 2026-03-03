@@ -1,5 +1,11 @@
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any
 import logging
+
+from .coordinate_translator import (
+    to_machine_coordinates,
+    to_user_coordinates,
+    translate_status_string,
+)
 from .gantry_driver.driver import Mill
 from .gantry_driver.exceptions import (
     CommandExecutionError,
@@ -24,6 +30,22 @@ class Gantry:
         # partial initialization of Mill without port 
         # (port is late-bound in connect())
         self._mill = Mill() 
+
+    @property
+    def total_z_height(self) -> float | None:
+        """Return configured total Z height in user space, if available."""
+        if isinstance(self.config, dict):
+            cnc = self.config.get("cnc", {})
+            if isinstance(cnc, dict) and "total_z_height" in cnc:
+                return float(cnc["total_z_height"])
+            working_volume = self.config.get("working_volume", {})
+            if isinstance(working_volume, dict) and "z_max" in working_volume:
+                return float(working_volume["z_max"])
+            return None
+
+        if hasattr(self.config, "total_z_height"):
+            return float(getattr(self.config, "total_z_height"))
+        return None
     
     def connect(self) -> None:
         """
@@ -79,6 +101,9 @@ class Gantry:
             if strategy == "xy_hard_limits":
                 self.logger.info("Using custom XY hard limit homing strategy")
                 self._mill.home_xy_hard_limits()
+            elif strategy == "manual_origin":
+                self.logger.info("Using manual origin homing strategy")
+                self._mill.home_manual_origin()
             else:
                 self._mill.home()
         except (MillConnectionError, StatusReturnError) as e:
@@ -92,7 +117,12 @@ class Gantry:
         but currently in driver.py acts as a direct move wrapper with improved readability).
         """
         try:
-            self._mill.safe_move(x_coord=x, y_coord=y, z_coord=z)
+            machine_x, machine_y, machine_z = to_machine_coordinates(x, y, z)
+            self._mill.safe_move(
+                x_coord=machine_x,
+                y_coord=machine_y,
+                z_coord=machine_z,
+            )
         except (MillConnectionError, StatusReturnError, CommandExecutionError, ValueError) as e:
             self.logger.error(f"Error moving gantry to ({x}, {y}, {z}): {e}")
             raise
@@ -100,7 +130,7 @@ class Gantry:
     def get_status(self) -> str:
         """Return the current status string of the mill."""
         try:
-            return self._mill.current_status()
+            return translate_status_string(self._mill.current_status())
         except (MillConnectionError, StatusReturnError) as e:
             self.logger.error(f"Error getting status: {e}")
             return "Error"
@@ -116,7 +146,8 @@ class Gantry:
         """Return current coordinates as a dict."""
         try:
             coords = self._mill.current_coordinates()
-            return {"x": coords.x, "y": coords.y, "z": coords.z}
+            x_user, y_user, z_user = to_user_coordinates(coords.x, coords.y, coords.z)
+            return {"x": x_user, "y": y_user, "z": z_user}
         except (MillConnectionError, StatusReturnError, LocationNotFound) as e:
             self.logger.error(f"Error getting coordinates: {e}")
             return {"x": 0.0, "y": 0.0, "z": 0.0}

@@ -24,7 +24,8 @@ class Board:
 
     Holds a single Gantry instance and a dictionary of named instruments.
     Each instrument's offset_x, offset_y, and depth describe its position
-    relative to the router so the board can calculate absolute positions.
+    relative to the router so the board can calculate absolute positions
+    in user-facing positive coordinates.
     """
 
     def __init__(

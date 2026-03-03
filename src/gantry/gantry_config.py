@@ -11,14 +11,15 @@ class HomingStrategy(str, Enum):
 
     XY_HARD_LIMITS = "xy_hard_limits"
     STANDARD = "standard"
+    MANUAL_ORIGIN = "manual_origin"
 
 
 @dataclass(frozen=True)
 class WorkingVolume:
     """Gantry working volume bounds in millimeters.
 
-    All coordinates use CNC convention: origin at (0, 0, 0),
-    working area extends into negative space.
+    User-facing coordinates use positive working space with
+    origin at (0, 0, 0) and inclusive min/max bounds.
     """
 
     x_min: float
@@ -52,4 +53,5 @@ class GantryConfig:
 
     serial_port: str
     homing_strategy: HomingStrategy
+    total_z_height: float
     working_volume: WorkingVolume

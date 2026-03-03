@@ -70,7 +70,7 @@ def scan(
     results: Dict[str, Any] = {}
     for well_id in sorted(plate_obj.wells, key=_row_major_key):
         well = plate_obj.get_well_center(well_id)
-        target = (well.x, well.y, well.z + instr.measurement_height)
+        target = (well.x, well.y, well.z - instr.measurement_height)
         context.board.move(instrument, target)
         result = callable_method()
         results[well_id] = result

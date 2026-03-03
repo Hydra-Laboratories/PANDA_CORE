@@ -37,13 +37,14 @@ GANTRY_YAML = """\
 serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
+  total_z_height: 90.0
 working_volume:
-  x_min: -300.0
-  x_max: 0.0
-  y_min: -200.0
-  y_max: 0.0
-  z_min: -80.0
-  z_max: 0.0
+  x_min: 0.0
+  x_max: 300.0
+  y_min: 0.0
+  y_max: 200.0
+  z_min: 0.0
+  z_max: 80.0
 """
 
 DECK_YAML = """\
@@ -55,9 +56,9 @@ labware:
     height_mm: 66.75
     diameter_mm: 28.0
     location:
-      x: -30.0
-      y: -40.0
-      z: -20.0
+      x: 30.0
+      y: 40.0
+      z: 20.0
     capacity_ul: 1500.0
     working_volume_ul: 1200.0
 """
@@ -66,7 +67,7 @@ BOARD_YAML = """\
 instruments:
   pipette:
     type: mock_pipette
-    offset_x: -5.0
+    offset_x: 5.0
     offset_y: 0.0
     depth: 0.0
     measurement_height: 0.0
@@ -150,7 +151,7 @@ class TestSetupProtocol:
                 f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
             )
             assert isinstance(context.gantry, GantryConfig)
-            assert context.gantry.working_volume.x_min == -300.0
+            assert context.gantry.working_volume.x_min == 0.0
 
     def test_protocol_has_expected_steps(self):
         with _TempYamlFiles() as f:
@@ -170,9 +171,9 @@ labware:
     height_mm: 66.75
     diameter_mm: 28.0
     location:
-      x: -301.0
-      y: -40.0
-      z: -20.0
+      x: 301.0
+      y: 40.0
+      z: 20.0
     capacity_ul: 1500.0
     working_volume_ul: 1200.0
 """
@@ -184,7 +185,7 @@ labware:
             assert len(exc_info.value.violations) >= 1
 
     def test_raises_on_gantry_position_out_of_bounds(self):
-        # vial at x=-2.0, pipette offset_x=-5.0 -> gantry_x = -2 - (-5) = 3.0 > x_max=0
+        # vial at x=2.0, pipette offset_x=5.0 -> gantry_x = 2.0 - 5.0 = -3.0 < x_min=0
         near_edge_deck = """\
 labware:
   vial_1:
@@ -194,9 +195,9 @@ labware:
     height_mm: 66.75
     diameter_mm: 28.0
     location:
-      x: -2.0
-      y: -40.0
-      z: -20.0
+      x: 2.0
+      y: 40.0
+      z: 20.0
     capacity_ul: 1500.0
     working_volume_ul: 1200.0
 """

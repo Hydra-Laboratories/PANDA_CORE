@@ -5,10 +5,10 @@ Usage:
 
 Example:
     python setup/run_protocol.py \\
-        configs/gantries/genmitsu_3018_PROver_v2.yaml \\
-        configs/decks/mofcat_deck.yaml \\
-        configs/boards/mofcat_board.yaml \\
-        configs/protocols/protocol.sample.yaml
+        configs/gantry/genmitsu_3018_PROver_v2.yaml \\
+        configs/deck/mofcat_deck.yaml \\
+        configs/board/mofcat_board.yaml \\
+        configs/protocol/protocol.sample.yaml
 
 Steps:
     1. Validate all configs and bounds (offline, no hardware)
@@ -42,10 +42,10 @@ def main() -> None:
         print()
         print("Example:")
         print("  python setup/run_protocol.py \\")
-        print("    configs/gantries/genmitsu_3018_PROver_v2.yaml \\")
-        print("    configs/decks/mofcat_deck.yaml \\")
-        print("    configs/boards/mofcat_board.yaml \\")
-        print("    configs/protocols/protocol.sample.yaml")
+        print("    configs/gantry/genmitsu_3018_PROver_v2.yaml \\")
+        print("    configs/deck/mofcat_deck.yaml \\")
+        print("    configs/board/mofcat_board.yaml \\")
+        print("    configs/protocol/protocol.sample.yaml")
         sys.exit(1)
 
     gantry_path, deck_path, board_path, protocol_path = sys.argv[1:5]
