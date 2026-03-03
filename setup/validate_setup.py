@@ -5,10 +5,10 @@ Usage:
 
 Example:
     python setup/validate_setup.py \\
-        configs/gantries/genmitsu_3018_PROver_v2.yaml \\
-        configs/decks/mofcat_deck.yaml \\
-        configs/boards/mofcat_board.yaml \\
-        configs/protocols/protocol.sample.yaml
+        configs/gantry/genmitsu_3018_PROver_v2.yaml \\
+        configs/deck/mofcat_deck.yaml \\
+        configs/board/mofcat_board.yaml \\
+        configs/protocol/protocol.sample.yaml
 """
 
 import sys
@@ -107,7 +107,10 @@ def run_validation(
     # 2. Deck
     out("[2/4] Loading deck config...")
     try:
-        deck = load_deck_from_yaml(deck_path)
+        deck = load_deck_from_yaml(
+            deck_path,
+            total_z_height=gantry_config.total_z_height,
+        )
     except Exception as exc:
         out(f"  ERROR: {exc}")
         out()
@@ -211,10 +214,10 @@ def main() -> None:
         print()
         print("Example:")
         print("  python setup/validate_setup.py \\")
-        print("    configs/gantries/genmitsu_3018_PROver_v2.yaml \\")
-        print("    configs/decks/mofcat_deck.yaml \\")
-        print("    configs/boards/mofcat_board.yaml \\")
-        print("    configs/protocols/protocol.sample.yaml")
+        print("    configs/gantry/genmitsu_3018_PROver_v2.yaml \\")
+        print("    configs/deck/mofcat_deck.yaml \\")
+        print("    configs/board/mofcat_board.yaml \\")
+        print("    configs/protocol/protocol.sample.yaml")
         sys.exit(1)
 
     gantry_path, deck_path, board_path, protocol_path = sys.argv[1:5]

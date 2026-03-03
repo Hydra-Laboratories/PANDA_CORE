@@ -635,6 +635,72 @@ class Mill:
         self.homed = True
         self.logger.info("Custom XY Homing Complete.")
 
+    def home_manual_origin(self):
+        """Interactive manual homing: jog to origin, press Enter to set zero.
+
+        The user moves the gantry to the desired origin (top-left-back corner)
+        using arrow keys for X/Y and Z/X keys for Z. Pressing Enter confirms
+        the position and sets it as the work coordinate zero on all axes.
+        """
+        import sys
+        from pathlib import Path as _Path
+
+        setup_dir = _Path(__file__).parent.parent.parent.parent / "setup"
+        if str(setup_dir) not in sys.path:
+            sys.path.insert(0, str(setup_dir))
+
+        from keyboard_input import read_keypress_batch, flush_stdin
+
+        self.interactive_mode = True
+        step = 1.0
+        max_step = 10.0
+
+        print("\n" + "=" * 50)
+        print("  Manual Origin Homing")
+        print("=" * 50)
+        print("\nJog the gantry to the origin (top-left-back corner).")
+        print("Controls:")
+        print("  Arrow LEFT/RIGHT  — Move X axis (±1mm)")
+        print("  Arrow UP/DOWN     — Move Y axis (±1mm)")
+        print("  Z                 — Move Z down (1mm)")
+        print("  X                 — Move Z up (1mm)")
+        print("  ENTER             — Confirm origin and set zero")
+
+        while True:
+            key, count = read_keypress_batch()
+            move_step = min(step * count, max_step)
+
+            if key == "\r" or key == "\n" or key == "ENTER":
+                break
+
+            command = None
+            if key == "LEFT":
+                command = f"G91\nG0 X{-move_step}\nG90"
+            elif key == "RIGHT":
+                command = f"G91\nG0 X{move_step}\nG90"
+            elif key == "UP":
+                command = f"G91\nG0 Y{move_step}\nG90"
+            elif key == "DOWN":
+                command = f"G91\nG0 Y{-move_step}\nG90"
+            elif key == "Z":
+                command = f"G91\nG0 Z{-move_step}\nG90"
+            elif key == "X":
+                command = f"G91\nG0 Z{move_step}\nG90"
+
+            if command:
+                for cmd in command.split("\n"):
+                    self.execute_command(cmd)
+                flush_stdin()
+
+                coords = self.current_coordinates()
+                print(f"  Position -> X: {coords.x:.1f}  Y: {coords.y:.1f}  Z: {coords.z:.1f}")
+
+        self.execute_command("G10 L20 P1 X0 Y0 Z0")
+        self.homed = True
+        self.interactive_mode = False
+        self.logger.info("Manual origin homing complete. Work zero set at current position.")
+        print("\nOrigin set. All axes zeroed at current position.")
+
     def __wait_for_completion(self, incoming_status, suppress_errors: bool = False, timeout=5):
         """Wait for the mill to complete the previous command."""
         status = incoming_status

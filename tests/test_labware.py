@@ -21,7 +21,7 @@ def test_well_plate_requires_non_empty_name():
             height_mm=14.10,
             rows=8,
             columns=12,
-            wells={"A1": Coordinate3D(x=-10.0, y=-10.0, z=-15.0)},
+            wells={"A1": Coordinate3D(x=10.0, y=10.0, z=15.0)},
             capacity_ul=200.0,
             working_volume_ul=150.0,
         )
@@ -32,7 +32,7 @@ def test_well_plate_requires_non_empty_name():
             model_name="test_model",
             height_mm=66.75,
             diameter_mm=28.0,
-            location=Coordinate3D(x=-30.0, y=-40.0, z=-20.0),
+            location=Coordinate3D(x=30.0, y=40.0, z=20.0),
             capacity_ul=1500.0,
             working_volume_ul=1200.0,
         )
@@ -48,16 +48,16 @@ def test_well_plate_get_location_success_and_failure():
         height_mm=14.10,
         rows=1,
         columns=1,
-        wells={"A1": Coordinate3D(x=-10.0, y=-20.0, z=-5.0)},
+        wells={"A1": Coordinate3D(x=10.0, y=20.0, z=15.0)},
         capacity_ul=200.0,
         working_volume_ul=150.0,
     )
 
     center = plate.get_location("A1")
     assert isinstance(center, Coordinate3D)
-    assert center.x == pytest.approx(-10.0)
-    assert center.y == pytest.approx(-20.0)
-    assert center.z == pytest.approx(-5.0)
+    assert center.x == pytest.approx(10.0)
+    assert center.y == pytest.approx(20.0)
+    assert center.z == pytest.approx(15.0)
 
     with pytest.raises(KeyError, match="Unknown well ID 'B1'"):
         plate.get_location("B1")
@@ -73,13 +73,13 @@ def test_vial_get_location_success_and_failure():
         model_name="test_model",
         height_mm=66.75,
         diameter_mm=28.0,
-        location=Coordinate3D(x=-30.0, y=-40.0, z=-20.0),
+        location=Coordinate3D(x=30.0, y=40.0, z=20.0),
         capacity_ul=1500.0,
         working_volume_ul=1200.0,
     )
 
-    assert vial.get_location() == Coordinate3D(x=-30.0, y=-40.0, z=-20.0)
-    assert vial.get_location("vial_1") == Coordinate3D(x=-30.0, y=-40.0, z=-20.0)
+    assert vial.get_location() == Coordinate3D(x=30.0, y=40.0, z=20.0)
+    assert vial.get_location("vial_1") == Coordinate3D(x=30.0, y=40.0, z=20.0)
 
     with pytest.raises(ValidationError):
         Vial(
@@ -100,8 +100,8 @@ def test_vial_get_location_success_and_failure():
 def test_well_plate_sbs_96_dimensions_and_well_lookup():
     """WellPlate captures dimensions and resolves wells by ID."""
     wells = {
-        "A1": Coordinate3D(x=-10.0, y=-10.0, z=-15.0),
-        "B1": Coordinate3D(x=-10.0, y=-20.0, z=-15.0),
+        "A1": Coordinate3D(x=10.0, y=10.0, z=15.0),
+        "B1": Coordinate3D(x=10.0, y=20.0, z=15.0),
     }
 
     plate = WellPlate(
@@ -126,9 +126,9 @@ def test_well_plate_sbs_96_dimensions_and_well_lookup():
 
     # Well lookup using ergonomic API
     a1_center = plate.get_well_center("A1")
-    assert a1_center.x == pytest.approx(-10.0)
-    assert a1_center.y == pytest.approx(-10.0)
-    assert a1_center.z == pytest.approx(-15.0)
+    assert a1_center.x == pytest.approx(10.0)
+    assert a1_center.y == pytest.approx(10.0)
+    assert a1_center.z == pytest.approx(15.0)
 
     # Falling back to base Labware API should also work
     assert plate.get_location("A1") == a1_center
@@ -168,7 +168,7 @@ def test_well_plate_requires_positive_dimensions_and_wells():
             height_mm=14.10,
             rows=8,
             columns=12,
-            wells={"B1": Coordinate3D(x=-10.0, y=-20.0, z=-15.0)},
+            wells={"B1": Coordinate3D(x=10.0, y=20.0, z=15.0)},
             capacity_ul=200.0,
             working_volume_ul=150.0,
         )
@@ -181,7 +181,7 @@ def test_vial_dimensions_and_location_lookup():
         model_name="test_model",
         height_mm=66.75,
         diameter_mm=28.00,
-        location=Coordinate3D(x=-30.0, y=-40.0, z=-20.0),
+        location=Coordinate3D(x=30.0, y=40.0, z=20.0),
         capacity_ul=1500.0,
         working_volume_ul=1200.0,
     )
@@ -189,8 +189,8 @@ def test_vial_dimensions_and_location_lookup():
     assert vial.name == "standard_vial"
     assert vial.height_mm == pytest.approx(66.75)
     assert vial.diameter_mm == pytest.approx(28.00)
-    assert vial.get_vial_center() == Coordinate3D(x=-30.0, y=-40.0, z=-20.0)
-    assert vial.get_initial_position() == Coordinate3D(x=-30.0, y=-40.0, z=-20.0)
+    assert vial.get_vial_center() == Coordinate3D(x=30.0, y=40.0, z=20.0)
+    assert vial.get_initial_position() == Coordinate3D(x=30.0, y=40.0, z=20.0)
 
 
 def test_vial_requires_positive_geometry_and_location():
@@ -201,7 +201,7 @@ def test_vial_requires_positive_geometry_and_location():
             model_name="test_model",
             height_mm=0.0,
             diameter_mm=28.0,
-            location=Coordinate3D(x=-30.0, y=-40.0, z=-20.0),
+            location=Coordinate3D(x=30.0, y=40.0, z=20.0),
             capacity_ul=1500.0,
             working_volume_ul=1200.0,
         )
@@ -209,7 +209,7 @@ def test_vial_requires_positive_geometry_and_location():
 
 def test_well_plate_extra_field_rejected():
     """WellPlate rejects unknown extra fields (strict schema)."""
-    wells = {"A1": Coordinate3D(x=0.0, y=0.0, z=-15.0)}
+    wells = {"A1": Coordinate3D(x=0.0, y=0.0, z=15.0)}
     with pytest.raises(ValidationError):
         WellPlate(
             name="x",
@@ -228,7 +228,7 @@ def test_well_plate_extra_field_rejected():
 
 def test_well_plate_volume_required_and_working_le_capacity():
     """WellPlate requires capacity_ul and working_volume_ul; working_volume_ul <= capacity_ul."""
-    wells = {"A1": Coordinate3D(x=0.0, y=0.0, z=-15.0)}
+    wells = {"A1": Coordinate3D(x=0.0, y=0.0, z=15.0)}
     with pytest.raises(ValidationError):
         WellPlate(
             name="x",
@@ -266,7 +266,7 @@ def test_vial_extra_field_rejected():
             model_name="test_model",
             height_mm=66.0,
             diameter_mm=28.0,
-            location=Coordinate3D(x=-30.0, y=-40.0, z=-20.0),
+            location=Coordinate3D(x=30.0, y=40.0, z=20.0),
             capacity_ul=1500.0,
             working_volume_ul=1200.0,
             unknown_field=1,
@@ -281,7 +281,7 @@ def test_vial_volume_required_and_working_le_capacity():
             model_name="test_model",
             height_mm=66.0,
             diameter_mm=28.0,
-            location=Coordinate3D(x=-30.0, y=-40.0, z=-20.0),
+            location=Coordinate3D(x=30.0, y=40.0, z=20.0),
             capacity_ul=1000.0,
             working_volume_ul=1200.0,
         )
@@ -291,14 +291,14 @@ def test_generate_wells_from_offsets():
     """Generate a small 2x2 well layout from A1 anchor and offsets."""
     row_labels = ["A", "B"]
     column_indices = [1, 2]
-    a1_center = Coordinate3D(x=0.0, y=0.0, z=-15.0)
+    a1_center = Coordinate3D(x=0.0, y=0.0, z=15.0)
 
     wells = generate_wells_from_offsets(
         row_labels=row_labels,
         column_indices=column_indices,
         a1_center=a1_center,
         x_offset_mm=10.0,
-        y_offset_mm=-5.0,
+        y_offset_mm=5.0,
         rounding_decimals=3,
     )
 
@@ -308,7 +308,7 @@ def test_generate_wells_from_offsets():
     # A1 is the anchor
     assert wells["A1"].x == pytest.approx(0.0)
     assert wells["A1"].y == pytest.approx(0.0)
-    assert wells["A1"].z == pytest.approx(-15.0)
+    assert wells["A1"].z == pytest.approx(15.0)
 
     # A2: one column step in X
     assert wells["A2"].x == pytest.approx(10.0)
@@ -316,11 +316,11 @@ def test_generate_wells_from_offsets():
 
     # B1: one row step in Y
     assert wells["B1"].x == pytest.approx(0.0)
-    assert wells["B1"].y == pytest.approx(-5.0)
+    assert wells["B1"].y == pytest.approx(5.0)
 
     # B2: both row and column offsets applied
     assert wells["B2"].x == pytest.approx(10.0)
-    assert wells["B2"].y == pytest.approx(-5.0)
+    assert wells["B2"].y == pytest.approx(5.0)
 
 
 def test_coordinate3d_rejects_non_finite_values():
@@ -344,7 +344,7 @@ def test_well_plate_requires_exact_rows_columns_well_count():
             height_mm=14.10,
             rows=8,
             columns=12,
-            wells={"A1": Coordinate3D(x=0.0, y=0.0, z=-15.0)},
+            wells={"A1": Coordinate3D(x=0.0, y=0.0, z=15.0)},
             capacity_ul=200.0,
             working_volume_ul=150.0,
         )
@@ -361,7 +361,7 @@ def test_well_plate_rows_limited_to_26():
             height_mm=14.10,
             rows=27,
             columns=1,
-            wells={"A1": Coordinate3D(x=0.0, y=0.0, z=-15.0)},
+            wells={"A1": Coordinate3D(x=0.0, y=0.0, z=15.0)},
             capacity_ul=200.0,
             working_volume_ul=150.0,
         )
