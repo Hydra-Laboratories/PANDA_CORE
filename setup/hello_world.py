@@ -24,11 +24,11 @@ CONFIGS_DIR = project_root / "configs"
 GANTRIES = {
     "PANDA": {
         "label": "PANDA (XL — 415x300x200mm)",
-        "config_file": CONFIGS_DIR / "gantries" / "genmitsu_3018_PROver_v2.yaml",
+        "config_file": CONFIGS_DIR / "gantry" / "genmitsu_3018_PROver_v2.yaml",
     },
     "CUB": {
         "label": "CUB (Small — 300x200x80mm)",
-        "config_file": CONFIGS_DIR / "gantries" / "genmitsu_3018_PRO_Desktop.yaml",
+        "config_file": CONFIGS_DIR / "gantry" / "genmitsu_3018_PRO_Desktop.yaml",
     },
 }
 
@@ -38,9 +38,9 @@ MAX_STEP = 10.0
 CONTROLS_LEGEND = """
 Controls:
   Arrow LEFT/RIGHT  — Move X axis (±1mm)
-  Arrow UP/DOWN     — Move Y axis (±1mm)
-  Z                 — Move Z down (1mm)
-  X                 — Move Z up (1mm)
+  Arrow UP/DOWN     — Move Y axis (-/+1mm)
+  Z                 — Move Z down (+1mm)
+  X                 — Move Z up (-1mm)
   Q                 — Quit
 """
 
@@ -52,6 +52,10 @@ def print_position(coords: dict) -> None:
 def load_gantry_config(config_file: Path) -> dict:
     with open(config_file) as f:
         return yaml.safe_load(f)
+
+
+def _clamp(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, value))
 
 
 def select_gantry() -> tuple:
@@ -80,6 +84,7 @@ def main() -> None:
     print(f"\nSelected: {gantry_entry['label']}")
 
     gantry = Gantry(config=config)
+    volume = config["working_volume"]
 
     t0 = time.monotonic()
     print("\nConnecting to gantry...")
@@ -114,18 +119,22 @@ def main() -> None:
             elif key == "RIGHT":
                 x += step
             elif key == "UP":
-                y += step
-            elif key == "DOWN":
                 y -= step
+            elif key == "DOWN":
+                y += step
             elif key == "Z":
-                z -= step
-            elif key == "X":
                 z += step
+            elif key == "X":
+                z -= step
             elif key == "Q":
                 print("\nExiting...")
                 break
             else:
                 continue
+
+            x = _clamp(x, volume["x_min"], volume["x_max"])
+            y = _clamp(y, volume["y_min"], volume["y_max"])
+            z = _clamp(z, volume["z_min"], volume["z_max"])
 
             gantry.move_to(x, y, z)
             flush_stdin()

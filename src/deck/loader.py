@@ -56,9 +56,34 @@ def _format_loader_exception(path: Path, error: Exception) -> str:
     )
 
 
-def _point_to_coord(p: _YamlPoint3D) -> Coordinate3D:
+def _point_to_coord(p: _YamlPoint3D, z_value: float | None = None) -> Coordinate3D:
     """Convert schema point (x, y, z) to Coordinate3D."""
-    return Coordinate3D(x=p.x, y=p.y, z=p.z)
+    z = p.z if z_value is None else z_value
+    if z is None:
+        raise ValueError("Missing z value for coordinate conversion.")
+    return Coordinate3D(x=p.x, y=p.y, z=z)
+
+
+def _resolve_user_z(
+    explicit_z: float | None,
+    *,
+    height: float | None,
+    total_z_height: float | None,
+    context: str,
+) -> float:
+    """Resolve a user-space Z using explicit z or total_z_height - height."""
+    if height is not None:
+        if total_z_height is None:
+            raise ValueError(
+                f"{context}: total_z_height is required when labware `height` is provided."
+            )
+        return total_z_height - height
+
+    if explicit_z is None:
+        raise ValueError(
+            f"{context}: z is required when labware `height` is not provided."
+        )
+    return explicit_z
 
 
 def _entry_kwargs_for_model(entry: BaseModel, model_class: Type[BaseModel]) -> Dict[str, Any]:
@@ -139,7 +164,10 @@ def _resolve_plate_orientation(entry: WellPlateYamlEntry) -> _PlateOrientation:
     raise ValueError("Calibration must be axis-aligned (same x or same y).")
 
 
-def _derive_wells_from_calibration(entry: WellPlateYamlEntry) -> Dict[str, Coordinate3D]:
+def _derive_wells_from_calibration(
+    entry: WellPlateYamlEntry,
+    resolved_z: float,
+) -> Dict[str, Coordinate3D]:
     """Build well ID -> Coordinate3D from calibration A1/A2 and offsets."""
     a1 = entry.a1_point
     orientation = _resolve_plate_orientation(entry)
@@ -153,25 +181,46 @@ def _derive_wells_from_calibration(entry: WellPlateYamlEntry) -> Dict[str, Coord
             wells[f"{row_label}{col_num}"] = Coordinate3D(
                 x=round(x, rounding),
                 y=round(y, rounding),
-                z=round(a1.z, rounding),
+                z=round(resolved_z, rounding),
             )
 
     return wells
 
 
-def _build_well_plate(entry: WellPlateYamlEntry) -> WellPlate:
+def _build_well_plate(
+    entry: WellPlateYamlEntry,
+    total_z_height: float | None,
+) -> WellPlate:
+    resolved_z = _resolve_user_z(
+        entry.a1_point.z,
+        height=entry.height,
+        total_z_height=total_z_height,
+        context=f"well_plate '{entry.name}'",
+    )
     kwargs = _entry_kwargs_for_model(entry, WellPlate)
-    kwargs["wells"] = _derive_wells_from_calibration(entry)
+    kwargs["wells"] = _derive_wells_from_calibration(entry, resolved_z=resolved_z)
     return WellPlate(**kwargs)
 
 
-def _build_vial(entry: VialYamlEntry) -> Vial:
+def _build_vial(
+    entry: VialYamlEntry,
+    total_z_height: float | None,
+) -> Vial:
+    resolved_z = _resolve_user_z(
+        entry.location.z,
+        height=entry.height,
+        total_z_height=total_z_height,
+        context=f"vial '{entry.name}'",
+    )
     kwargs = _entry_kwargs_for_model(entry, Vial)
-    kwargs["location"] = _point_to_coord(entry.location)
+    kwargs["location"] = _point_to_coord(entry.location, z_value=resolved_z)
     return Vial(**kwargs)
 
 
-def load_deck_from_yaml(path: str | Path) -> Deck:
+def load_deck_from_yaml(
+    path: str | Path,
+    total_z_height: float | None = None,
+) -> Deck:
     """
     Load a deck YAML file and return a Deck containing all labware.
     """
@@ -184,13 +233,16 @@ def load_deck_from_yaml(path: str | Path) -> Deck:
     labware: Dict[str, Union[WellPlate, Vial]] = {}
     for name, entry in schema.labware.items():
         if isinstance(entry, WellPlateYamlEntry):
-            labware[name] = _build_well_plate(entry)
+            labware[name] = _build_well_plate(entry, total_z_height=total_z_height)
         else:
-            labware[name] = _build_vial(entry)
+            labware[name] = _build_vial(entry, total_z_height=total_z_height)
     return Deck(labware)
 
 
-def load_deck_from_yaml_safe(path: str | Path) -> Deck:
+def load_deck_from_yaml_safe(
+    path: str | Path,
+    total_z_height: float | None = None,
+) -> Deck:
     """
     Load deck YAML with user-friendly exception formatting.
 
@@ -199,6 +251,6 @@ def load_deck_from_yaml_safe(path: str | Path) -> Deck:
     """
     resolved_path = Path(path)
     try:
-        return load_deck_from_yaml(resolved_path)
+        return load_deck_from_yaml(resolved_path, total_z_height=total_z_height)
     except Exception as exc:
         raise DeckLoaderError(_format_loader_exception(resolved_path, exc)) from exc
