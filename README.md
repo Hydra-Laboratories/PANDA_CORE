@@ -120,7 +120,6 @@ mock.measure()
 print(mock.command_history)  # ['measure']
 ```
 
-<<<<<<< HEAD
 ## Protocol Setup and Validation
 
 The `setup_protocol()` function loads all four configs, validates that all deck positions and gantry-computed positions are within the gantry's working volume, and returns a ready-to-run `Protocol` + `ProtocolContext`:
@@ -171,7 +170,6 @@ python setup/run_protocol.py \
 
 This first runs offline validation (same output as `validate_setup.py`), then connects to the gantry and executes the protocol.
 
-=======
 ## Data Persistence
 
 Campaign data is persisted to a local SQLite database via `DataStore`. All state lives in SQLite (not in Python objects) so nothing is lost on interrupt or crash. Tracks campaigns, labware volumes/contents, per-well experiments, and instrument measurements.
@@ -206,8 +204,6 @@ An empty initialized database template is at `data/databases/panda_data.db` — 
 ```bash
 sqlite3 data/databases/panda_data.db ".schema"
 ```
-
->>>>>>> main
 ## Development
 
 Run unit tests:

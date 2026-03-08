@@ -163,6 +163,28 @@ First-run scripts for verifying hardware after unboxing.
     - **Dependencies**: `src/gantry`, `src/deck`, `src/board`, `src/protocol_engine`, `src/validation`
 - **`keyboard_input.py`**: Helper module that reads single keypresses (including arrow keys) without requiring Enter. Uses `tty`/`termios` (Unix only).
 
+## Multi-Agent Development Scaffold
+
+This codebase is structured for multiple AI coding agents to work in parallel.
+
+### Key Files for Agents
+- **`system_manifest.yaml`**: Digital twin — module map, dependency graph, test commands, safe parallel zones. **Read this first.**
+- **`BACKLOG.md`**: Shared living TODO — bugs, features, agent tasks. Mark items `[IN PROGRESS - <branch>]`.
+- **`src/contracts.py`**: Python Protocol classes defining cross-module interfaces (GantryInterface, InstrumentInterface, PipetteInterface, FilmetricsInterface, UVVisCCSInterface, DeckInterface, DataStoreInterface).
+- **`MODULE.md`**: Each module has a MODULE.md describing its purpose, public API, contract, rules, and test command.
+- **`CLAUDE.md`**: Agent instructions including safe parallel zones and coordination rules.
+
+### Validation Scripts
+- **`scripts/validate_agent_changes.py`**: Maps staged files to affected test suites. Use before committing.
+- **`scripts/check_imports.py`**: Verifies imports respect the declared dependency graph.
+- **`scripts/install-hooks.sh`**: Installs git pre-commit hook (runs both checks, blocks on failure).
+
+### Safe Parallel Zones (no conflicts)
+- `src/instruments/pipette/`, `src/instruments/filmetrics/`, `src/instruments/uvvis_ccs/`
+- `src/instruments/<new>/` (adding a new instrument)
+- `src/protocol_engine/commands/` (each command is independent)
+- `data/`, `configs/`
+
 ## Environment
 - **Python**: 3.x
 - **Dependencies**: `pyserial`, `opencv-python`, `pydantic`, `pyyaml`.

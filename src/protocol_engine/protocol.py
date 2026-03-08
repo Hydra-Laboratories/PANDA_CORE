@@ -7,10 +7,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from board.board import Board
 from deck.deck import Deck
-
-from src.board.board import Board
-from src.gantry.gantry_config import GantryConfig
+from gantry.gantry_config import GantryConfig
 
 
 @dataclass

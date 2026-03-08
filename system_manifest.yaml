@@ -1,0 +1,199 @@
+# PANDA_CORE System Manifest
+# ══════════════════════════
+# Every agent MUST read this file before starting work.
+# This is the "digital twin" — the system's self-description.
+#
+# Last updated: 2026-03-08
+
+modules:
+  gantry:
+    path: src/gantry/
+    tests: tests/gantry/
+    public_api: src/gantry/__init__.py
+    contracts:
+      - GantryInterface (src/contracts.py)
+    description: >
+      CNC gantry hardware control, config loading, working volume bounds.
+      Includes OfflineGantry stub for hardware-free testing.
+    dependencies: []
+    dependents: [board, validation, protocol_engine]
+    key_files:
+      - src/gantry/gantry.py            # Gantry class (hardware serial)
+      - src/gantry/gantry_config.py      # GantryConfig, WorkingVolume (frozen)
+      - src/gantry/offline.py            # OfflineGantry (testing/validation)
+      - src/gantry/loader.py             # YAML config loading
+      - src/gantry/yaml_schema.py        # Pydantic schema for gantry YAML
+      - src/gantry/errors.py             # GantryLoaderError
+      - src/gantry/gantry_driver/        # Low-level GRBL Mill driver (serial)
+    test_command: "pytest tests/gantry/ -v"
+
+  deck:
+    path: src/deck/
+    tests_files:
+      - tests/test_deck.py
+      - tests/test_deck_loader.py
+      - tests/test_labware.py
+    public_api: src/deck/__init__.py
+    contracts:
+      - DeckInterface (src/contracts.py)
+    description: >
+      Deck container for labware, labware models (WellPlate, Vial, Coordinate3D),
+      YAML loading with two-point calibration for well plates.
+    dependencies: []
+    dependents: [board, validation, protocol_engine, data]
+    key_files:
+      - src/deck/deck.py                 # Deck container class
+      - src/deck/labware/well_plate.py   # WellPlate Pydantic model
+      - src/deck/labware/vial.py         # Vial Pydantic model
+      - src/deck/labware/labware.py      # Coordinate3D, Labware base
+      - src/deck/loader.py               # YAML loading + well derivation
+      - src/deck/yaml_schema.py          # Pydantic schema for deck YAML
+      - src/deck/errors.py               # DeckLoaderError
+    test_command: "pytest tests/test_deck.py tests/test_deck_loader.py tests/test_labware.py -v"
+
+  instruments:
+    path: src/instruments/
+    tests: tests/instruments/
+    extra_test_files:
+      - tests/test_uvvis_ccs.py
+    public_api: src/instruments/__init__.py
+    contracts:
+      - InstrumentInterface (src/contracts.py)
+      - PipetteInterface (src/contracts.py)
+      - FilmetricsInterface (src/contracts.py)
+      - UVVisCCSInterface (src/contracts.py)
+    description: >
+      BaseInstrument ABC and all instrument drivers. Each sub-driver
+      (pipette/, filmetrics/, uvvis_ccs/) is self-contained with its own
+      driver, mock, models, and exceptions.
+    dependencies: []
+    dependents: [board, protocol_engine]
+    key_files:
+      - src/instruments/base_instrument.py     # BaseInstrument ABC
+      - src/instruments/pipette/driver.py      # Pipette (serial/Arduino)
+      - src/instruments/pipette/mock.py        # MockPipette
+      - src/instruments/filmetrics/driver.py   # Filmetrics (C# subprocess)
+      - src/instruments/filmetrics/mock.py     # MockFilmetrics
+      - src/instruments/uvvis_ccs/driver.py    # UVVisCCS (DLL/ctypes)
+      - src/instruments/uvvis_ccs/mock.py      # MockUVVisCCS
+    test_command: "pytest tests/instruments/ tests/test_uvvis_ccs.py -v"
+    notes: >
+      Each instrument sub-directory is a SAFE PARALLEL ZONE.
+      New instruments can be added by creating a new sub-directory
+      without touching any other instrument code.
+
+  board:
+    path: src/board/
+    tests: tests/board/
+    public_api: src/board/__init__.py
+    contracts: []
+    description: >
+      Board = gantry + instruments. Wraps gantry movement with instrument
+      offset math so the gantry head positions the instrument tip correctly.
+    dependencies: [gantry, instruments]
+    dependents: [protocol_engine, validation]
+    key_files:
+      - src/board/board.py               # Board class (move, object_position)
+      - src/board/loader.py              # Board YAML loading
+      - src/board/yaml_schema.py         # Pydantic schema for board YAML
+      - src/board/errors.py              # BoardLoaderError
+    test_command: "pytest tests/board/ -v"
+
+  protocol_engine:
+    path: src/protocol_engine/
+    tests: tests/protocol_engine/
+    public_api: src/protocol_engine/__init__.py
+    contracts: []
+    description: >
+      Protocol loading, command registry, execution engine, and setup
+      orchestration. Commands are registered via @protocol_command decorator.
+    dependencies: [board, deck, gantry, instruments]
+    dependents: [setup]
+    key_files:
+      - src/protocol_engine/protocol.py     # Protocol, ProtocolContext, ProtocolStep
+      - src/protocol_engine/registry.py     # CommandRegistry, @protocol_command
+      - src/protocol_engine/setup.py        # setup_protocol() orchestration
+      - src/protocol_engine/loader.py       # Protocol YAML loading
+      - src/protocol_engine/commands/       # Command implementations (SAFE ZONE)
+    test_command: "pytest tests/protocol_engine/ -v"
+    notes: >
+      New commands go in commands/ and auto-register via @protocol_command.
+      commands/ is a SAFE PARALLEL ZONE — each command file is self-contained.
+
+  data:
+    path: data/
+    tests: tests/data/
+    public_api: data/__init__.py
+    contracts:
+      - DataStoreInterface (src/contracts.py)
+    description: >
+      SQLite persistence for campaigns, experiments, measurements (UV-Vis,
+      Filmetrics, camera), and labware volume/content tracking.
+    dependencies:
+      - instruments (MeasurementResult, UVVisSpectrum types for dispatch)
+    dependents:
+      - protocol_engine (optional, via ProtocolContext.data_store)
+    key_files:
+      - data/data_store.py               # DataStore class
+      - data/databases/panda_data.db     # Empty template DB
+    test_command: "pytest tests/data/ -v"
+
+  validation:
+    path: src/validation/
+    tests: tests/validation/
+    public_api: src/validation/__init__.py
+    contracts: []
+    description: >
+      Bounds validation: checks all deck positions and gantry-computed
+      positions against the gantry's working volume before protocol runs.
+    dependencies: [gantry, deck, board]
+    dependents: [protocol_engine]
+    key_files:
+      - src/validation/bounds.py         # validate_deck_positions, validate_gantry_positions
+      - src/validation/errors.py         # BoundsViolation, SetupValidationError
+    test_command: "pytest tests/validation/ -v"
+
+
+# ═══════════════════════════════════════════════════════════════════
+# DEPENDENCY GRAPH
+# ═══════════════════════════════════════════════════════════════════
+#
+#   protocol_engine ──► board ──► gantry
+#         │               │
+#         │               └──► instruments
+#         │
+#         ├──► deck ──► labware (internal)
+#         │
+#         └──► validation ──► gantry, deck, board
+#
+#   data ──► instruments (types only: MeasurementResult, UVVisSpectrum)
+#   setup scripts ──► protocol_engine
+
+
+# ═══════════════════════════════════════════════════════════════════
+# SAFE PARALLEL ZONES
+# ═══════════════════════════════════════════════════════════════════
+# Agents can work in these areas simultaneously with ZERO conflict risk:
+#
+#   Zone 1: src/instruments/pipette/       (self-contained driver)
+#   Zone 2: src/instruments/filmetrics/    (self-contained driver)
+#   Zone 3: src/instruments/uvvis_ccs/     (self-contained driver)
+#   Zone 4: src/instruments/<new>/         (adding a new instrument)
+#   Zone 5: src/protocol_engine/commands/  (each command is independent)
+#   Zone 6: data/                          (only depends on instrument types)
+#   Zone 7: configs/                       (YAML only, no code deps)
+#   Zone 8: tests/ (when scoped to one module's test dir)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# COORDINATION REQUIRED
+# ═══════════════════════════════════════════════════════════════════
+# These files affect multiple modules. Check BACKLOG.md for active
+# work before modifying:
+#
+#   - src/contracts.py                     (all cross-module interfaces)
+#   - src/instruments/base_instrument.py   (BaseInstrument ABC)
+#   - src/protocol_engine/protocol.py      (ProtocolContext — used by all commands)
+#   - src/board/board.py                   (Board.move() — offset math)
+#   - src/gantry/gantry.py                (hardware interface)
+#   - system_manifest.yaml                (this file)
