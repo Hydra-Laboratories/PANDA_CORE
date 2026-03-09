@@ -16,14 +16,8 @@ try:
     from instruments.pipette.mock import MockPipette
     from instruments.uvvis_ccs.driver import UVVisCCS
     from instruments.uvvis_ccs.mock import MockUVVisCCS
-except ModuleNotFoundError:  # pragma: no cover - compatibility path for setup scripts
-    from src.instruments.base_instrument import BaseInstrument
-    from src.instruments.filmetrics.driver import Filmetrics
-    from src.instruments.filmetrics.mock import MockFilmetrics
-    from src.instruments.pipette.driver import Pipette
-    from src.instruments.pipette.mock import MockPipette
-    from src.instruments.uvvis_ccs.driver import UVVisCCS
-    from src.instruments.uvvis_ccs.mock import MockUVVisCCS
+except ModuleNotFoundError:
+    raise
 
 from .board import Board
 
@@ -33,8 +27,8 @@ from .yaml_schema import BoardYamlSchema
 if TYPE_CHECKING:
     try:
         from gantry import Gantry
-    except ModuleNotFoundError:  # pragma: no cover - compatibility path for setup scripts
-        from src.gantry import Gantry
+    except ModuleNotFoundError:
+        raise
 
 INSTRUMENT_REGISTRY: Dict[str, Type[BaseInstrument]] = {
     "uvvis_ccs": UVVisCCS,

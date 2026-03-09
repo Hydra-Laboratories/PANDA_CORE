@@ -8,23 +8,23 @@ import tempfile
 
 import pytest
 
-from src.gantry.gantry_config import GantryConfig
-from src.protocol_engine.protocol import Protocol, ProtocolContext
-from src.protocol_engine.registry import CommandRegistry
-from src.protocol_engine.setup import setup_protocol
-from src.validation.errors import SetupValidationError
+from gantry.gantry_config import GantryConfig
+from protocol_engine.protocol import Protocol, ProtocolContext
+from protocol_engine.registry import CommandRegistry
+from protocol_engine.setup import setup_protocol
+from validation.errors import SetupValidationError
 
 
 @pytest.fixture(autouse=True)
 def _ensure_commands_registered():
     """Ensure protocol commands are registered (may be cleared by other test fixtures)."""
     if not CommandRegistry.instance().command_names:
-        import src.protocol_engine.commands.move
-        import src.protocol_engine.commands.pipette
-        import src.protocol_engine.commands.scan
-        importlib.reload(src.protocol_engine.commands.move)
-        importlib.reload(src.protocol_engine.commands.pipette)
-        importlib.reload(src.protocol_engine.commands.scan)
+        import protocol_engine.commands.move
+        import protocol_engine.commands.pipette
+        import protocol_engine.commands.scan
+        importlib.reload(protocol_engine.commands.move)
+        importlib.reload(protocol_engine.commands.pipette)
+        importlib.reload(protocol_engine.commands.scan)
 
 
 # ── Full config YAML strings ────────────────────────────────────────────
@@ -33,13 +33,14 @@ GANTRY_YAML = """\
 serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
+  total_z_height: 90.0
 working_volume:
-  x_min: -300.0
-  x_max: 0.0
-  y_min: -200.0
-  y_max: 0.0
-  z_min: -80.0
-  z_max: 0.0
+  x_min: 0.0
+  x_max: 300.0
+  y_min: 0.0
+  y_max: 200.0
+  z_min: 0.0
+  z_max: 80.0
 """
 
 DECK_YAML = """\
@@ -55,15 +56,15 @@ labware:
     height_mm: 14.0
     calibration:
       a1:
-        x: -100.0
-        y: -100.0
-        z: -15.0
+        x: 100.0
+        y: 100.0
+        z: 15.0
       a2:
-        x: -91.0
-        y: -100.0
-        z: -15.0
+        x: 109.0
+        y: 100.0
+        z: 15.0
     x_offset_mm: 9.0
-    y_offset_mm: -9.0
+    y_offset_mm: 9.0
     capacity_ul: 200.0
     working_volume_ul: 150.0
   waste_vial:
@@ -73,9 +74,9 @@ labware:
     height_mm: 100.0
     diameter_mm: 50.0
     location:
-      x: -250.0
-      y: -150.0
-      z: -30.0
+      x: 250.0
+      y: 150.0
+      z: 30.0
     capacity_ul: 50000.0
     working_volume_ul: 40000.0
 """
@@ -84,9 +85,9 @@ BOARD_YAML = """\
 instruments:
   pipette:
     type: mock_pipette
-    offset_x: -5.0
+    offset_x: 5.0
     offset_y: 0.0
-    depth: -3.0
+    depth: 3.0
     measurement_height: 0.0
 """
 
@@ -156,9 +157,9 @@ labware:
     height_mm: 50.0
     diameter_mm: 20.0
     location:
-      x: -500.0
-      y: -40.0
-      z: -20.0
+          x: 500.0
+          y: 40.0
+          z: 20.0
     capacity_ul: 1000.0
     working_volume_ul: 800.0
 """
@@ -177,8 +178,8 @@ labware:
                 os.unlink(p)
 
     def test_setup_catches_gantry_position_violation_from_instrument_offset(self):
-        # Vial at x=-1.0, pipette offset_x=-5.0
-        # gantry_x = -1.0 - (-5.0) = 4.0 > x_max=0.0
+        # Vial at x=1.0, pipette offset_x=5.0
+        # gantry_x = 1.0 - 5.0 = -4.0 < x_min=0.0
         edge_deck = """\
 labware:
   edge_vial:
@@ -188,9 +189,9 @@ labware:
     height_mm: 50.0
     diameter_mm: 20.0
     location:
-      x: -1.0
-      y: -40.0
-      z: -20.0
+          x: 1.0
+          y: 40.0
+          z: 20.0
     capacity_ul: 1000.0
     working_volume_ul: 800.0
 """
@@ -215,16 +216,16 @@ labware:
 serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
+  total_z_height: 90.0
 working_volume:
-  x_min: -50.0
-  x_max: 0.0
-  y_min: -50.0
-  y_max: 0.0
-  z_min: -50.0
-  z_max: 0.0
+  x_min: 0.0
+  x_max: 50.0
+  y_min: 0.0
+  y_max: 50.0
+  z_min: 0.0
+  z_max: 50.0
 """
-        # plate_1 wells extend to x = -10 + 9*2 = 8.0 (within plate A3 at x=-28)
-        # But with tight bounds, waste_vial at x=-250 will fail
+        # plate_1 and waste_vial positions are outside tight positive bounds.
         paths = [
             _write_temp_yaml(tight_gantry),
             _write_temp_yaml(DECK_YAML),

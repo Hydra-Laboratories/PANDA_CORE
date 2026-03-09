@@ -25,7 +25,7 @@ class TestGantry(unittest.TestCase):
         mock_mill = mock_mill_cls.return_value
         gantry = Gantry(config=self.config)
         gantry.move_to(10, 20, 30)
-        mock_mill.safe_move.assert_called_with(x_coord=10, y_coord=20, z_coord=30)
+        mock_mill.safe_move.assert_called_with(x_coord=-10.0, y_coord=-20.0, z_coord=-30.0)
 
     @patch('gantry.gantry.Mill')
     def test_is_healthy(self, mock_mill_cls):
@@ -103,7 +103,7 @@ class TestGantry(unittest.TestCase):
     @patch('gantry.gantry.Mill')
     def test_home_raises_on_connection_error(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
-        mock_mill.home.side_effect = MillConnectionError("homing failed")
+        mock_mill.home_xy_hard_limits.side_effect = MillConnectionError("homing failed")
         gantry = Gantry(config=self.config)
         with self.assertRaises(MillConnectionError):
             gantry.home()
@@ -111,7 +111,7 @@ class TestGantry(unittest.TestCase):
     @patch('gantry.gantry.Mill')
     def test_home_raises_on_status_error(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
-        mock_mill.home.side_effect = StatusReturnError("alarm")
+        mock_mill.home_xy_hard_limits.side_effect = StatusReturnError("alarm")
         gantry = Gantry(config=self.config)
         with self.assertRaises(StatusReturnError):
             gantry.home()
@@ -119,7 +119,7 @@ class TestGantry(unittest.TestCase):
     @patch('gantry.gantry.Mill')
     def test_home_does_not_catch_unexpected_errors(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
-        mock_mill.home.side_effect = RuntimeError("unexpected")
+        mock_mill.home_xy_hard_limits.side_effect = RuntimeError("unexpected")
         gantry = Gantry(config=self.config)
         with self.assertRaises(RuntimeError):
             gantry.home()
@@ -145,7 +145,7 @@ class TestGantry(unittest.TestCase):
         mock_mill = mock_mill_cls.return_value
         mock_mill.current_status.side_effect = StatusReturnError("bad")
         gantry = Gantry(config=self.config)
-        self.assertEqual(gantry.get_status(), "Error")
+        self.assertEqual(gantry.get_status(), "StatusQueryFailed")
 
     @patch('gantry.gantry.Mill')
     def test_get_status_propagates_unexpected_errors(self, mock_mill_cls):
@@ -156,11 +156,12 @@ class TestGantry(unittest.TestCase):
             gantry.get_status()
 
     @patch('gantry.gantry.Mill')
-    def test_stop_swallows_known_errors(self, mock_mill_cls):
+    def test_stop_raises_on_known_errors(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
         mock_mill.stop.side_effect = CommandExecutionError("stop failed")
         gantry = Gantry(config=self.config)
-        gantry.stop()  # should not raise
+        with self.assertRaises(CommandExecutionError):
+            gantry.stop()
 
     @patch('gantry.gantry.Mill')
     def test_stop_propagates_unexpected_errors(self, mock_mill_cls):
@@ -171,12 +172,12 @@ class TestGantry(unittest.TestCase):
             gantry.stop()
 
     @patch('gantry.gantry.Mill')
-    def test_get_coordinates_fallback_on_known_error(self, mock_mill_cls):
+    def test_get_coordinates_raises_on_known_error(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
         mock_mill.current_coordinates.side_effect = LocationNotFound()
         gantry = Gantry(config=self.config)
-        coords = gantry.get_coordinates()
-        self.assertEqual(coords, {"x": 0.0, "y": 0.0, "z": 0.0})
+        with self.assertRaises(LocationNotFound):
+            gantry.get_coordinates()
 
     @patch('gantry.gantry.Mill')
     def test_get_coordinates_propagates_unexpected_errors(self, mock_mill_cls):
@@ -185,6 +186,44 @@ class TestGantry(unittest.TestCase):
         gantry = Gantry(config=self.config)
         with self.assertRaises(RuntimeError):
             gantry.get_coordinates()
+
+
+    @patch('gantry.gantry.Mill')
+    def test_jog_cancel_raises_on_connection_error(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        mock_mill.jog_cancel.side_effect = MillConnectionError("not connected")
+        gantry = Gantry(config=self.config)
+        with self.assertRaises(MillConnectionError):
+            gantry.jog_cancel()
+
+    @patch('gantry.gantry.Mill')
+    def test_home_raises_on_unknown_strategy(self, mock_mill_cls):
+        config = {"cnc": {"homing_strategy": "nonexistent"}}
+        gantry = Gantry(config=config)
+        with self.assertRaises(ValueError):
+            gantry.home()
+
+    @patch('gantry.gantry.Mill')
+    def test_get_position_info_raises_on_error(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        mock_mill.current_coordinates.side_effect = StatusReturnError("fail")
+        gantry = Gantry(config=self.config)
+        with self.assertRaises(StatusReturnError):
+            gantry.get_position_info()
+
+    @patch('gantry.gantry.Mill')
+    def test_extract_status_returns_idle_from_grbl_string(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        mock_mill.last_status = "<Idle|WPos:0,0,0|FS:0,0>"
+        gantry = Gantry(config=self.config)
+        self.assertEqual(gantry._extract_status(), "Idle")
+
+    @patch('gantry.gantry.Mill')
+    def test_extract_status_returns_unknown_when_empty(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        mock_mill.last_status = ""
+        gantry = Gantry(config=self.config)
+        self.assertEqual(gantry._extract_status(), "Unknown")
 
 
 if __name__ == '__main__':

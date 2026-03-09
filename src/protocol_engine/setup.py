@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Tuple
+from typing import Any, List, Tuple
 
-from src.board.board import Board
-from src.board.loader import load_board_from_yaml_safe
-from src.deck.deck import Deck
-from src.deck.loader import load_deck_from_yaml_safe
-from src.gantry.gantry_config import GantryConfig
-from src.gantry.loader import load_gantry_from_yaml_safe
-from src.gantry.offline import OfflineGantry
-from src.protocol_engine.loader import load_protocol_from_yaml_safe
-from src.protocol_engine.protocol import Protocol, ProtocolContext
-from src.validation.bounds import validate_deck_positions, validate_gantry_positions
-from src.validation.errors import SetupValidationError
+from board.board import Board
+from board.loader import load_board_from_yaml_safe
+from deck.deck import Deck
+from deck.loader import load_deck_from_yaml_safe
+from gantry.gantry_config import GantryConfig
+from gantry.loader import load_gantry_from_yaml_safe
+from gantry.offline import OfflineGantry
+from protocol_engine.loader import load_protocol_from_yaml_safe
+from protocol_engine.protocol import Protocol, ProtocolContext
+from validation.bounds import validate_deck_positions, validate_gantry_positions
+from validation.errors import SetupValidationError
 
 
 def setup_protocol(
@@ -55,7 +55,10 @@ def setup_protocol(
         SetupValidationError: If any positions violate gantry bounds.
     """
     gantry_config: GantryConfig = load_gantry_from_yaml_safe(gantry_path)
-    deck: Deck = load_deck_from_yaml_safe(deck_path)
+    deck: Deck = load_deck_from_yaml_safe(
+        deck_path,
+        total_z_height=gantry_config.total_z_height,
+    )
 
     if gantry is None:
         gantry = OfflineGantry()
@@ -70,3 +73,23 @@ def setup_protocol(
 
     context = ProtocolContext(board=board, deck=deck, gantry=gantry_config)
     return protocol, context
+
+
+def run_protocol(
+    gantry_path: str | Path,
+    deck_path: str | Path,
+    board_path: str | Path,
+    protocol_path: str | Path,
+    gantry=None,
+) -> List[Any]:
+    """Load configs, validate, and execute the protocol in one call.
+
+    Convenience wrapper around ``setup_protocol`` + ``protocol.run(context)``.
+
+    Returns:
+        List of step results from protocol execution.
+    """
+    protocol, context = setup_protocol(
+        gantry_path, deck_path, board_path, protocol_path, gantry=gantry,
+    )
+    return protocol.run(context)
