@@ -99,5 +99,83 @@ class TestCNCDriverLogic(unittest.TestCase):
             self.assertTrue(mill.active_connection)
             self.assertEqual(mill.ser_mill, mock_serial_instance)
 
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_enforce_wpos_mode_sets_ten_to_zero(self, mock_cmd_logger, mock_mill_logger, mock_serial):
+        """Test that _enforce_wpos_mode sends $10=0 when not already set."""
+        mill = Mill()
+        mock_ser = MagicMock()
+        mill.ser_mill = mock_ser
+        mill.config["$10"] = "1"
+
+        # Mock execute_command to track calls
+        mill.execute_command = MagicMock()
+        mill._enforce_wpos_mode()
+
+        mill.execute_command.assert_any_call("$10=0")
+        mill.execute_command.assert_any_call("G90")
+        self.assertEqual(mill.config["$10"], "0")
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_enforce_wpos_mode_skips_when_already_zero(self, mock_cmd_logger, mock_mill_logger, mock_serial):
+        """Test that _enforce_wpos_mode does not re-send $10=0 if already set."""
+        mill = Mill()
+        mill.config["$10"] = "0"
+        mill.execute_command = MagicMock()
+
+        mill._enforce_wpos_mode()
+
+        calls = [str(c) for c in mill.execute_command.call_args_list]
+        self.assertNotIn("call('$10=0')", calls)
+        mill.execute_command.assert_called_with("G90")
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_jog_raises_when_not_connected(self, mock_cmd_logger, mock_mill_logger, mock_serial):
+        """Test that jog raises MillConnectionError when ser_mill is None."""
+        from gantry.gantry_driver.exceptions import MillConnectionError
+        mill = Mill()
+        mill.ser_mill = None
+        with self.assertRaises(MillConnectionError):
+            mill.jog(x=1.0)
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_jog_cancel_raises_when_not_connected(self, mock_cmd_logger, mock_mill_logger, mock_serial):
+        """Test that jog_cancel raises MillConnectionError when ser_mill is None."""
+        from gantry.gantry_driver.exceptions import MillConnectionError
+        mill = Mill()
+        mill.ser_mill = None
+        with self.assertRaises(MillConnectionError):
+            mill.jog_cancel()
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_reset_raises_when_not_connected(self, mock_cmd_logger, mock_mill_logger, mock_serial):
+        """Test that reset (unlock) raises when ser_mill is None."""
+        from gantry.gantry_driver.exceptions import MillConnectionError
+        mill = Mill()
+        mill.ser_mill = None
+        with self.assertRaises(MillConnectionError):
+            mill.reset()
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_soft_reset_raises_when_not_connected(self, mock_cmd_logger, mock_mill_logger, mock_serial):
+        """Test that soft_reset raises when ser_mill is None."""
+        from gantry.gantry_driver.exceptions import MillConnectionError
+        mill = Mill()
+        mill.ser_mill = None
+        with self.assertRaises(MillConnectionError):
+            mill.soft_reset()
+
+
 if __name__ == '__main__':
     unittest.main()

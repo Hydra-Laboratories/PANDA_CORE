@@ -48,18 +48,10 @@ class Gantry:
         return None
     
     def connect(self) -> None:
-        """
-        Connect to the CNC mill.
-        Priority:
-        1. config['cnc']['serial_port']
-        2. config['serial_port']
-        3. Auto-scan (if port is None)
-        """
+        """Connect to the CNC mill via auto-scan of available serial ports."""
         try:
-            # User requested to prioritize auto-scan.
-            port = None  # Force auto-scan
-
-            self.logger.info(f"Connecting to gantry with port: {port} (None=Auto-scan)")
+            port = None
+            self.logger.info("Connecting to gantry via auto-scan")
             self._mill.connect_to_mill(port=port)
             
         except MillConnectionError as e:
@@ -76,20 +68,22 @@ class Gantry:
     def is_healthy(self) -> bool:
         """Check if the gantry is connected and healthy."""
         if not self._mill.active_connection:
+            self.logger.debug("Health check: no active connection")
             return False
-            
+
         try:
-            # Checking internal state first
             if not self._mill.ser_mill or not self._mill.ser_mill.is_open:
+                self.logger.debug("Health check: serial port not open")
                 return False
 
             status = self._mill.current_status()
-            # Simple check for error/alarm/unknown in status string
             if "Alarm" in status or "Error" in status:
+                self.logger.debug("Health check: unhealthy status: %s", status)
                 return False
-                
+
             return True
-        except (MillConnectionError, StatusReturnError):
+        except (MillConnectionError, StatusReturnError) as e:
+            self.logger.debug("Health check failed: %s", e)
             return False
 
     def home(self) -> None:
@@ -100,8 +94,10 @@ class Gantry:
                 self._mill.home_manual_origin()
             elif strategy == "standard":
                 self._mill.home()
-            else:
+            elif strategy == "xy_hard_limits":
                 self._mill.home_xy_hard_limits()
+            else:
+                raise ValueError(f"Unknown homing strategy: {strategy!r}")
         except (MillConnectionError, StatusReturnError) as e:
             self.logger.error(f"Error homing gantry: {e}")
             raise
@@ -156,8 +152,9 @@ class Gantry:
         """Cancel any in-progress jog motion immediately."""
         try:
             self._mill.jog_cancel()
-        except Exception as e:
+        except (MillConnectionError, CommandExecutionError) as e:
             self.logger.error(f"Jog cancel error: {e}")
+            raise
 
     def soft_reset(self) -> None:
         """Send a GRBL soft reset (Ctrl-X) to the controller."""
@@ -189,7 +186,7 @@ class Gantry:
             return translate_status_string(self._mill.current_status())
         except (MillConnectionError, StatusReturnError) as e:
             self.logger.error(f"Error getting status: {e}")
-            return "Error"
+            return "StatusQueryFailed"
 
     def stop(self) -> None:
         """Immediately stop all gantry motion (GRBL feed hold)."""
@@ -197,27 +194,25 @@ class Gantry:
             self._mill.stop()
         except (MillConnectionError, CommandExecutionError) as e:
             self.logger.error(f"Error stopping gantry: {e}")
+            raise
 
     def get_coordinates(self) -> Dict[str, float]:
-        """Return current coordinates as a dict."""
-        try:
-            coords = self._mill.current_coordinates()
-            x_user, y_user, z_user = to_user_coordinates(coords.x, coords.y, coords.z)
-            return {"x": x_user, "y": y_user, "z": z_user}
-        except (MillConnectionError, StatusReturnError, LocationNotFound) as e:
-            self.logger.error(f"Error getting coordinates: {e}")
-            return {"x": 0.0, "y": 0.0, "z": 0.0}
+        """Return current coordinates as a dict.
+
+        Raises on failure rather than returning fake zeroes.
+        """
+        coords = self._mill.current_coordinates()
+        x_user, y_user, z_user = to_user_coordinates(coords.x, coords.y, coords.z)
+        return {"x": x_user, "y": y_user, "z": z_user}
 
     def get_position_info(self) -> Dict[str, Any]:
-        """Return coordinates, work position, and status in a single serial query."""
-        try:
-            coords = self._mill.current_coordinates()
-            x_user, y_user, z_user = to_user_coordinates(coords.x, coords.y, coords.z)
-            user_coords = {"x": x_user, "y": y_user, "z": z_user}
-        except (MillConnectionError, StatusReturnError, LocationNotFound) as e:
-            self.logger.error(f"Error getting position info: {e}")
-            user_coords = {"x": 0.0, "y": 0.0, "z": 0.0}
+        """Return coordinates, work position, and status in a single serial query.
 
+        Raises on failure rather than returning fake zeroes.
+        """
+        coords = self._mill.current_coordinates()
+        x_user, y_user, z_user = to_user_coordinates(coords.x, coords.y, coords.z)
+        user_coords = {"x": x_user, "y": y_user, "z": z_user}
         status = self._extract_status()
 
         return {
@@ -232,12 +227,11 @@ class Gantry:
             raw = getattr(self._mill, 'last_status', '') or ''
             if not raw:
                 return "Unknown"
-            # GRBL status format: <State|...>
             if raw.startswith("<") and "|" in raw:
                 return raw[1:raw.index("|")]
-            # Could be a bare alarm/error string
             if "alarm" in raw.lower():
                 return "Alarm"
             return translate_status_string(raw)
-        except Exception:
+        except (ValueError, AttributeError) as e:
+            self.logger.debug("Failed to extract status: %s", e)
             return "Unknown"

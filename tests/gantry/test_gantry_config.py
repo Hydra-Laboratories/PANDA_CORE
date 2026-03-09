@@ -135,3 +135,36 @@ class TestGantryConfig:
             assert False, "Should have raised"
         except AttributeError:
             pass
+
+    def test_rejects_negative_total_z_height(self):
+        with pytest.raises(ValueError, match="total_z_height"):
+            GantryConfig(
+                serial_port="/dev/ttyUSB0",
+                homing_strategy=HomingStrategy.STANDARD,
+                total_z_height=-10.0,
+                working_volume=_make_volume(),
+            )
+
+    def test_rejects_zero_total_z_height(self):
+        with pytest.raises(ValueError, match="total_z_height"):
+            GantryConfig(
+                serial_port="/dev/ttyUSB0",
+                homing_strategy=HomingStrategy.STANDARD,
+                total_z_height=0.0,
+                working_volume=_make_volume(),
+            )
+
+
+class TestWorkingVolumeMinBounds:
+
+    def test_rejects_negative_x_min(self):
+        with pytest.raises(ValueError, match="x_min"):
+            _make_volume(x_min=-1.0)
+
+    def test_rejects_negative_y_min(self):
+        with pytest.raises(ValueError, match="y_min"):
+            _make_volume(y_min=-1.0)
+
+    def test_rejects_negative_z_min(self):
+        with pytest.raises(ValueError, match="z_min"):
+            _make_volume(z_min=-1.0)

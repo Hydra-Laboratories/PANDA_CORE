@@ -40,6 +40,8 @@ class WorkingVolume:
         for axis in ("x", "y", "z"):
             lo = getattr(self, f"{axis}_min")
             hi = getattr(self, f"{axis}_max")
+            if lo < 0:
+                raise ValueError(f"{axis}_min ({lo}) must be >= 0")
             if lo >= hi:
                 raise ValueError(
                     f"{axis}_min ({lo}) must be < {axis}_max ({hi})"
@@ -63,3 +65,9 @@ class GantryConfig:
     total_z_height: float
     working_volume: WorkingVolume
     y_axis_motion: YAxisMotion = YAxisMotion.HEAD
+
+    def __post_init__(self) -> None:
+        if self.total_z_height <= 0:
+            raise ValueError(
+                f"total_z_height ({self.total_z_height}) must be > 0"
+            )

@@ -202,7 +202,14 @@ class Mill:
 
         found = False
         found_on = None
+        max_scan_attempts = 3
+        scan_attempt = 0
         while not found:
+            scan_attempt += 1
+            if scan_attempt > max_scan_attempts:
+                raise MillConnectionError(
+                    f"Could not find GRBL device after {max_scan_attempts} scan attempts"
+                )
             for port in ports:
                 if not port:
                     continue
@@ -546,6 +553,8 @@ class Mill:
             z: Relative Z distance.
             feed_rate: Feed rate in mm/min.
         """
+        if not self.ser_mill:
+            raise MillConnectionError("Serial connection not available")
         parts = []
         if x != 0:
             parts.append(f"X{x:.3f}")
@@ -569,6 +578,8 @@ class Mill:
 
     def jog_cancel(self) -> None:
         """Cancel any in-progress jog motion immediately."""
+        if not self.ser_mill:
+            raise MillConnectionError("Serial connection not available")
         self.ser_mill.write(b"\x85")
 
     def reset(self):
@@ -595,9 +606,9 @@ class Mill:
         self.logger.info("Sending soft reset (0x18)")
         self.ser_mill.write(b"\x18")
         time.sleep(1.0)
-        # Drain the reset banner response
         while self.ser_mill.in_waiting:
-            self.ser_mill.readline()
+            line = self.ser_mill.readline().decode("ascii", errors="replace").strip()
+            self.logger.debug("Soft reset response: %s", line)
 
     def soft_reset_and_unlock(self):
         """Soft reset followed by unlock — single serial sequence."""
@@ -679,7 +690,7 @@ class Mill:
                     self.logger.info("Clearing Alarm ($X)...")
                     try:
                         self.execute_command("$X")
-                    except:
+                    except Exception:
                         pass
                     time.sleep(1)
                     break
