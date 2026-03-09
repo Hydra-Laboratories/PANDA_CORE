@@ -93,12 +93,34 @@ class Gantry:
             return False
 
     def home(self) -> None:
-        """Home the gantry using XY hard limits strategy."""
+        """Home the gantry using the configured homing strategy."""
+        strategy = self._homing_strategy()
+        try:
+            if strategy == "manual_origin":
+                self._mill.home_manual_origin()
+            elif strategy == "standard":
+                self._mill.home()
+            else:
+                self._mill.home_xy_hard_limits()
+        except (MillConnectionError, StatusReturnError) as e:
+            self.logger.error(f"Error homing gantry: {e}")
+            raise
+
+    def home_xy(self) -> None:
+        """Home using XY hard limits strategy (ignores config)."""
         try:
             self._mill.home_xy_hard_limits()
         except (MillConnectionError, StatusReturnError) as e:
             self.logger.error(f"Error homing gantry: {e}")
             raise
+
+    def _homing_strategy(self) -> str:
+        """Extract homing strategy from config dict."""
+        if isinstance(self.config, dict):
+            cnc = self.config.get("cnc", {})
+            if isinstance(cnc, dict):
+                return cnc.get("homing_strategy", "xy_hard_limits")
+        return "xy_hard_limits"
 
     def move_to(self, x: float, y: float, z: float) -> None:
         """

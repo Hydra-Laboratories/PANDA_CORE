@@ -333,6 +333,7 @@ class Mill:
 
         self.check_for_alarm_state()
         self.clear_buffers()
+        self._enforce_wpos_mode()
         self.set_feed_rate(DEFAULT_FEED_RATE)
         self._seed_wco()
         return self.ser_mill
@@ -577,10 +578,15 @@ class Mill:
         self.logger.info("Sending unlock ($X)")
         self.ser_mill.write(b"$X\n")
         time.sleep(0.5)
-        # Drain response
+        # Drain and check response
+        response_lines = []
         while self.ser_mill.in_waiting:
             line = self.ser_mill.readline().decode("ascii", errors="replace").strip()
             self.logger.debug("Unlock response: %s", line)
+            response_lines.append(line)
+        for line in response_lines:
+            if "error" in line.lower():
+                raise CommandExecutionError(f"Unlock ($X) failed: {line}")
 
     def soft_reset(self):
         """Soft reset the mill (GRBL Ctrl-X / 0x18)."""
@@ -796,19 +802,21 @@ class Mill:
             attempt_limit -= 1
 
         if not status:
-            status = self.ser_mill.readlines()
-            status = [item.decode().rstrip() for item in status]
-            if not status:
+            raw_lines = self.ser_mill.readlines()
+            lines = [item.decode().rstrip() for item in raw_lines]
+            if not lines:
                 self.logger.error("Failed to get status from the mill")
                 if self.interactive_mode:
                     print("Failed to get status from the mill")
                     return ""
                 raise StatusReturnError("Failed to get status from the mill")
-            if any(re.search(r"\b(error|alarm)\b", item.lower()) for item in status):
+            # Find the first status line (<...>) or join all lines
+            status = next((l for l in lines if l.startswith("<")), "; ".join(lines))
+            if any(re.search(r"\b(error|alarm)\b", item.lower()) for item in lines):
                 self.logger.error("Error in status: %s", status)
-                self.last_status = str(status)
+                self.last_status = status
                 if self.interactive_mode:
-                    print("Error in status: %s", status)
+                    print(f"Error in status: {status}")
                     return ""
                 raise StatusReturnError(f"Error in status: {status}")
         self.last_status = status
@@ -865,6 +873,16 @@ class Mill:
         """Set a grbl setting."""
         command = f"${setting}={value}"
         return self.execute_command(command)
+
+    def _enforce_wpos_mode(self):
+        """Ensure GRBL reports WPos in status reports ($10=0) and uses absolute positioning (G90)."""
+        current = self.config.get("$10", "1")
+        if current != "0":
+            self.logger.info("Setting $10=0 (WPos status reporting)")
+            self.execute_command("$10=0")
+            self.config["$10"] = "0"
+        self.execute_command("G90")
+        self.logger.info("WPos mode and absolute positioning enforced")
 
     def _seed_wco(self):
         """Poll GRBL status until WCO is reported, then cache it.

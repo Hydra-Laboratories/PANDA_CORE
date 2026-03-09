@@ -95,7 +95,7 @@ class TestManualOriginLoader:
 class TestGantryHomeDispatch:
 
     @patch("gantry.gantry.Mill")
-    def test_home_always_uses_xy_hard_limits(self, mock_mill_cls):
+    def test_home_dispatches_manual_origin(self, mock_mill_cls):
         from gantry.gantry import Gantry
 
         mock_mill = mock_mill_cls.return_value
@@ -103,10 +103,10 @@ class TestGantryHomeDispatch:
         gantry = Gantry(config=config)
 
         gantry.home()
-        mock_mill.home_xy_hard_limits.assert_called_once()
+        mock_mill.home_manual_origin.assert_called_once()
 
     @patch("gantry.gantry.Mill")
-    def test_home_still_dispatches_xy_hard_limits(self, mock_mill_cls):
+    def test_home_dispatches_xy_hard_limits(self, mock_mill_cls):
         from gantry.gantry import Gantry
 
         mock_mill = mock_mill_cls.return_value
@@ -117,7 +117,7 @@ class TestGantryHomeDispatch:
         mock_mill.home_xy_hard_limits.assert_called_once()
 
     @patch("gantry.gantry.Mill")
-    def test_home_default_uses_xy_hard_limits(self, mock_mill_cls):
+    def test_home_dispatches_standard(self, mock_mill_cls):
         from gantry.gantry import Gantry
 
         mock_mill = mock_mill_cls.return_value
@@ -125,6 +125,17 @@ class TestGantryHomeDispatch:
         gantry = Gantry(config=config)
 
         gantry.home()
+        mock_mill.home.assert_called_once()
+
+    @patch("gantry.gantry.Mill")
+    def test_home_xy_ignores_config(self, mock_mill_cls):
+        from gantry.gantry import Gantry
+
+        mock_mill = mock_mill_cls.return_value
+        config = {"cnc": {"homing_strategy": "manual_origin"}}
+        gantry = Gantry(config=config)
+
+        gantry.home_xy()
         mock_mill.home_xy_hard_limits.assert_called_once()
 
 

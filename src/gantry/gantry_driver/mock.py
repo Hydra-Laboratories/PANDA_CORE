@@ -93,6 +93,10 @@ class MockMill(RealMill):
         """Simulate clearing buffers"""
         self.logger.info("Clearing buffers")
 
+    def _enforce_wpos_mode(self):
+        """Mock: WPos mode is always active."""
+        self.config["$10"] = "0"
+
     def grbl_settings(self):
         """Simulate getting the GRBL settings"""
         return self.config
