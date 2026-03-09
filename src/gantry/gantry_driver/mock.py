@@ -13,6 +13,12 @@ from .driver import Mill as RealMill
 from .exceptions import MillConfigError
 from .instruments import Coordinates
 
+# Mock WCO: simulates machine where homing puts MPos at these values
+# and work zero is set so WPos = 0,0,0 at home.
+MOCK_WCO_X = -300.0
+MOCK_WCO_Y = -200.0
+MOCK_WCO_Z = -80.0
+
 
 class MockMill(RealMill):
     """A class that simulates a mill for testing purposes.
@@ -111,10 +117,16 @@ class MockMill(RealMill):
             raise MillConfigError("Error reading mill config") from exep
 
     def __wait_for_completion(self, incoming_status, timeout=5):
-        return f"<Idle|MPos:{self.ser_mill.current_x - 3},{self.ser_mill.current_y - 3},{self.ser_mill.current_z - 3}|Bf:15,127|FS:0,0>"
+        return (
+            f"<Idle|WPos:{self.ser_mill.current_x - 3},{self.ser_mill.current_y - 3},{self.ser_mill.current_z - 3}"
+            f"|Bf:15,127|FS:0,0|WCO:{MOCK_WCO_X},{MOCK_WCO_Y},{MOCK_WCO_Z}>"
+        )
 
     def __current_status(self):
-        return f"<Idle|MPos:{self.ser_mill.current_x},{self.ser_mill.current_y},{self.ser_mill.current_z}|Bf:15,127|FS:0,0>"
+        return (
+            f"<Idle|WPos:{self.ser_mill.current_x},{self.ser_mill.current_y},{self.ser_mill.current_z}"
+            f"|Bf:15,127|FS:0,0|WCO:{MOCK_WCO_X},{MOCK_WCO_Y},{MOCK_WCO_Z}>"
+        )
 
     def home(self):
         """Simulate homing the mill"""
@@ -201,21 +213,33 @@ class MockSerialToMill:
 
     def read(self, size):
         """Simulate reading from the serial connection"""
-        msg = f"<Idle|MPos:{self.current_x - 3},{self.current_y - 3},{self.current_z - 3}|Bf:15,127|FS:0,0>".encode()
+        msg = (
+            f"<Idle|WPos:{self.current_x - 3},{self.current_y - 3},{self.current_z - 3}"
+            f"|Bf:15,127|FS:0,0|WCO:{MOCK_WCO_X},{MOCK_WCO_Y},{MOCK_WCO_Z}>"
+        ).encode()
         return msg[:size]
 
     def read_all(self):
         """Simulate reading from the serial connection"""
-        return f"<Idle|MPos:{self.current_x - 3},{self.current_y - 3},{self.current_z - 3}|Bf:15,127|FS:0,0>\n".encode()
+        return (
+            f"<Idle|WPos:{self.current_x - 3},{self.current_y - 3},{self.current_z - 3}"
+            f"|Bf:15,127|FS:0,0|WCO:{MOCK_WCO_X},{MOCK_WCO_Y},{MOCK_WCO_Z}>\n"
+        ).encode()
 
     def readline(self):
         """Simulate reading from the serial connection"""
-        return f"<Idle|MPos:{self.current_x - 3},{self.current_y - 3},{self.current_z - 3}|Bf:15,127|FS:0,0>\n".encode()
+        return (
+            f"<Idle|WPos:{self.current_x - 3},{self.current_y - 3},{self.current_z - 3}"
+            f"|Bf:15,127|FS:0,0|WCO:{MOCK_WCO_X},{MOCK_WCO_Y},{MOCK_WCO_Z}>\n"
+        ).encode()
 
     def readlines(self):
         """Simulate reading from the serial connection"""
         return [
-            f"<Idle|MPos:{self.current_x},{self.current_y},{self.current_z}|Bf:15,127|FS:0,0>\n".encode()
+            (
+                f"<Idle|WPos:{self.current_x},{self.current_y},{self.current_z}"
+                f"|Bf:15,127|FS:0,0|WCO:{MOCK_WCO_X},{MOCK_WCO_Y},{MOCK_WCO_Z}>\n"
+            ).encode()
         ]
 
     def flushInput(self):

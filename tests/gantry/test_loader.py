@@ -7,9 +7,9 @@ import tempfile
 
 import pytest
 
-from src.gantry.errors import GantryLoaderError
-from src.gantry.gantry_config import GantryConfig
-from src.gantry.loader import load_gantry_from_yaml, load_gantry_from_yaml_safe
+from gantry.errors import GantryLoaderError
+from gantry.gantry_config import GantryConfig
+from gantry.loader import load_gantry_from_yaml, load_gantry_from_yaml_safe
 
 
 VALID_GANTRY_YAML = """\

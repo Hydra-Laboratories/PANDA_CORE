@@ -32,7 +32,7 @@ class Gantry:
         self._mill = Mill() 
 
     @property
-    def total_z_height(self) -> float | None:
+    def total_z_height(self) -> Optional[float]:
         """Return configured total Z height in user space, if available."""
         if isinstance(self.config, dict):
             cnc = self.config.get("cnc", {})
@@ -93,19 +93,9 @@ class Gantry:
             return False
 
     def home(self) -> None:
-        """Home the gantry."""
+        """Home the gantry using XY hard limits strategy."""
         try:
-            strategy = self.config.get("cnc", {}).get("homing_strategy")
-            # Default to None or check if strategy is specifically set
-            # The mill driver now handles standard homing efficiently
-            if strategy == "xy_hard_limits":
-                self.logger.info("Using custom XY hard limit homing strategy")
-                self._mill.home_xy_hard_limits()
-            elif strategy == "manual_origin":
-                self.logger.info("Using manual origin homing strategy")
-                self._mill.home_manual_origin()
-            else:
-                self._mill.home()
+            self._mill.home_xy_hard_limits()
         except (MillConnectionError, StatusReturnError) as e:
             self.logger.error(f"Error homing gantry: {e}")
             raise
@@ -125,6 +115,50 @@ class Gantry:
             )
         except (MillConnectionError, StatusReturnError, CommandExecutionError, ValueError) as e:
             self.logger.error(f"Error moving gantry to ({x}, {y}, {z}): {e}")
+            raise
+
+    def jog(self, x: float = 0, y: float = 0, z: float = 0,
+            feed_rate: float = 2000) -> None:
+        """Jog the gantry by a relative offset using GRBL's $J= command.
+
+        This is non-blocking and much faster than move_to for interactive use.
+        Coordinates are in user space (positive); negated for machine space.
+        """
+        try:
+            self._mill.jog(x=-x, y=-y, z=-z, feed_rate=feed_rate)
+        except (MillConnectionError, CommandExecutionError) as e:
+            self.logger.error(f"Jog error: {e}")
+            raise
+
+    def jog_cancel(self) -> None:
+        """Cancel any in-progress jog motion immediately."""
+        try:
+            self._mill.jog_cancel()
+        except Exception as e:
+            self.logger.error(f"Jog cancel error: {e}")
+
+    def soft_reset(self) -> None:
+        """Send a GRBL soft reset (Ctrl-X) to the controller."""
+        try:
+            self._mill.soft_reset()
+        except Exception as e:
+            self.logger.error(f"Soft reset error: {e}")
+            raise
+
+    def unlock(self) -> None:
+        """Send GRBL unlock command ($X) to clear alarm state."""
+        try:
+            self._mill.reset()
+        except (MillConnectionError, CommandExecutionError) as e:
+            self.logger.error(f"Unlock error: {e}")
+            raise
+
+    def reset_and_unlock(self) -> None:
+        """Soft reset + unlock in a single serial sequence."""
+        try:
+            self._mill.soft_reset_and_unlock()
+        except (MillConnectionError, CommandExecutionError) as e:
+            self.logger.error(f"Reset and unlock error: {e}")
             raise
 
     def get_status(self) -> str:
@@ -151,3 +185,37 @@ class Gantry:
         except (MillConnectionError, StatusReturnError, LocationNotFound) as e:
             self.logger.error(f"Error getting coordinates: {e}")
             return {"x": 0.0, "y": 0.0, "z": 0.0}
+
+    def get_position_info(self) -> Dict[str, Any]:
+        """Return coordinates, work position, and status in a single serial query."""
+        try:
+            coords = self._mill.current_coordinates()
+            x_user, y_user, z_user = to_user_coordinates(coords.x, coords.y, coords.z)
+            user_coords = {"x": x_user, "y": y_user, "z": z_user}
+        except (MillConnectionError, StatusReturnError, LocationNotFound) as e:
+            self.logger.error(f"Error getting position info: {e}")
+            user_coords = {"x": 0.0, "y": 0.0, "z": 0.0}
+
+        status = self._extract_status()
+
+        return {
+            "coords": user_coords,
+            "work_pos": user_coords,
+            "status": status,
+        }
+
+    def _extract_status(self) -> str:
+        """Extract the GRBL state word from last_status (e.g. Idle, Run, Alarm:1)."""
+        try:
+            raw = getattr(self._mill, 'last_status', '') or ''
+            if not raw:
+                return "Unknown"
+            # GRBL status format: <State|...>
+            if raw.startswith("<") and "|" in raw:
+                return raw[1:raw.index("|")]
+            # Could be a bare alarm/error string
+            if "alarm" in raw.lower():
+                return "Alarm"
+            return translate_status_string(raw)
+        except Exception:
+            return "Unknown"

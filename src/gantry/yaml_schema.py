@@ -38,6 +38,7 @@ class CncYaml(BaseModel):
 
     homing_strategy: Literal["xy_hard_limits", "standard", "manual_origin"]
     total_z_height: float
+    y_axis_motion: Literal["head", "bed"] = "head"
 
     @model_validator(mode="after")
     def _validate_total_z_height_positive(self) -> "CncYaml":

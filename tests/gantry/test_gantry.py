@@ -103,7 +103,7 @@ class TestGantry(unittest.TestCase):
     @patch('gantry.gantry.Mill')
     def test_home_raises_on_connection_error(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
-        mock_mill.home.side_effect = MillConnectionError("homing failed")
+        mock_mill.home_xy_hard_limits.side_effect = MillConnectionError("homing failed")
         gantry = Gantry(config=self.config)
         with self.assertRaises(MillConnectionError):
             gantry.home()
@@ -111,7 +111,7 @@ class TestGantry(unittest.TestCase):
     @patch('gantry.gantry.Mill')
     def test_home_raises_on_status_error(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
-        mock_mill.home.side_effect = StatusReturnError("alarm")
+        mock_mill.home_xy_hard_limits.side_effect = StatusReturnError("alarm")
         gantry = Gantry(config=self.config)
         with self.assertRaises(StatusReturnError):
             gantry.home()
@@ -119,7 +119,7 @@ class TestGantry(unittest.TestCase):
     @patch('gantry.gantry.Mill')
     def test_home_does_not_catch_unexpected_errors(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
-        mock_mill.home.side_effect = RuntimeError("unexpected")
+        mock_mill.home_xy_hard_limits.side_effect = RuntimeError("unexpected")
         gantry = Gantry(config=self.config)
         with self.assertRaises(RuntimeError):
             gantry.home()

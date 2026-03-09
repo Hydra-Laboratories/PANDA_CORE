@@ -17,7 +17,7 @@ project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
 from gantry import Gantry
-from setup.keyboard_input import read_keypress_batch, flush_stdin
+from setup.keyboard_input import read_keypress
 
 CONFIGS_DIR = project_root / "configs"
 
@@ -33,7 +33,6 @@ GANTRIES = {
 }
 
 STEP = 1.0
-MAX_STEP = 10.0
 
 CONTROLS_LEGEND = """
 Controls:
@@ -52,10 +51,6 @@ def print_position(coords: dict) -> None:
 def load_gantry_config(config_file: Path) -> dict:
     with open(config_file) as f:
         return yaml.safe_load(f)
-
-
-def _clamp(value: float, lower: float, upper: float) -> float:
-    return max(lower, min(upper, value))
 
 
 def select_gantry() -> tuple:
@@ -109,35 +104,26 @@ def main() -> None:
         print(CONTROLS_LEGEND)
 
         while True:
-            key, count = read_keypress_batch()
-            step = min(STEP * count, MAX_STEP)
-
-            x, y, z = coords["x"], coords["y"], coords["z"]
+            key = read_keypress()
 
             if key == "LEFT":
-                x -= step
+                gantry.jog(x=-STEP)
             elif key == "RIGHT":
-                x += step
+                gantry.jog(x=STEP)
             elif key == "UP":
-                y -= step
+                gantry.jog(y=-STEP)
             elif key == "DOWN":
-                y += step
+                gantry.jog(y=STEP)
             elif key == "Z":
-                z += step
+                gantry.jog(z=STEP)
             elif key == "X":
-                z -= step
+                gantry.jog(z=-STEP)
             elif key == "Q":
                 print("\nExiting...")
                 break
             else:
                 continue
 
-            x = _clamp(x, volume["x_min"], volume["x_max"])
-            y = _clamp(y, volume["y_min"], volume["y_max"])
-            z = _clamp(z, volume["z_min"], volume["z_max"])
-
-            gantry.move_to(x, y, z)
-            flush_stdin()
             coords = gantry.get_coordinates()
             print_position(coords)
 

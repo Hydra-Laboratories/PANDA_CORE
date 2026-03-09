@@ -8,27 +8,27 @@ import tempfile
 
 import pytest
 
-from src.board.errors import BoardLoaderError
-from src.deck.errors import DeckLoaderError
-from src.gantry.errors import GantryLoaderError
-from src.gantry.gantry_config import GantryConfig
-from src.protocol_engine.errors import ProtocolLoaderError
-from src.protocol_engine.protocol import Protocol, ProtocolContext
-from src.protocol_engine.registry import CommandRegistry
-from src.protocol_engine.setup import setup_protocol
-from src.validation.errors import SetupValidationError
+from board.errors import BoardLoaderError
+from deck.errors import DeckLoaderError
+from gantry.errors import GantryLoaderError
+from gantry.gantry_config import GantryConfig
+from protocol_engine.errors import ProtocolLoaderError
+from protocol_engine.protocol import Protocol, ProtocolContext
+from protocol_engine.registry import CommandRegistry
+from protocol_engine.setup import setup_protocol
+from validation.errors import SetupValidationError
 
 
 @pytest.fixture(autouse=True)
 def _ensure_commands_registered():
     """Ensure protocol commands are registered (may be cleared by other test fixtures)."""
     if not CommandRegistry.instance().command_names:
-        import src.protocol_engine.commands.move
-        import src.protocol_engine.commands.pipette
-        import src.protocol_engine.commands.scan
-        importlib.reload(src.protocol_engine.commands.move)
-        importlib.reload(src.protocol_engine.commands.pipette)
-        importlib.reload(src.protocol_engine.commands.scan)
+        import protocol_engine.commands.move
+        import protocol_engine.commands.pipette
+        import protocol_engine.commands.scan
+        importlib.reload(protocol_engine.commands.move)
+        importlib.reload(protocol_engine.commands.pipette)
+        importlib.reload(protocol_engine.commands.scan)
 
 
 # ── YAML templates ──────────────────────────────────────────────────────

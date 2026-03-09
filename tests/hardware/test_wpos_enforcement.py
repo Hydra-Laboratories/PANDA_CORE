@@ -18,9 +18,6 @@ import sys
 import time
 from pathlib import Path
 
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-
 from gantry.gantry_driver.driver import Mill
 from gantry.gantry_driver.instruments import Coordinates
 from gantry.gantry_driver.exceptions import StatusReturnError, LocationNotFound

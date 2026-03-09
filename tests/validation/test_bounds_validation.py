@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from src.board.board import Board
-from src.deck.deck import Deck
-from src.deck.labware.labware import Coordinate3D
-from src.deck.labware.vial import Vial
-from src.deck.labware.well_plate import WellPlate
-from src.instruments.base_instrument import BaseInstrument
-from src.gantry.gantry_config import GantryConfig, HomingStrategy, WorkingVolume
-from src.validation.bounds import validate_deck_positions, validate_gantry_positions
+from board.board import Board
+from deck.deck import Deck
+from deck.labware.labware import Coordinate3D
+from deck.labware.vial import Vial
+from deck.labware.well_plate import WellPlate
+from instruments.base_instrument import BaseInstrument
+from gantry.gantry_config import GantryConfig, HomingStrategy, WorkingVolume
+from validation.bounds import validate_deck_positions, validate_gantry_positions
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────

@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 from typing import List, Tuple
 
-from src.board.board import Board
-from src.deck.deck import Deck
-from src.deck.labware.vial import Vial
-from src.deck.labware.well_plate import WellPlate
-from src.gantry.gantry_config import GantryConfig, WorkingVolume
+from board.board import Board
+from deck.deck import Deck
+from deck.labware.vial import Vial
+from deck.labware.well_plate import WellPlate
+from gantry.gantry_config import GantryConfig, WorkingVolume
 
 from .errors import BoundsViolation
 

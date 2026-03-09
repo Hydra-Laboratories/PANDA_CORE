@@ -5,14 +5,14 @@ from typing import Any, TYPE_CHECKING
 
 try:
     from instruments.base_instrument import BaseInstrument
-except ModuleNotFoundError:  # pragma: no cover - compatibility path for setup scripts
-    from src.instruments.base_instrument import BaseInstrument
+except ModuleNotFoundError:
+    raise
 
 if TYPE_CHECKING:
     try:
         from gantry import Gantry
-    except ModuleNotFoundError:  # pragma: no cover - compatibility path for setup scripts
-        from src.gantry import Gantry
+    except ModuleNotFoundError:
+        raise
 
 # A position is either an (x, y, z) tuple or any object with x, y, z attributes
 # (e.g. a labware object sitting at a fixed deck location).

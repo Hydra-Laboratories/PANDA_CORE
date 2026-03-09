@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from src.gantry.yaml_schema import GantryYamlSchema
+from gantry.yaml_schema import GantryYamlSchema
 
 
 def _valid_gantry_dict() -> dict:

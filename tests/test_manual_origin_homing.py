@@ -8,9 +8,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.gantry.gantry_config import GantryConfig, HomingStrategy, WorkingVolume
-from src.gantry.yaml_schema import CncYaml, GantryYamlSchema
-from src.gantry.loader import load_gantry_from_yaml
+from gantry.gantry_config import GantryConfig, HomingStrategy, WorkingVolume
+from gantry.yaml_schema import CncYaml, GantryYamlSchema
+from gantry.loader import load_gantry_from_yaml
 
 
 MANUAL_ORIGIN_YAML = """\
@@ -95,7 +95,7 @@ class TestManualOriginLoader:
 class TestGantryHomeDispatch:
 
     @patch("gantry.gantry.Mill")
-    def test_home_dispatches_manual_origin(self, mock_mill_cls):
+    def test_home_always_uses_xy_hard_limits(self, mock_mill_cls):
         from gantry.gantry import Gantry
 
         mock_mill = mock_mill_cls.return_value
@@ -103,7 +103,7 @@ class TestGantryHomeDispatch:
         gantry = Gantry(config=config)
 
         gantry.home()
-        mock_mill.home_manual_origin.assert_called_once()
+        mock_mill.home_xy_hard_limits.assert_called_once()
 
     @patch("gantry.gantry.Mill")
     def test_home_still_dispatches_xy_hard_limits(self, mock_mill_cls):
@@ -117,7 +117,7 @@ class TestGantryHomeDispatch:
         mock_mill.home_xy_hard_limits.assert_called_once()
 
     @patch("gantry.gantry.Mill")
-    def test_home_default_dispatches_standard_home(self, mock_mill_cls):
+    def test_home_default_uses_xy_hard_limits(self, mock_mill_cls):
         from gantry.gantry import Gantry
 
         mock_mill = mock_mill_cls.return_value
@@ -125,13 +125,13 @@ class TestGantryHomeDispatch:
         gantry = Gantry(config=config)
 
         gantry.home()
-        mock_mill.home.assert_called_once()
+        mock_mill.home_xy_hard_limits.assert_called_once()
 
 
 class TestMockMillManualOrigin:
 
     def test_mock_mill_home_manual_origin_sets_homed(self):
-        from src.gantry.gantry_driver.mock import MockMill
+        from gantry.gantry_driver.mock import MockMill
 
         mill = MockMill()
         assert mill.homed is False

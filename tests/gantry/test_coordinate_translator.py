@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import math
 
-from src.gantry.coordinate_translator import (
+from gantry.coordinate_translator import (
     to_machine_coordinates,
     to_user_coordinates,
     translate_status_string,
 )
-from src.gantry.gantry_driver.instruments import Coordinates
+from gantry.gantry_driver.instruments import Coordinates
 
 
 def test_to_user_coordinates_negates_all_tuple_axes() -> None:

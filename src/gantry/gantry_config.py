@@ -14,6 +14,13 @@ class HomingStrategy(str, Enum):
     MANUAL_ORIGIN = "manual_origin"
 
 
+class YAxisMotion(str, Enum):
+    """Whether Y-axis motion moves the head or the bed (base plate)."""
+
+    HEAD = "head"
+    BED = "bed"
+
+
 @dataclass(frozen=True)
 class WorkingVolume:
     """Gantry working volume bounds in millimeters.
@@ -55,3 +62,4 @@ class GantryConfig:
     homing_strategy: HomingStrategy
     total_z_height: float
     working_volume: WorkingVolume
+    y_axis_motion: YAxisMotion = YAxisMotion.HEAD

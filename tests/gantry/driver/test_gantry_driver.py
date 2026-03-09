@@ -92,6 +92,7 @@ class TestCNCDriverLogic(unittest.TestCase):
             mill.check_for_alarm_state = MagicMock()
             mill.clear_buffers = MagicMock()
             mill.set_feed_rate = MagicMock()
+            mill._seed_wco = MagicMock()
             mill.connect_to_mill(port='/dev/test')
             
             self.assertTrue(mill.active_connection)

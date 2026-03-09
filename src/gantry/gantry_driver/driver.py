@@ -53,6 +53,7 @@ HOMING_STEP_SIZE = 50.0   # mm
 # Compile regex patterns for extracting coordinates from the mill status
 wpos_pattern = re.compile(r"WPos:([\d.-]+),([\d.-]+),([\d.-]+)")
 mpos_pattern = re.compile(r"MPos:([\d.-]+),([\d.-]+),([\d.-]+)")
+wco_pattern = re.compile(r"WCO:([\d.-]+),([\d.-]+),([\d.-]+)")
 
 axis_conf_table = [
     {"setting_value": 0, "reverse_x": 0, "reverse_y": 0, "reverse_z": 0},
@@ -132,6 +133,8 @@ class Mill:
         self.max_z_height = 0.0
         self.command_logger = set_up_command_logger(self.logger_location)
         self.interactive_mode = False
+        self._wco: Optional[Coordinates] = None
+        self.last_status: str = ""
 
     def read_working_volume(self):
         """Checks the mill config for soft limits to be enabled, and then if so check the x, y, and z max travel limits"""
@@ -331,6 +334,7 @@ class Mill:
         self.check_for_alarm_state()
         self.clear_buffers()
         self.set_feed_rate(DEFAULT_FEED_RATE)
+        self._seed_wco()
         return self.ser_mill
 
     def check_for_alarm_state(self):
@@ -528,13 +532,71 @@ class Mill:
         """Stop the mill."""
         self.execute_command("!")
 
+    def jog(self, x: float = 0, y: float = 0, z: float = 0,
+            feed_rate: float = DEFAULT_FEED_RATE) -> None:
+        """Send a GRBL jog command ($J=) for immediate, cancellable movement.
+
+        Unlike G-code moves, jog commands are non-blocking and can be
+        cancelled instantly with a jog-cancel (0x85).
+
+        Args:
+            x: Relative X distance.
+            y: Relative Y distance.
+            z: Relative Z distance.
+            feed_rate: Feed rate in mm/min.
+        """
+        parts = []
+        if x != 0:
+            parts.append(f"X{x:.3f}")
+        if y != 0:
+            parts.append(f"Y{y:.3f}")
+        if z != 0:
+            parts.append(f"Z{z:.3f}")
+        if not parts:
+            return
+        cmd = f"$J=G91 {' '.join(parts)} F{feed_rate}"
+        self.logger.debug("Jog command: %s", cmd)
+        self.ser_mill.write((cmd + "\n").encode("ascii"))
+        response = self.read().lower()
+        if "error" in response:
+            # error:8 = "not idle" (planner buffer full) — safe to ignore
+            if "error:8" in response:
+                self.logger.debug("Jog buffer full, skipping")
+                return
+            self.logger.error("Jog error: %s", response)
+            raise CommandExecutionError(f"Jog failed: {response}")
+
+    def jog_cancel(self) -> None:
+        """Cancel any in-progress jog motion immediately."""
+        self.ser_mill.write(b"\x85")
+
     def reset(self):
-        """Reset or unlock the mill."""
-        self.execute_command("$X")
+        """Unlock the mill by sending $X directly over serial."""
+        if not self.ser_mill:
+            raise MillConnectionError("Serial connection not available")
+        self.logger.info("Sending unlock ($X)")
+        self.ser_mill.write(b"$X\n")
+        time.sleep(0.5)
+        # Drain response
+        while self.ser_mill.in_waiting:
+            line = self.ser_mill.readline().decode("ascii", errors="replace").strip()
+            self.logger.debug("Unlock response: %s", line)
 
     def soft_reset(self):
-        """Soft reset the mill."""
-        self.execute_command("^X")
+        """Soft reset the mill (GRBL Ctrl-X / 0x18)."""
+        if not self.ser_mill:
+            raise MillConnectionError("Serial connection not available")
+        self.logger.info("Sending soft reset (0x18)")
+        self.ser_mill.write(b"\x18")
+        time.sleep(1.0)
+        # Drain the reset banner response
+        while self.ser_mill.in_waiting:
+            self.ser_mill.readline()
+
+    def soft_reset_and_unlock(self):
+        """Soft reset followed by unlock — single serial sequence."""
+        self.soft_reset()
+        self.reset()
 
     def home(self, timeout=HOMING_TIMEOUT):
         """Home the mill with a timeout."""
@@ -729,7 +791,7 @@ class Mill:
 
         while status in ["", "ok"] and attempt_limit > 0:
             self.ser_mill.write(b"?")
-            time.sleep(0.2)
+            time.sleep(0.05)
             status = self.read()
             attempt_limit -= 1
 
@@ -744,10 +806,12 @@ class Mill:
                 raise StatusReturnError("Failed to get status from the mill")
             if any(re.search(r"\b(error|alarm)\b", item.lower()) for item in status):
                 self.logger.error("Error in status: %s", status)
+                self.last_status = str(status)
                 if self.interactive_mode:
                     print("Error in status: %s", status)
                     return ""
                 raise StatusReturnError(f"Error in status: {status}")
+        self.last_status = status
         return status
 
     def write(self, command: str):
@@ -802,6 +866,51 @@ class Mill:
         command = f"${setting}={value}"
         return self.execute_command(command)
 
+    def _seed_wco(self):
+        """Poll GRBL status until WCO is reported, then cache it.
+
+        GRBL includes WCO periodically in status reports. We query
+        repeatedly so that we have the offset cached for any MPos→WPos
+        conversion that might be needed.
+        """
+        for _ in range(15):
+            self.ser_mill.write(b"?")
+            time.sleep(0.15)
+            status = self.read()
+            match = wco_pattern.search(status)
+            if match:
+                self._wco = Coordinates(
+                    float(match.group(1)),
+                    float(match.group(2)),
+                    float(match.group(3)),
+                )
+                self.logger.info("WCO cached: %s", self._wco)
+                return
+        self.logger.warning("Could not obtain WCO from GRBL status reports")
+
+    def _query_work_coordinate_offset(self) -> Coordinates:
+        """Return the cached Work Coordinate Offset (WCO).
+
+        WCO is the offset between machine position and work position:
+            MPos = WPos + WCO
+        """
+        if self._wco is None:
+            self._seed_wco()
+        if self._wco is None:
+            self.logger.warning("WCO unavailable, returning zero offset")
+            return Coordinates(0, 0, 0)
+        return self._wco
+
+    def machine_coordinates(self) -> Coordinates:
+        """Return the current machine position (MPos = WPos + WCO)."""
+        wpos = self.current_coordinates()
+        wco = self._query_work_coordinate_offset()
+        return Coordinates(
+            round(wpos.x + wco.x, 3),
+            round(wpos.y + wco.y, 3),
+            round(wpos.z + wco.z, 3),
+        )
+
     def current_coordinates(
         self, instrument: Optional[str] = None, instrument_only: bool = True
     ) -> Union[Coordinates, Tuple[Coordinates, Coordinates]]:
@@ -816,18 +925,20 @@ class Mill:
             Coordinates or Tuple[Coordinates, Coordinates]: mill_center [x,y,z] or (mill_center, instrument_head).
         """
         self.ser_mill.write(b"?")
-        time.sleep(0.2)
+        time.sleep(0.05)
         status = self.read()
         attempts = 0
         while (not status or status[0] != "<") and attempts < 3:
             if "alarm" in status.lower() or "error" in status.lower():
                 self.logger.error("Error in status: %s", status)
+                self.last_status = status
                 raise StatusReturnError(f"Error in status: {status}")
             if "ok" in status.lower():
                 self.logger.debug("OK in status: %s", status)
             status = self.read()
             attempts += 1
 
+        self.last_status = status
         status_mode = int(self.config["$10"])
 
         if int(status_mode) not in [0, 1, 2, 3]:
@@ -840,6 +951,15 @@ class Mill:
         pattern = wpos_pattern if status_mode in [0, 2] else mpos_pattern
         coord_type = "WPos" if status_mode in [0, 2] else "MPos"
 
+        # Update cached WCO whenever GRBL includes it in the status
+        wco_match = wco_pattern.search(status)
+        if wco_match:
+            self._wco = Coordinates(
+                float(wco_match.group(1)),
+                float(wco_match.group(2)),
+                float(wco_match.group(3)),
+            )
+
         for i in range(max_attempts):
             match = pattern.search(status)
             if match:
@@ -847,10 +967,18 @@ class Mill:
                 y_coord = round(float(match.group(2)), 3)
                 z_coord = round(float(match.group(3)), 3)
                 if coord_type == "MPos":
-                    pass
+                    if self._wco is None:
+                        self._seed_wco()
+                    if self._wco is not None:
+                        x_coord = round(x_coord - self._wco.x, 3)
+                        y_coord = round(y_coord - self._wco.y, 3)
+                        z_coord = round(z_coord - self._wco.z, 3)
+                    else:
+                        self.logger.warning(
+                            "MPos reported but WCO unavailable; returning raw MPos"
+                        )
                 self.logger.info(
-                    "%s coordinates: X = %s, Y = %s, Z = %s",
-                    coord_type,
+                    "WPos coordinates: X = %s, Y = %s, Z = %s",
                     x_coord,
                     y_coord,
                     z_coord,
