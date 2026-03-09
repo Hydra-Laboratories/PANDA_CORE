@@ -218,12 +218,13 @@ class DataStore:
                      labware.capacity_ul, labware.working_volume_ul),
                 )
         elif isinstance(labware, Vial):
+            initial = getattr(labware, "initial_volume_ul", 0.0)
             self._conn.execute(
                 "INSERT INTO labware (campaign_id, labware_key, labware_type, "
-                "total_volume_ul, working_volume_ul) "
-                "VALUES (?, ?, 'vial', ?, ?)",
+                "total_volume_ul, working_volume_ul, current_volume_ul) "
+                "VALUES (?, ?, 'vial', ?, ?, ?)",
                 (campaign_id, labware_key,
-                 labware.capacity_ul, labware.working_volume_ul),
+                 labware.capacity_ul, labware.working_volume_ul, initial),
             )
         else:
             raise TypeError(
