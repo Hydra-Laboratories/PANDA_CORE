@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 from typing import List, Tuple
 
-from src.board.board import Board
-from src.deck.deck import Deck
-from src.deck.labware.vial import Vial
-from src.deck.labware.well_plate import WellPlate
-from src.gantry.gantry_config import GantryConfig, WorkingVolume
+from board.board import Board
+from deck.deck import Deck
+from deck.labware.vial import Vial
+from deck.labware.well_plate import WellPlate
+from gantry.gantry_config import GantryConfig, WorkingVolume
 
 from .errors import BoundsViolation
 
@@ -62,6 +62,7 @@ def validate_deck_positions(
 ) -> List[BoundsViolation]:
     """Check every labware position is within the gantry working volume.
 
+    Coordinates are validated in user-facing positive space.
     Returns a list of violations (empty if all pass).
     """
     violations: List[BoundsViolation] = []
@@ -86,7 +87,7 @@ def validate_gantry_positions(
 ) -> List[BoundsViolation]:
     """For each (instrument, deck_position), compute gantry position and check bounds.
 
-    Gantry formula (from board.py Board.move):
+    Gantry formula (from board.py Board.move), all in user-facing coordinates:
         gantry_x = position_x - instrument.offset_x
         gantry_y = position_y - instrument.offset_y
         gantry_z = position_z - instrument.depth

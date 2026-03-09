@@ -7,22 +7,23 @@ import tempfile
 
 import pytest
 
-from src.gantry.errors import GantryLoaderError
-from src.gantry.gantry_config import GantryConfig
-from src.gantry.loader import load_gantry_from_yaml, load_gantry_from_yaml_safe
+from gantry.errors import GantryLoaderError
+from gantry.gantry_config import GantryConfig
+from gantry.loader import load_gantry_from_yaml, load_gantry_from_yaml_safe
 
 
 VALID_GANTRY_YAML = """\
 serial_port: /dev/cu.usbserial-2130
 cnc:
   homing_strategy: xy_hard_limits
+  total_z_height: 90.0
 working_volume:
-  x_min: -300.0
-  x_max: 0.0
-  y_min: -200.0
-  y_max: 0.0
-  z_min: -80.0
-  z_max: 0.0
+  x_min: 0.0
+  x_max: 300.0
+  y_min: 0.0
+  y_max: 200.0
+  z_min: 0.0
+  z_max: 80.0
 """
 
 
@@ -48,12 +49,13 @@ class TestLoadGantryFromYaml:
         try:
             config = load_gantry_from_yaml(path)
             vol = config.working_volume
-            assert vol.x_min == -300.0
-            assert vol.x_max == 0.0
-            assert vol.y_min == -200.0
-            assert vol.y_max == 0.0
-            assert vol.z_min == -80.0
-            assert vol.z_max == 0.0
+            assert vol.x_min == 0.0
+            assert vol.x_max == 300.0
+            assert vol.y_min == 0.0
+            assert vol.y_max == 200.0
+            assert vol.z_min == 0.0
+            assert vol.z_max == 80.0
+            assert config.total_z_height == 90.0
         finally:
             os.unlink(path)
 
@@ -90,6 +92,7 @@ class TestLoadGantryFromYaml:
 serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
+  total_z_height: 90.0
 """
         path = _write_temp_yaml(yaml_content)
         try:
@@ -103,13 +106,14 @@ cnc:
 serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
+  total_z_height: 90.0
 working_volume:
-  x_min: 0.0
-  x_max: -300.0
-  y_min: -200.0
-  y_max: 0.0
-  z_min: -80.0
-  z_max: 0.0
+  x_min: 300.0
+  x_max: 0.0
+  y_min: 0.0
+  y_max: 200.0
+  z_min: 0.0
+  z_max: 80.0
 """
         path = _write_temp_yaml(yaml_content)
         try:
@@ -151,6 +155,7 @@ class TestLoadGantryFromYamlSafe:
 serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
+  total_z_height: 90.0
 """
         path = _write_temp_yaml(yaml_content)
         try:
@@ -168,6 +173,7 @@ cnc:
 serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
+  total_z_height: 90.0
 """
         path = _write_temp_yaml(yaml_content)
         try:

@@ -9,8 +9,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 from deck.deck import Deck
 
-from src.board.board import Board
-from src.gantry.gantry_config import GantryConfig
+from board.board import Board
+from gantry.gantry_config import GantryConfig
 
 
 @dataclass

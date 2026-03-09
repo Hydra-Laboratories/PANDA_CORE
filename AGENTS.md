@@ -76,10 +76,11 @@ A modular system for executing experiment sequences defined in code or YAML.
 ### Gantry Config (`src/gantry`)
 Gantry YAML loader and domain model for CNC gantry working volume and homing strategy.
 
-- **`yaml_schema.py`**: `GantryYamlSchema` with strict Pydantic validation (working volume bounds, homing strategy, serial port).
-- **`gantry_config.py`**: `GantryConfig` and `WorkingVolume` frozen dataclasses. `WorkingVolume.contains(x, y, z)` checks if a point is within bounds (inclusive).
+- **Coordinate convention**: All user-facing XYZ coordinates are positive-space. The `Gantry` wrapper translates user-space `(+)` coordinates to machine-space `(-)` GRBL coordinates internally.
+- **`yaml_schema.py`**: `GantryYamlSchema` with strict Pydantic validation (working volume bounds, homing strategy, serial port, and `cnc.total_z_height`).
+- **`gantry_config.py`**: `GantryConfig` and `WorkingVolume` frozen dataclasses. `WorkingVolume.contains(x, y, z)` checks if a point is within bounds (inclusive). `GantryConfig.total_z_height` is the top-reference height used for labware height conversion. `HomingStrategy` enum: `STANDARD`, `XY_HARD_LIMITS`, `MANUAL_ORIGIN`.
 - **`loader.py`**: `load_gantry_from_yaml(path)` and `load_gantry_from_yaml_safe(path)`.
-- **Config files**: `configs/gantries/` (e.g., `genmitsu_3018_PROver_v2.yaml`).
+- **Config files**: `configs/gantry/` (e.g., `genmitsu_3018_PROver_v2.yaml`).
 
 ### Validation (`src/validation`)
 Bounds validation for protocol setup — ensures all deck positions and gantry-computed positions are within the gantry's working volume before the protocol runs.
@@ -96,20 +97,20 @@ Deck configuration loading, runtime deck container, and labware geometry/positio
   - **`well_plate.py`**: `WellPlate(Labware)` for multi-well plates (e.g., SBS 96-well). Required fields include `name`, `model_name`, dimensions, layout (`rows`, `columns`), `wells`, and volume fields (`capacity_ul`, `working_volume_ul`). Also provides `get_well_center(well_id)`.
   - **`vial.py`**: `Vial(Labware)` for a single vial. Required fields include `name`, `model_name`, geometry (`height_mm`, `diameter_mm`), single `location`, and volume fields (`capacity_ul`, `working_volume_ul`), plus `get_vial_center()`.
 - **Deck configuration (YAML)**: Deck layout is defined in a **deck YAML** file (labware only; no gantry settings). Strict schema: only allowed fields; missing, extra, or wrong-type fields raise `ValidationError`.
-  - **`src/deck/yaml_schema.py`**: Pydantic models for deck YAML: `DeckYamlSchema` (root, single key `labware`), `WellPlateYamlEntry` (two-point calibration points under `calibration.a1` and `calibration.a2`, axis-aligned only), `VialYamlEntry` (single vial location). Both require `model_name`. All use `extra='forbid'`.
-  - **`src/deck/loader.py`**: `load_deck_from_yaml(path)` loads a deck YAML file and returns a `Deck` containing all labware. Well plates are built from calibration A1/A2 and x/y offsets (derived well positions); vials from a single explicit `location`.
+  - **`src/deck/yaml_schema.py`**: Pydantic models for deck YAML: `DeckYamlSchema` (root, single key `labware`), `WellPlateYamlEntry` (two-point calibration points under `calibration.a1` and `calibration.a2`, axis-aligned only), `VialYamlEntry` (single vial location). Both support optional `height` for automatic Z calculation. All use `extra='forbid'`.
+  - **`src/deck/loader.py`**: `load_deck_from_yaml(path, total_z_height=None)` loads a deck YAML file and returns a `Deck` containing all labware. Well plates are built from calibration A1/A2 and x/y offsets (derived well positions); vials from a single explicit `location`. If `height` is provided in labware YAML, z is computed as `total_z_height - height`.
   - **`src/deck/errors.py`**: `DeckLoaderError` for user-facing loader failures.
-- **Sample config**: `configs/decks/deck.sample.yaml` — one well plate and one vial; use as reference for required fields and two-point calibration format.
-- **Usage**: Load a deck with `load_deck_from_yaml("configs/decks/deck.sample.yaml")` to get a `Deck` object. Access labware: `deck["plate_1"]`. Resolve targets: `deck.resolve("plate_1.A1")` for absolute XYZ.
+- **Sample config**: `configs/deck/deck.sample.yaml` — one well plate and one vial; use as reference for required fields and two-point calibration format.
+- **Usage**: Load a deck with `load_deck_from_yaml("configs/deck/deck.sample.yaml", total_z_height=<float>)` to get a `Deck` object. Access labware: `deck["plate_1"]`. Resolve targets: `deck.resolve("plate_1.A1")` for absolute XYZ.
 
 ### Config Directory Structure
 Config files are organized by type:
 ```
 configs/
-  gantries/     # Gantry configs (serial port, homing, working volume)
-  decks/        # Deck configs (labware positions)
-  boards/       # Board configs (instrument offsets)
-  protocols/    # Protocol configs (command sequences)
+  gantry/       # Gantry configs (serial port, homing, working volume)
+  deck/         # Deck configs (labware positions)
+  board/        # Board configs (instrument offsets)
+  protocol/     # Protocol configs (command sequences)
 ```
 
 ### Data Persistence (`data/`)
@@ -154,6 +155,10 @@ First-run scripts for verifying hardware after unboxing.
     - **Usage**: `python3 setup/hello_world.py`
     - **Controls**: Arrow keys (X/Y ±1mm), Z key (Z down 1mm), X key (Z up 1mm), Q (quit)
     - **Dependencies**: `src/hardware/gantry.py` (Gantry class)
+- **`home_manual.py`**: Manual origin homing script for the Genmitsu Desktop CNC (CUB). Connects to the CNC, runs the `manual_origin` homing strategy (interactive keyboard jogging to set work zero), and prints the working volume bounds.
+    - **Usage**: `python setup/home_manual.py`
+    - **Controls**: Arrow keys (X/Y ±1mm), Z key (Z down 1mm), X key (Z up 1mm), Enter (confirm origin)
+    - **Dependencies**: `src/gantry` (Gantry, loader), `setup/keyboard_input.py`
 - **`validate_setup.py`**: Validate a protocol setup by loading all 4 configs (gantry, deck, board, protocol) and checking that all deck and gantry positions are within the gantry's working volume.
     - **Usage**: `python setup/validate_setup.py <gantry.yaml> <deck.yaml> <board.yaml> <protocol.yaml>`
     - **Output**: Step-by-step loading status, labware/instrument summaries, bounds validation results, and a final PASS/FAIL verdict.

@@ -8,27 +8,27 @@ import tempfile
 
 import pytest
 
-from src.board.errors import BoardLoaderError
-from src.deck.errors import DeckLoaderError
-from src.gantry.errors import GantryLoaderError
-from src.gantry.gantry_config import GantryConfig
-from src.protocol_engine.errors import ProtocolLoaderError
-from src.protocol_engine.protocol import Protocol, ProtocolContext
-from src.protocol_engine.registry import CommandRegistry
-from src.protocol_engine.setup import setup_protocol
-from src.validation.errors import SetupValidationError
+from board.errors import BoardLoaderError
+from deck.errors import DeckLoaderError
+from gantry.errors import GantryLoaderError
+from gantry.gantry_config import GantryConfig
+from protocol_engine.errors import ProtocolLoaderError
+from protocol_engine.protocol import Protocol, ProtocolContext
+from protocol_engine.registry import CommandRegistry
+from protocol_engine.setup import setup_protocol
+from validation.errors import SetupValidationError
 
 
 @pytest.fixture(autouse=True)
 def _ensure_commands_registered():
     """Ensure protocol commands are registered (may be cleared by other test fixtures)."""
     if not CommandRegistry.instance().command_names:
-        import src.protocol_engine.commands.move
-        import src.protocol_engine.commands.pipette
-        import src.protocol_engine.commands.scan
-        importlib.reload(src.protocol_engine.commands.move)
-        importlib.reload(src.protocol_engine.commands.pipette)
-        importlib.reload(src.protocol_engine.commands.scan)
+        import protocol_engine.commands.move
+        import protocol_engine.commands.pipette
+        import protocol_engine.commands.scan
+        importlib.reload(protocol_engine.commands.move)
+        importlib.reload(protocol_engine.commands.pipette)
+        importlib.reload(protocol_engine.commands.scan)
 
 
 # ── YAML templates ──────────────────────────────────────────────────────
@@ -37,13 +37,14 @@ GANTRY_YAML = """\
 serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
+  total_z_height: 90.0
 working_volume:
-  x_min: -300.0
-  x_max: 0.0
-  y_min: -200.0
-  y_max: 0.0
-  z_min: -80.0
-  z_max: 0.0
+  x_min: 0.0
+  x_max: 300.0
+  y_min: 0.0
+  y_max: 200.0
+  z_min: 0.0
+  z_max: 80.0
 """
 
 DECK_YAML = """\
@@ -55,9 +56,9 @@ labware:
     height_mm: 66.75
     diameter_mm: 28.0
     location:
-      x: -30.0
-      y: -40.0
-      z: -20.0
+      x: 30.0
+      y: 40.0
+      z: 20.0
     capacity_ul: 1500.0
     working_volume_ul: 1200.0
 """
@@ -66,7 +67,7 @@ BOARD_YAML = """\
 instruments:
   pipette:
     type: mock_pipette
-    offset_x: -5.0
+    offset_x: 5.0
     offset_y: 0.0
     depth: 0.0
     measurement_height: 0.0
@@ -150,7 +151,7 @@ class TestSetupProtocol:
                 f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
             )
             assert isinstance(context.gantry, GantryConfig)
-            assert context.gantry.working_volume.x_min == -300.0
+            assert context.gantry.working_volume.x_min == 0.0
 
     def test_protocol_has_expected_steps(self):
         with _TempYamlFiles() as f:
@@ -170,9 +171,9 @@ labware:
     height_mm: 66.75
     diameter_mm: 28.0
     location:
-      x: -301.0
-      y: -40.0
-      z: -20.0
+      x: 301.0
+      y: 40.0
+      z: 20.0
     capacity_ul: 1500.0
     working_volume_ul: 1200.0
 """
@@ -184,7 +185,7 @@ labware:
             assert len(exc_info.value.violations) >= 1
 
     def test_raises_on_gantry_position_out_of_bounds(self):
-        # vial at x=-2.0, pipette offset_x=-5.0 -> gantry_x = -2 - (-5) = 3.0 > x_max=0
+        # vial at x=2.0, pipette offset_x=5.0 -> gantry_x = 2.0 - 5.0 = -3.0 < x_min=0
         near_edge_deck = """\
 labware:
   vial_1:
@@ -194,9 +195,9 @@ labware:
     height_mm: 66.75
     diameter_mm: 28.0
     location:
-      x: -2.0
-      y: -40.0
-      z: -20.0
+      x: 2.0
+      y: 40.0
+      z: 20.0
     capacity_ul: 1500.0
     working_volume_ul: 1200.0
 """

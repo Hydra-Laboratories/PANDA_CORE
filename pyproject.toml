@@ -15,7 +15,7 @@ dev = ["pytest"]
 where = ["src", "."]
 include = ["data", "data.*", "deck", "deck.*", "gantry", "gantry.*",
            "instruments", "instruments.*", "protocol_engine", "protocol_engine.*",
-           "board", "board.*"]
+           "board", "board.*", "validation", "validation.*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]

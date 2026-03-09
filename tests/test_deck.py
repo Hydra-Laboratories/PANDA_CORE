@@ -18,10 +18,10 @@ def _make_plate() -> WellPlate:
         rows=2,
         columns=2,
         wells={
-            "A1": Coordinate3D(x=0.0, y=0.0, z=-5.0),
-            "A2": Coordinate3D(x=10.0, y=0.0, z=-5.0),
-            "B1": Coordinate3D(x=0.0, y=-8.0, z=-5.0),
-            "B2": Coordinate3D(x=10.0, y=-8.0, z=-5.0),
+            "A1": Coordinate3D(x=0.0, y=0.0, z=75.0),
+            "A2": Coordinate3D(x=10.0, y=0.0, z=75.0),
+            "B1": Coordinate3D(x=0.0, y=8.0, z=75.0),
+            "B2": Coordinate3D(x=10.0, y=8.0, z=75.0),
         },
         capacity_ul=200.0,
         working_volume_ul=150.0,
@@ -34,7 +34,7 @@ def _make_vial() -> Vial:
         model_name="standard_1_5ml",
         height_mm=66.75,
         diameter_mm=28.0,
-        location=Coordinate3D(x=-30.0, y=-40.0, z=-20.0),
+        location=Coordinate3D(x=30.0, y=40.0, z=20.0),
         capacity_ul=1500.0,
         working_volume_ul=1200.0,
     )
@@ -102,28 +102,28 @@ def test_resolve_well_plate_with_location():
     """resolve('plate_1.A1') returns coordinate for well A1."""
     deck = _make_deck()
     coord = deck.resolve("plate_1.A1")
-    assert coord == Coordinate3D(x=0.0, y=0.0, z=-5.0)
+    assert coord == Coordinate3D(x=0.0, y=0.0, z=75.0)
 
 
 def test_resolve_well_plate_another_well():
     """resolve('plate_1.B2') returns coordinate for well B2."""
     deck = _make_deck()
     coord = deck.resolve("plate_1.B2")
-    assert coord == Coordinate3D(x=10.0, y=-8.0, z=-5.0)
+    assert coord == Coordinate3D(x=10.0, y=8.0, z=75.0)
 
 
 def test_resolve_vial_bare_name():
     """resolve('vial_1') returns vial center (initial position)."""
     deck = _make_deck()
     coord = deck.resolve("vial_1")
-    assert coord == Coordinate3D(x=-30.0, y=-40.0, z=-20.0)
+    assert coord == Coordinate3D(x=30.0, y=40.0, z=20.0)
 
 
 def test_resolve_plate_bare_name_returns_initial_position():
     """resolve('plate_1') with no location returns A1 (initial position)."""
     deck = _make_deck()
     coord = deck.resolve("plate_1")
-    assert coord == Coordinate3D(x=0.0, y=0.0, z=-5.0)
+    assert coord == Coordinate3D(x=0.0, y=0.0, z=75.0)
 
 
 def test_resolve_unknown_labware_raises():

@@ -20,7 +20,7 @@ This project features a robust **Protocol Engine** for defining and executing au
 - **Labware Abstractions**: Centralized models for well plates and vials, making it easy to target logical positions (e.g., `A1`) and resolve them into absolute deck coordinates.
 
 ### Running an Experiment
-1. **Configure Hardware**: Update config files in `configs/gantries/`, `configs/decks/`, `configs/boards/`, and `configs/protocols/` for your hardware setup.
+1. **Configure Hardware**: Update config files in `configs/gantry/`, `configs/deck/`, `configs/board/`, and `configs/protocol/` for your hardware setup.
 2. **Define Experiment**: Create a YAML file in `experiments/` (e.g., `experiments/my_experiment.yaml`).
 3. **Run**:
    ```bash
@@ -33,25 +33,25 @@ Config files are organized into subdirectories by type:
 
 ```
 configs/
-  gantries/     # Gantry configs (serial port, homing, working volume)
-  decks/        # Deck configs (labware positions)
-  boards/       # Board configs (instrument offsets)
-  protocols/    # Protocol configs (command sequences)
+  gantry/       # Gantry configs (serial port, homing, working volume)
+  deck/         # Deck configs (labware positions)
+  board/        # Board configs (instrument offsets)
+  protocol/     # Protocol configs (command sequences)
 ```
 
 ## Gantry Config
 
-Gantry YAML defines the CNC gantry's working volume bounds, serial port, and homing strategy. Load with:
+Gantry YAML defines the CNC gantry's working volume bounds, serial port, homing strategy, and `cnc.total_z_height`. User-facing XYZ values are positive-space; translation to GRBL negative-space happens inside the `Gantry` wrapper. Load with:
 
 ```python
 from src.gantry import load_gantry_from_yaml
 
-gantry = load_gantry_from_yaml("configs/gantries/genmitsu_3018_PROver_v2.yaml")
+gantry = load_gantry_from_yaml("configs/gantry/genmitsu_3018_PROver_v2.yaml")
 # gantry.working_volume.x_min, gantry.working_volume.x_max, etc.
 # gantry.homing_strategy, gantry.serial_port
 ```
 
-See `configs/gantries/genmitsu_3018_PROver_v2.yaml` for the required schema.
+See `configs/gantry/genmitsu_3018_PROver_v2.yaml` for the required schema.
 
 ## Labware Models and Deck YAML
 
@@ -61,17 +61,17 @@ Logical labware (well plates and vials) is modeled in `src/deck/labware/`:
 - `WellPlate` defines all required plate fields directly: `name`, `model_name`, geometry (`length_mm`, `width_mm`, `height_mm`), layout (`rows`, `columns`), `wells`, and volume fields (`capacity_ul`, `working_volume_ul`).
 - `Vial` defines all required vial fields directly: `name`, `model_name`, geometry (`height_mm`, `diameter_mm`), a single `location`, and volume fields.
 
-**Deck configuration (YAML)** defines which labware is on the deck (no gantry/serial settings in the deck file). Use a strict deck YAML with a single top-level key `labware`; each entry is either a well plate (with two-point calibration A1 + A2 and x/y offsets) or a single vial (with explicit `location`). Load into Python objects with:
+**Deck configuration (YAML)** defines which labware is on the deck (no gantry/serial settings in the deck file). Use a strict deck YAML with a single top-level key `labware`; each entry is either a well plate (with two-point calibration A1 + A2 and x/y offsets) or a single vial (with explicit `location`). Optional `height` can be provided to compute z as `total_z_height - height`. Load into Python objects with:
 
 ```python
 from src.deck import load_deck_from_yaml
 
-deck = load_deck_from_yaml("configs/decks/deck.sample.yaml")
+deck = load_deck_from_yaml("configs/deck/deck.sample.yaml", total_z_height=90.0)
 # deck["plate_1"] -> WellPlate; deck["vial_1"] -> Vial
 # deck.resolve("plate_1.A1")  # absolute XYZ coordinate
 ```
 
-See `configs/decks/deck.sample.yaml` for the required schema. Validation is strict: missing, extra, or wrong-type fields raise `ValidationError`; two-point calibration for well plates must be axis-aligned (A1 and A2 share either x or y).
+See `configs/deck/deck.sample.yaml` for the required schema. Validation is strict: missing, extra, or wrong-type fields raise `ValidationError`; two-point calibration for well plates must be axis-aligned (A1 and A2 share either x or y).
 
 ## Instrument Drivers
 
@@ -129,10 +129,10 @@ The `setup_protocol()` function loads all four configs, validates that all deck 
 from src.protocol_engine.setup import setup_protocol
 
 protocol, context = setup_protocol(
-    gantry_path="configs/gantries/genmitsu_3018_PROver_v2.yaml",
-    deck_path="configs/decks/mofcat_deck.yaml",
-    board_path="configs/boards/mofcat_board.yaml",
-    protocol_path="configs/protocols/protocol.sample.yaml",
+    gantry_path="configs/gantry/genmitsu_3018_PROver_v2.yaml",
+    deck_path="configs/deck/mofcat_deck.yaml",
+    board_path="configs/board/mofcat_board.yaml",
+    protocol_path="configs/protocol/protocol.sample.yaml",
 )
 # Protocol is ready to run once validation passes:
 protocol.run(context)
@@ -149,10 +149,10 @@ Run validation from the command line to see human-readable output:
 
 ```bash
 python setup/validate_setup.py \
-    configs/gantries/genmitsu_3018_PROver_v2.yaml \
-    configs/decks/mofcat_deck.yaml \
-    configs/boards/mofcat_board.yaml \
-    configs/protocols/protocol.sample.yaml
+    configs/gantry/genmitsu_3018_PROver_v2.yaml \
+    configs/deck/mofcat_deck.yaml \
+    configs/board/mofcat_board.yaml \
+    configs/protocol/protocol.sample.yaml
 ```
 
 The script prints step-by-step output: each config loaded with details (gantry bounds, labware list, instruments, protocol steps), followed by deck and gantry bounds validation results, and a final PASS/FAIL summary.
@@ -163,10 +163,10 @@ Validate and run a protocol end-to-end (requires hardware connection):
 
 ```bash
 python setup/run_protocol.py \
-    configs/gantries/genmitsu_3018_PROver_v2.yaml \
-    configs/decks/mofcat_deck.yaml \
-    configs/boards/mofcat_board.yaml \
-    configs/protocols/protocol.sample.yaml
+    configs/gantry/genmitsu_3018_PROver_v2.yaml \
+    configs/deck/mofcat_deck.yaml \
+    configs/board/mofcat_board.yaml \
+    configs/protocol/protocol.sample.yaml
 ```
 
 This first runs offline validation (same output as `validate_setup.py`), then connects to the gantry and executes the protocol.

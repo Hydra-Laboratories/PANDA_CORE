@@ -11,14 +11,22 @@ class HomingStrategy(str, Enum):
 
     XY_HARD_LIMITS = "xy_hard_limits"
     STANDARD = "standard"
+    MANUAL_ORIGIN = "manual_origin"
+
+
+class YAxisMotion(str, Enum):
+    """Whether Y-axis motion moves the head or the bed (base plate)."""
+
+    HEAD = "head"
+    BED = "bed"
 
 
 @dataclass(frozen=True)
 class WorkingVolume:
     """Gantry working volume bounds in millimeters.
 
-    All coordinates use CNC convention: origin at (0, 0, 0),
-    working area extends into negative space.
+    User-facing coordinates use positive working space with
+    origin at (0, 0, 0) and inclusive min/max bounds.
     """
 
     x_min: float
@@ -32,6 +40,8 @@ class WorkingVolume:
         for axis in ("x", "y", "z"):
             lo = getattr(self, f"{axis}_min")
             hi = getattr(self, f"{axis}_max")
+            if lo < 0:
+                raise ValueError(f"{axis}_min ({lo}) must be >= 0")
             if lo >= hi:
                 raise ValueError(
                     f"{axis}_min ({lo}) must be < {axis}_max ({hi})"
@@ -52,4 +62,12 @@ class GantryConfig:
 
     serial_port: str
     homing_strategy: HomingStrategy
+    total_z_height: float
     working_volume: WorkingVolume
+    y_axis_motion: YAxisMotion = YAxisMotion.HEAD
+
+    def __post_init__(self) -> None:
+        if self.total_z_height <= 0:
+            raise ValueError(
+                f"total_z_height ({self.total_z_height}) must be > 0"
+            )

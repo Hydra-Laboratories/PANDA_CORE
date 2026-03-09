@@ -21,7 +21,7 @@ def _mock_context(
     resolve_return: Coordinate3D | None = None,
 ) -> ProtocolContext:
     """Create a ProtocolContext with mock board and deck."""
-    coord = resolve_return or Coordinate3D(x=-10.0, y=-10.0, z=-15.0)
+    coord = resolve_return or Coordinate3D(x=10.0, y=10.0, z=15.0)
 
     board = MagicMock()
     deck = MagicMock()
@@ -51,7 +51,7 @@ class TestMoveCommand:
     def test_move_calls_board_move_with_instrument_and_coord(self):
         from protocol_engine.commands.move import move
 
-        coord = Coordinate3D(x=-10.0, y=-20.0, z=-5.0)
+        coord = Coordinate3D(x=10.0, y=20.0, z=75.0)
         ctx = _mock_context(resolve_return=coord)
 
         move(ctx, instrument="pipette", position="plate_1.A1")
@@ -93,8 +93,8 @@ protocol:
       instrument: pipette
       position: plate_1.C9
 """
-        coord_a1 = Coordinate3D(x=-10.0, y=-10.0, z=-15.0)
-        coord_c9 = Coordinate3D(x=62.0, y=-28.0, z=-15.0)
+        coord_a1 = Coordinate3D(x=10.0, y=10.0, z=15.0)
+        coord_c9 = Coordinate3D(x=62.0, y=28.0, z=15.0)
 
         # Set up deck to return different coords based on target
         deck = MagicMock()
@@ -143,7 +143,7 @@ protocol:
       instrument: pipette
       position: vial_1
 """
-        coord = Coordinate3D(x=-30.0, y=-40.0, z=-20.0)
+        coord = Coordinate3D(x=30.0, y=40.0, z=20.0)
         ctx = _mock_context(resolve_return=coord)
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
