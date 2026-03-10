@@ -100,8 +100,52 @@ class VialYamlEntry(BaseModel):
         return self
 
 
+class TipRackYamlEntry(BaseModel):
+    """Strict schema for one tip rack in deck labware."""
+
+    model_config = ConfigDict(extra="forbid", protected_namespaces=())
+
+    type: Literal["tip_rack"] = "tip_rack"
+    name: str
+    model_name: str
+    rows: int = Field(..., gt=0)
+    columns: int = Field(..., gt=0)
+    length_mm: float
+    width_mm: float
+    height_mm: float
+    height: Optional[float] = Field(default=None, gt=0)
+    a1: Optional[_YamlPoint3D] = None
+    calibration: _YamlCalibrationPoints
+    x_offset_mm: float
+    y_offset_mm: float
+
+    @property
+    def a1_point(self) -> _YamlPoint3D:
+        """Return canonical A1 point, preferring calibration.a1."""
+        a1 = self.calibration.a1 or self.a1
+        if a1 is None:
+            raise ValueError("Calibration must define `a1` (prefer `calibration.a1`).")
+        return a1
+
+    @model_validator(mode="after")
+    def _validate_two_point_calibration(self) -> "TipRackYamlEntry":
+        a1, a2 = self.a1_point, self.calibration.a2
+        if a1.x == a2.x and a1.y == a2.y:
+            raise ValueError("Calibration points A1 and A2 must not be identical.")
+        same_x = abs(a1.x - a2.x) < 1e-9
+        same_y = abs(a1.y - a2.y) < 1e-9
+        if not same_x and not same_y:
+            raise ValueError(
+                "Calibration A2 must be axis-aligned with A1 (same x or same y); "
+                "diagonal orientation is invalid."
+            )
+        if self.x_offset_mm == 0 or self.y_offset_mm == 0:
+            raise ValueError("x_offset_mm and y_offset_mm must be non-zero.")
+        return self
+
+
 LabwareYamlEntry = Annotated[
-    Union[WellPlateYamlEntry, VialYamlEntry],
+    Union[WellPlateYamlEntry, VialYamlEntry, TipRackYamlEntry],
     Field(discriminator="type"),
 ]
 

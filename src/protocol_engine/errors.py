@@ -86,3 +86,31 @@ class PipetteVolumeError(VolumeError):
             f"Pipette volume {requested_ul} uL is outside valid range "
             f"[{min_ul}, {max_ul}] uL"
         )
+
+
+# ── Tip errors ────────────────────────────────────────────────────────────────
+
+
+class TipError(ProtocolExecutionError):
+    """Base class for tip-related protocol errors."""
+
+
+class TipNotAvailableError(TipError):
+    """No tip present at the specified slot."""
+
+    def __init__(self, labware_key: str, well_id: str) -> None:
+        self.labware_key = labware_key
+        self.well_id = well_id
+        super().__init__(
+            f"No tip available at {labware_key}.{well_id}"
+        )
+
+
+class TipRackDepletedError(TipError):
+    """All tips in the rack have been used."""
+
+    def __init__(self, labware_key: str) -> None:
+        self.labware_key = labware_key
+        super().__init__(
+            f"Tip rack '{labware_key}' is depleted — no tips remaining"
+        )

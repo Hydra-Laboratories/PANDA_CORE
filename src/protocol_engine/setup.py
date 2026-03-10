@@ -9,6 +9,7 @@ from typing import Any, List, Optional, Tuple
 from board.board import Board
 from board.loader import load_board_from_yaml_safe
 from deck.deck import Deck
+from deck.labware.tip_rack import TipRack
 from deck.labware.vial import Vial
 from deck.labware.well_plate import WellPlate
 from deck.loader import load_deck_from_yaml_safe
@@ -37,7 +38,9 @@ def _register_deck_labware(
 ) -> None:
     """Register all deck labware with both VolumeTracker and DataStore."""
     for key, labware in deck.labware.items():
-        if isinstance(labware, Vial):
+        if isinstance(labware, TipRack):
+            tracker.register_tip_rack(key, labware)
+        elif isinstance(labware, Vial):
             initial = getattr(labware, "initial_volume_ul", 0.0)
             tracker.register_labware(key, labware, initial_volume_ul=initial)
         elif isinstance(labware, WellPlate):

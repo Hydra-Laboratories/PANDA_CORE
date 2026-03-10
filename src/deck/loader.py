@@ -11,10 +11,17 @@ from pydantic import BaseModel, ValidationError
 
 from .deck import Deck
 from .labware import Coordinate3D
+from .labware.tip_rack import TipRack
 from .labware.vial import Vial
 from .labware.well_plate import WellPlate
 from .errors import DeckLoaderError
-from .yaml_schema import DeckYamlSchema, VialYamlEntry, WellPlateYamlEntry, _YamlPoint3D
+from .yaml_schema import (
+    DeckYamlSchema,
+    TipRackYamlEntry,
+    VialYamlEntry,
+    WellPlateYamlEntry,
+    _YamlPoint3D,
+)
 
 
 def _format_loader_exception(path: Path, error: Exception) -> str:
@@ -122,7 +129,7 @@ class _PlateOrientation:
     row_delta_y: float
 
 
-def _resolve_plate_orientation(entry: WellPlateYamlEntry) -> _PlateOrientation:
+def _resolve_plate_orientation(entry: WellPlateYamlEntry | TipRackYamlEntry) -> _PlateOrientation:
     """Determine column/row axis mapping from the two-point calibration.
 
     Returns a ``_PlateOrientation`` whose deltas are used to compute each
@@ -165,7 +172,7 @@ def _resolve_plate_orientation(entry: WellPlateYamlEntry) -> _PlateOrientation:
 
 
 def _derive_wells_from_calibration(
-    entry: WellPlateYamlEntry,
+    entry: WellPlateYamlEntry | TipRackYamlEntry,
     resolved_z: float,
 ) -> Dict[str, Coordinate3D]:
     """Build well ID -> Coordinate3D from calibration A1/A2 and offsets."""
@@ -217,6 +224,21 @@ def _build_vial(
     return Vial(**kwargs)
 
 
+def _build_tip_rack(
+    entry: TipRackYamlEntry,
+    total_z_height: float | None,
+) -> TipRack:
+    resolved_z = _resolve_user_z(
+        entry.a1_point.z,
+        height=entry.height,
+        total_z_height=total_z_height,
+        context=f"tip_rack '{entry.name}'",
+    )
+    kwargs = _entry_kwargs_for_model(entry, TipRack)
+    kwargs["wells"] = _derive_wells_from_calibration(entry, resolved_z=resolved_z)
+    return TipRack(**kwargs)
+
+
 def load_deck_from_yaml(
     path: str | Path,
     total_z_height: float | None = None,
@@ -230,10 +252,12 @@ def load_deck_from_yaml(
     if raw is None:
         raw = {}
     schema = DeckYamlSchema.model_validate(raw)
-    labware: Dict[str, Union[WellPlate, Vial]] = {}
+    labware: Dict[str, Union[WellPlate, Vial, TipRack]] = {}
     for name, entry in schema.labware.items():
         if isinstance(entry, WellPlateYamlEntry):
             labware[name] = _build_well_plate(entry, total_z_height=total_z_height)
+        elif isinstance(entry, TipRackYamlEntry):
+            labware[name] = _build_tip_rack(entry, total_z_height=total_z_height)
         else:
             labware[name] = _build_vial(entry, total_z_height=total_z_height)
     return Deck(labware)

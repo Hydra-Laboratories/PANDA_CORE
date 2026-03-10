@@ -7,7 +7,7 @@ import pytest
 
 from pydantic import ValidationError
 
-from deck import WellPlate, Vial, Coordinate3D, Deck
+from deck import WellPlate, Vial, TipRack, Coordinate3D, Deck
 from deck.loader import (
     DeckLoaderError,
     _PlateOrientation,
@@ -860,3 +860,82 @@ class TestResolvePlateOrientation:
         assert isinstance(orient, _PlateOrientation)
         with pytest.raises(AttributeError):
             orient.col_delta_x = 99.0
+
+
+# ----- TipRack loading -----
+
+VALID_DECK_WITH_TIP_RACK = """
+labware:
+  tiprack_1:
+    type: tip_rack
+    name: opentrons_96_tiprack_300ul
+    model_name: opentrons_96_tiprack_300ul
+    rows: 2
+    columns: 3
+    length_mm: 127.71
+    width_mm: 85.43
+    height_mm: 64.69
+    calibration:
+      a1:
+        x: 10.0
+        y: 20.0
+        z: -5.0
+      a2:
+        x: 19.0
+        y: 20.0
+        z: -5.0
+    x_offset_mm: 9.0
+    y_offset_mm: -9.0
+"""
+
+
+def test_load_tip_rack_from_yaml():
+    """Valid tip_rack YAML yields a TipRack instance in the Deck."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(VALID_DECK_WITH_TIP_RACK)
+        path = f.name
+    try:
+        deck = load_deck_from_yaml(path)
+        assert "tiprack_1" in deck
+        rack = deck["tiprack_1"]
+        assert isinstance(rack, TipRack)
+        assert rack.rows == 2
+        assert rack.columns == 3
+        assert len(rack.wells) == 6
+        assert rack.get_location("A1").x == pytest.approx(10.0)
+        assert rack.get_location("A1").y == pytest.approx(20.0)
+        assert rack.get_location("A2").x == pytest.approx(19.0)
+        assert rack.get_location("B1").y == pytest.approx(11.0)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_load_tip_rack_with_plate_and_vial():
+    """Tip rack coexists with other labware types."""
+    yaml_content = VALID_DECK_ONE_PLATE_ONE_VIAL.rstrip() + """
+  tiprack_1:
+    type: tip_rack
+    name: tiprack
+    model_name: tiprack_300ul
+    rows: 1
+    columns: 2
+    length_mm: 100.0
+    width_mm: 80.0
+    height_mm: 60.0
+    calibration:
+      a1: { x: 5.0, y: 5.0, z: -3.0 }
+      a2: { x: 14.0, y: 5.0, z: -3.0 }
+    x_offset_mm: 9.0
+    y_offset_mm: -9.0
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(yaml_content)
+        path = f.name
+    try:
+        deck = load_deck_from_yaml(path)
+        assert len(deck) == 3
+        assert isinstance(deck["plate_1"], WellPlate)
+        assert isinstance(deck["vial_1"], Vial)
+        assert isinstance(deck["tiprack_1"], TipRack)
+    finally:
+        Path(path).unlink(missing_ok=True)

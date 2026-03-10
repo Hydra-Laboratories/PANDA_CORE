@@ -208,7 +208,17 @@ class DataStore:
                 f"Labware '{labware_key}' already registered for campaign {campaign_id}"
             )
 
-        if isinstance(labware, WellPlate):
+        from deck.labware.tip_rack import TipRack
+
+        if isinstance(labware, TipRack):
+            for well_id in labware.wells:
+                self._conn.execute(
+                    "INSERT INTO labware (campaign_id, labware_key, labware_type, "
+                    "well_id, total_volume_ul, working_volume_ul) "
+                    "VALUES (?, ?, 'tip_rack', ?, 0, 0)",
+                    (campaign_id, labware_key, well_id),
+                )
+        elif isinstance(labware, WellPlate):
             for well_id in labware.wells:
                 self._conn.execute(
                     "INSERT INTO labware (campaign_id, labware_key, labware_type, "
@@ -229,7 +239,7 @@ class DataStore:
         else:
             raise TypeError(
                 f"Unsupported labware type: {type(labware).__name__}. "
-                f"Expected WellPlate or Vial."
+                f"Expected TipRack, WellPlate, or Vial."
             )
         self._conn.commit()
 

@@ -11,6 +11,8 @@ from protocol_engine.errors import (
     InvalidVolumeError,
     OverflowVolumeError,
     PipetteVolumeError,
+    TipNotAvailableError,
+    TipRackDepletedError,
     UnderflowVolumeError,
 )
 
@@ -25,6 +27,8 @@ class VolumeTracker:
     def __init__(self) -> None:
         self._volumes: dict[tuple[str, Optional[str]], float] = {}
         self._capacities: dict[tuple[str, Optional[str]], float] = {}
+        self._tips: dict[tuple[str, str], bool] = {}
+        self._tip_rack_wells: dict[str, list[str]] = {}
 
     # ── Registration ─────────────────────────────────────────────────────
 
@@ -165,6 +169,70 @@ class VolumeTracker:
         """Validate and record a dispense (increases volume)."""
         self.validate_dispense(labware_key, well_id, volume_ul)
         self._volumes[(labware_key, well_id)] += volume_ul
+
+    # ── Tip tracking ──────────────────────────────────────────────────────
+
+    def register_tip_rack(self, labware_key: str, tip_rack) -> None:
+        """Register a tip rack for tip presence tracking.
+
+        All slots are initialized as present (True).
+
+        Args:
+            labware_key: Unique key matching the deck labware key.
+            tip_rack: A TipRack model instance with a ``wells`` dict.
+        """
+        if labware_key in self._tip_rack_wells:
+            raise ValueError(f"Tip rack '{labware_key}' already registered.")
+
+        # Build column-major ordered well list for next_available_tip
+        well_ids = list(tip_rack.wells.keys())
+        column_major = sorted(
+            well_ids,
+            key=lambda w: (int(w[1:]), w[0]),
+        )
+        self._tip_rack_wells[labware_key] = column_major
+
+        for well_id in tip_rack.wells:
+            self._tips[(labware_key, well_id)] = True
+
+    def pick_up_tip(self, labware_key: str, well_id: str) -> None:
+        """Mark a tip slot as used.
+
+        Raises:
+            KeyError: If the rack or well is not registered.
+            TipNotAvailableError: If the slot has already been used.
+        """
+        loc = (labware_key, well_id)
+        if labware_key not in self._tip_rack_wells:
+            raise KeyError(f"Tip rack '{labware_key}' not registered.")
+        if loc not in self._tips:
+            raise KeyError(f"Well '{well_id}' not found on rack '{labware_key}'.")
+        if not self._tips[loc]:
+            raise TipNotAvailableError(labware_key, well_id)
+        self._tips[loc] = False
+
+    def tips_remaining(self, labware_key: str) -> int:
+        """Return the number of available tips in a rack."""
+        if labware_key not in self._tip_rack_wells:
+            raise KeyError(f"Tip rack '{labware_key}' not registered.")
+        return sum(
+            1 for (key, _), present in self._tips.items()
+            if key == labware_key and present
+        )
+
+    def next_available_tip(self, labware_key: str) -> str | None:
+        """Return the next available tip well ID in column-major order.
+
+        Column-major order: A1, B1, C1, ..., A2, B2, ...
+
+        Returns None if all tips are depleted.
+        """
+        if labware_key not in self._tip_rack_wells:
+            raise KeyError(f"Tip rack '{labware_key}' not registered.")
+        for well_id in self._tip_rack_wells[labware_key]:
+            if self._tips.get((labware_key, well_id), False):
+                return well_id
+        return None
 
     # ── Pipette range validation ─────────────────────────────────────────
 

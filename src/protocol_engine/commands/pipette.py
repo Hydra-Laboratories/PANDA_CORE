@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, List, Optional
 
 from deck.labware.well_plate import WellPlate
 
-from ..errors import ProtocolExecutionError
+from ..errors import ProtocolExecutionError, TipRackDepletedError
 from ..registry import protocol_command
 
 logger = logging.getLogger(__name__)
@@ -167,8 +167,31 @@ def pick_up_tip(
     position: str,
     speed: float = 50.0,
 ) -> None:
-    """Move pipette to *position*, then pick up a tip."""
-    coord = context.deck.resolve(position)
+    """Move pipette to *position*, then pick up a tip.
+
+    If *position* contains a dot (e.g. ``tiprack_1.A1``), picks a specific tip.
+    If *position* has no dot (e.g. ``tiprack_1``), auto-selects the next
+    available tip via the volume tracker.
+    """
+    if "." in position:
+        rack_key, well_id = position.split(".", 1)
+    else:
+        rack_key = position
+        well_id = None
+
+    # Auto-select next tip when no specific well is given
+    if well_id is None and context.volume_tracker is not None:
+        well_id = context.volume_tracker.next_available_tip(rack_key)
+        if well_id is None:
+            raise TipRackDepletedError(rack_key)
+
+    # Track tip usage before hardware action
+    if context.volume_tracker is not None and well_id is not None:
+        context.volume_tracker.pick_up_tip(rack_key, well_id)
+
+    # Resolve coordinate (use specific well or fallback to initial position)
+    resolved_position = f"{rack_key}.{well_id}" if well_id else rack_key
+    coord = context.deck.resolve(resolved_position)
     pipette = _get_pipette(context)
     context.board.move("pipette", coord)
     pipette.pick_up_tip(speed)
