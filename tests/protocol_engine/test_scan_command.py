@@ -266,3 +266,29 @@ class TestScanCommand:
         assert ctx.data_store.log_measurement.call_count == 4
         measurement = ctx.data_store.log_measurement.call_args_list[0].args[1]
         assert isinstance(measurement, InstrumentMeasurement)
+
+    def test_delay_sleeps_between_wells(self):
+        from unittest.mock import patch
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x2_plate()
+        sensor = _make_sensor()
+        ctx = _mock_context(plate=plate, sensor=sensor)
+
+        with patch("protocol_engine.commands.scan.time.sleep") as mock_sleep:
+            scan(ctx, plate="plate_1", instrument="uvvis", method="measure", delay_s=5.0)
+            # 4 wells, delay between wells = 3 sleeps (not before first)
+            assert mock_sleep.call_count == 3
+            mock_sleep.assert_called_with(5.0)
+
+    def test_no_delay_by_default(self):
+        from unittest.mock import patch
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x2_plate()
+        sensor = _make_sensor()
+        ctx = _mock_context(plate=plate, sensor=sensor)
+
+        with patch("protocol_engine.commands.scan.time.sleep") as mock_sleep:
+            scan(ctx, plate="plate_1", instrument="uvvis", method="measure")
+            mock_sleep.assert_not_called()

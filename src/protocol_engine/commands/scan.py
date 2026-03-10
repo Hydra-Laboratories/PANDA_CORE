@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import time
 from typing import TYPE_CHECKING, Any, Dict
 
 from deck.labware.well_plate import WellPlate
@@ -30,6 +31,7 @@ def scan(
     plate: str,
     instrument: str,
     method: str,
+    delay_s: float = 0.0,
 ) -> Dict[str, Any]:
     """Scan every well on *plate* using *instrument*'s *method*.
 
@@ -45,6 +47,7 @@ def scan(
         plate:      Deck key of the well plate (e.g. "plate_1").
         instrument: Name of the instrument registered on the board.
         method:     Name of the method on the instrument to call per well.
+        delay_s:    Seconds to pause between wells (default 0.0).
 
     Returns:
         Mapping of well ID to the result of each method call.
@@ -69,7 +72,12 @@ def scan(
     callable_method = getattr(instr, method)
 
     results: Dict[str, Any] = {}
-    for well_id in sorted(plate_obj.wells, key=_row_major_key):
+    sorted_wells = sorted(plate_obj.wells, key=_row_major_key)
+    for i, well_id in enumerate(sorted_wells):
+        if i > 0 and delay_s > 0:
+            context.logger.info("Pausing %.1fs between wells", delay_s)
+            time.sleep(delay_s)
+
         well = plate_obj.get_well_center(well_id)
         target = (well.x, well.y, well.z + instr.measurement_height)
         context.board.move(instrument, target)
