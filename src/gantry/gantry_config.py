@@ -17,8 +17,8 @@ class HomingStrategy(str, Enum):
 class WorkingVolume:
     """Gantry working volume bounds in millimeters.
 
-    All coordinates use CNC convention: origin at (0, 0, 0),
-    working area extends into negative space.
+    Coordinates use GRBL work coordinate system. Signs depend on
+    homing direction and G54 offset — can be positive or negative.
     """
 
     x_min: float
