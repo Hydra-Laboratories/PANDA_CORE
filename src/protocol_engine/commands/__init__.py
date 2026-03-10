@@ -4,6 +4,6 @@ Importing this package triggers all @protocol_command decorators,
 populating the CommandRegistry.
 """
 
-from . import move, pipette, scan  # noqa: F401 -- side-effect imports for registration
+from . import move, pause, pipette, scan  # noqa: F401 -- side-effect imports for registration
 
-__all__ = ["move", "pipette", "scan"]
+__all__ = ["move", "pause", "pipette", "scan"]

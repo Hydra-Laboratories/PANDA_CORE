@@ -25,6 +25,7 @@ class VolumeTracker:
     def __init__(self) -> None:
         self._volumes: dict[tuple[str, Optional[str]], float] = {}
         self._capacities: dict[tuple[str, Optional[str]], float] = {}
+        self._dead_volumes: dict[tuple[str, Optional[str]], float] = {}
 
     # ── Registration ─────────────────────────────────────────────────────
 
@@ -71,6 +72,7 @@ class VolumeTracker:
             )
         self._volumes[(key, None)] = initial_volume_ul
         self._capacities[(key, None)] = vial.capacity_ul
+        self._dead_volumes[(key, None)] = vial.dead_volume_ul
 
     def _register_well_plate(
         self,
@@ -92,6 +94,7 @@ class VolumeTracker:
                 )
             self._volumes[(key, well_id)] = vol
             self._capacities[(key, well_id)] = plate.capacity_ul
+            self._dead_volumes[(key, well_id)] = plate.dead_volume_ul
 
     # ── Queries ──────────────────────────────────────────────────────────
 
@@ -127,15 +130,27 @@ class VolumeTracker:
 
     # ── Validation ───────────────────────────────────────────────────────
 
+    def get_dead_volume(
+        self, labware_key: str, well_id: Optional[str] = None,
+    ) -> float:
+        """Return the dead volume at a labware location."""
+        loc = (labware_key, well_id)
+        if loc not in self._dead_volumes:
+            raise KeyError(
+                f"Location '{labware_key}' well '{well_id}' not registered."
+            )
+        return self._dead_volumes[loc]
+
     def validate_aspirate(
         self, labware_key: str, well_id: Optional[str], volume_ul: float,
     ) -> None:
-        """Raise if aspirating *volume_ul* would underflow."""
+        """Raise if aspirating *volume_ul* would underflow (respects dead volume)."""
         _validate_volume_value(volume_ul)
         current = self.get_volume(labware_key, well_id)
-        if volume_ul > current:
+        dead = self._dead_volumes.get((labware_key, well_id), 0.0)
+        if current - volume_ul < dead:
             raise UnderflowVolumeError(
-                labware_key, well_id, current, volume_ul,
+                labware_key, well_id, current, volume_ul, dead_volume_ul=dead,
             )
 
     def validate_dispense(
@@ -165,6 +180,20 @@ class VolumeTracker:
         """Validate and record a dispense (increases volume)."""
         self.validate_dispense(labware_key, well_id, volume_ul)
         self._volumes[(labware_key, well_id)] += volume_ul
+
+    # ── Refill ────────────────────────────────────────────────────────────
+
+    def refill(
+        self, labware_key: str, well_id: Optional[str], volume_ul: float,
+    ) -> None:
+        """Add volume to a labware location, capped at capacity."""
+        loc = (labware_key, well_id)
+        if loc not in self._volumes:
+            raise KeyError(
+                f"Location '{labware_key}' well '{well_id}' not registered."
+            )
+        capacity = self._capacities[loc]
+        self._volumes[loc] = min(self._volumes[loc] + volume_ul, capacity)
 
     # ── Pipette range validation ─────────────────────────────────────────
 

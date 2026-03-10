@@ -42,6 +42,7 @@ class WellPlateYamlEntry(BaseModel):
     y_offset_mm: float
     capacity_ul: float
     working_volume_ul: float
+    dead_volume_ul: float = 0.0
 
     @property
     def a1_point(self) -> _YamlPoint3D:
@@ -86,6 +87,7 @@ class VialYamlEntry(BaseModel):
     capacity_ul: float
     working_volume_ul: float
     initial_volume_ul: float = 0.0
+    dead_volume_ul: float = 0.0
 
     @model_validator(mode="after")
     def _validate_vial_volumes(self) -> "VialYamlEntry":

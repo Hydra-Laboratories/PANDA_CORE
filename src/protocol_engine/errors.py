@@ -52,16 +52,20 @@ class UnderflowVolumeError(VolumeError):
         well_id: str | None,
         current_volume_ul: float,
         requested_ul: float,
+        dead_volume_ul: float = 0.0,
     ) -> None:
         self.labware_key = labware_key
         self.well_id = well_id
         self.current_volume_ul = current_volume_ul
         self.requested_ul = requested_ul
+        self.dead_volume_ul = dead_volume_ul
         loc = f"{labware_key}.{well_id}" if well_id else labware_key
-        deficit = requested_ul - current_volume_ul
+        available = current_volume_ul - dead_volume_ul
+        deficit = requested_ul - available
+        dead_info = f", dead volume={dead_volume_ul}" if dead_volume_ul > 0 else ""
         super().__init__(
             f"Underflow: aspirating {requested_ul} uL from {loc} "
-            f"(current={current_volume_ul}) — insufficient volume by "
+            f"(current={current_volume_ul}{dead_info}) — insufficient volume by "
             f"{deficit:.2f} uL"
         )
 

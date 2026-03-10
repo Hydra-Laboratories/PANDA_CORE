@@ -12,6 +12,8 @@ from deck.deck import Deck
 from board.board import Board
 from gantry.gantry_config import GantryConfig
 
+from .errors import ProtocolExecutionError
+
 
 @dataclass
 class ProtocolContext:
@@ -31,6 +33,8 @@ class ProtocolContext:
     data_store: Any = None
     campaign_id: int | None = None
     volume_tracker: Any = None
+    pause_handler: Any = None
+    last_completed_step: int = -1
 
 
 @dataclass
@@ -95,7 +99,13 @@ class Protocol:
         return len(self._steps)
 
     def run(self, context: ProtocolContext) -> List[Any]:
-        """Execute all steps sequentially. Returns list of step results."""
+        """Execute all steps sequentially with error recovery.
+
+        On ProtocolExecutionError, if context.pause_handler is callable,
+        it is called with (context, step, exception). If the handler
+        returns without raising, the step is retried. Otherwise, the
+        error is re-raised.
+        """
         self.logger.info(
             "Running protocol (%d steps)%s",
             len(self._steps),
@@ -103,7 +113,19 @@ class Protocol:
         )
         results: List[Any] = []
         for step in self._steps:
-            result = step.execute(context)
+            try:
+                result = step.execute(context)
+            except ProtocolExecutionError as exc:
+                self.logger.error(
+                    "Step %d (%s) failed: %s", step.index, step.command_name, exc,
+                )
+                if callable(context.pause_handler):
+                    context.pause_handler(context, step, exc)
+                    # Retry after handler returns without raising
+                    result = step.execute(context)
+                else:
+                    raise
+            context.last_completed_step = step.index
             results.append(result)
         self.logger.info("Protocol complete.")
         return results

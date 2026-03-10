@@ -22,6 +22,9 @@ class Vial(Labware):
     initial_volume_ul: float = Field(
         0.0, description="Initial volume in microliters (e.g. for reagent vials).",
     )
+    dead_volume_ul: float = Field(
+        0.0, description="Volume below which aspiration is physically impossible.",
+    )
 
     @field_validator("name", "model_name")
     def _validate_non_empty_text(cls, value: str) -> str:
@@ -39,12 +42,20 @@ class Vial(Labware):
             raise ValueError("initial_volume_ul must be non-negative.")
         return value
 
+    @field_validator("dead_volume_ul")
+    def _validate_non_negative_dead_volume(cls, value: float) -> float:
+        if value < 0:
+            raise ValueError("dead_volume_ul must be non-negative.")
+        return value
+
     @model_validator(mode="after")
     def _validate_working_le_capacity(self) -> "Vial":
         if self.working_volume_ul > self.capacity_ul:
             raise ValueError("working_volume_ul must be <= capacity_ul.")
         if self.initial_volume_ul > self.capacity_ul:
             raise ValueError("initial_volume_ul must be <= capacity_ul.")
+        if self.dead_volume_ul >= self.capacity_ul:
+            raise ValueError("dead_volume_ul must be < capacity_ul.")
         return self
 
     @field_validator("height_mm", "diameter_mm")
