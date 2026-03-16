@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.gantry.gantry_config import GantryConfig, HomingStrategy, WorkingVolume
+from gantry.gantry_config import GantryConfig, HomingStrategy, WorkingVolume
 
 
 def _make_volume(

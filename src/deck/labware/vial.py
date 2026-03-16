@@ -13,14 +13,14 @@ class Vial(Labware):
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
 
     name: str = Field(..., description="Unique vial name.")
-    model_name: str = Field(..., description="Vial model identifier.")
-    height_mm: float = Field(..., description="Vial height in millimeters.")
+    model_name: str = Field("", description="Vial model identifier.")
+    height_mm: float = Field(..., description="Z position of the vial (absolute WPos).")
     diameter_mm: float = Field(..., description="Vial outer diameter in millimeters.")
     location: Coordinate3D = Field(..., description="Absolute XYZ center of this vial.")
     capacity_ul: float = Field(..., description="Vial capacity in microliters.")
     working_volume_ul: float = Field(..., description="Working volume per vial in microliters.")
 
-    @field_validator("name", "model_name")
+    @field_validator("name")
     def _validate_non_empty_text(cls, value: str) -> str:
         return Labware.validate_name(value)
 
@@ -36,7 +36,7 @@ class Vial(Labware):
             raise ValueError("working_volume_ul must be <= capacity_ul.")
         return self
 
-    @field_validator("height_mm", "diameter_mm")
+    @field_validator("diameter_mm")
     def _validate_positive_dimension(cls, value: float, info):  # type: ignore[override]
         if value <= 0:
             raise ValueError(f"{info.field_name} must be positive.")

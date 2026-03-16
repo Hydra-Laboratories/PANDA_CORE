@@ -260,3 +260,63 @@ class TestLoadBoardFromYamlSafe:
         path.write_text("instruments:\n  - [invalid: yaml: :\n")
         with pytest.raises(BoardLoaderError, match="Board YAML"):
             load_board_from_yaml_safe(path, _mock_gantry())
+
+
+# ─── Mock mode ──────────────────────────────────────────────────────────────
+
+
+class TestLoadBoardMockMode:
+
+    def test_mock_mode_swaps_real_type_to_mock(self, tmp_path):
+        yaml_path = _write_yaml(tmp_path, """\
+            instruments:
+              pip:
+                type: pipette
+                offset_x: -10.0
+        """)
+        board = load_board_from_yaml(yaml_path, _mock_gantry(), mock_mode=True)
+        assert isinstance(board.instruments["pip"], MockPipette)
+
+    def test_mock_mode_leaves_already_mock_types(self, tmp_path):
+        yaml_path = _write_yaml(tmp_path, """\
+            instruments:
+              pip:
+                type: mock_pipette
+                offset_x: -10.0
+        """)
+        board = load_board_from_yaml(yaml_path, _mock_gantry(), mock_mode=True)
+        assert isinstance(board.instruments["pip"], MockPipette)
+
+    def test_mock_mode_false_keeps_real_type(self, tmp_path):
+        """With mock_mode=False, real types should NOT be swapped."""
+        yaml_path = _write_yaml(tmp_path, """\
+            instruments:
+              uvvis:
+                type: mock_uvvis_ccs
+        """)
+        board = load_board_from_yaml(yaml_path, _mock_gantry(), mock_mode=False)
+        assert isinstance(board.instruments["uvvis"], MockUVVisCCS)
+
+    def test_mock_mode_swaps_all_instruments(self, tmp_path):
+        yaml_path = _write_yaml(tmp_path, """\
+            instruments:
+              pip:
+                type: pipette
+              uvvis:
+                type: uvvis_ccs
+              film:
+                type: filmetrics
+        """)
+        board = load_board_from_yaml(yaml_path, _mock_gantry(), mock_mode=True)
+        assert isinstance(board.instruments["pip"], MockPipette)
+        assert isinstance(board.instruments["uvvis"], MockUVVisCCS)
+        assert isinstance(board.instruments["film"], MockFilmetrics)
+
+    def test_mock_mode_safe_loader_passes_through(self, tmp_path):
+        yaml_path = _write_yaml(tmp_path, """\
+            instruments:
+              pip:
+                type: pipette
+        """)
+        board = load_board_from_yaml_safe(yaml_path, _mock_gantry(), mock_mode=True)
+        assert isinstance(board.instruments["pip"], MockPipette)

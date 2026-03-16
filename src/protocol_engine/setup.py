@@ -5,17 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Tuple
 
-from src.board.board import Board
-from src.board.loader import load_board_from_yaml_safe
-from src.deck.deck import Deck
-from src.deck.loader import load_deck_from_yaml_safe
-from src.gantry.gantry_config import GantryConfig
-from src.gantry.loader import load_gantry_from_yaml_safe
-from src.gantry.offline import OfflineGantry
-from src.protocol_engine.loader import load_protocol_from_yaml_safe
-from src.protocol_engine.protocol import Protocol, ProtocolContext
-from src.validation.bounds import validate_deck_positions, validate_gantry_positions
-from src.validation.errors import SetupValidationError
+from board.board import Board
+from board.loader import load_board_from_yaml_safe
+from deck.deck import Deck
+from deck.loader import load_deck_from_yaml_safe
+from gantry.gantry_config import GantryConfig
+from gantry.loader import load_gantry_from_yaml_safe
+from gantry.offline import OfflineGantry
+from protocol_engine.loader import load_protocol_from_yaml_safe
+from protocol_engine.protocol import Protocol, ProtocolContext
+from validation.bounds import validate_deck_positions, validate_gantry_positions
+from validation.errors import SetupValidationError
 
 
 def setup_protocol(
@@ -24,6 +24,7 @@ def setup_protocol(
     board_path: str | Path,
     protocol_path: str | Path,
     gantry=None,
+    mock_mode: bool = False,
 ) -> Tuple[Protocol, ProtocolContext]:
     """Load all configs, validate bounds, and return a ready-to-run protocol.
 
@@ -43,6 +44,7 @@ def setup_protocol(
         protocol_path: Path to protocol YAML config.
         gantry: Optional Gantry instance. If None, an OfflineGantry is used
             for offline validation.
+        mock_mode: If True, swap real instrument types for mock variants.
 
     Returns:
         Tuple of (Protocol, ProtocolContext) ready for ``protocol.run(context)``.
@@ -59,7 +61,9 @@ def setup_protocol(
 
     if gantry is None:
         gantry = OfflineGantry()
-    board: Board = load_board_from_yaml_safe(board_path, gantry)
+    board: Board = load_board_from_yaml_safe(
+        board_path, gantry, mock_mode=mock_mode,
+    )
 
     protocol: Protocol = load_protocol_from_yaml_safe(protocol_path)
 
@@ -70,3 +74,29 @@ def setup_protocol(
 
     context = ProtocolContext(board=board, deck=deck, gantry=gantry_config)
     return protocol, context
+
+
+def run_protocol(
+    gantry_path: str | Path,
+    deck_path: str | Path,
+    board_path: str | Path,
+    protocol_path: str | Path,
+    gantry=None,
+    mock_mode: bool = False,
+) -> list:
+    """Load configs, validate, and execute the protocol in one call.
+
+    Connects instruments before running and disconnects them afterwards,
+    even if the protocol raises an exception.
+
+    Returns the list of step results.
+    """
+    protocol, context = setup_protocol(
+        gantry_path, deck_path, board_path, protocol_path,
+        gantry=gantry, mock_mode=mock_mode,
+    )
+    context.board.connect_instruments()
+    try:
+        return protocol.run(context)
+    finally:
+        context.board.disconnect_instruments()

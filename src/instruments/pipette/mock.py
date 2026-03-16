@@ -22,6 +22,7 @@ class MockPipette(BaseInstrument):
         offset_y: float = 0.0,
         depth: float = 0.0,
         measurement_height: float = 0.0,
+        **kwargs,
     ):
         super().__init__(
             name=name, offset_x=offset_x, offset_y=offset_y,
