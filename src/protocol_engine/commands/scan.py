@@ -83,16 +83,13 @@ def scan(
         target = (well.x, well.y, well.z + instr.measurement_height)
         context.board.move(instrument, target)
 
-        # Inject context-aware kwargs if the method accepts them.
-        # This lets instrument methods like ASMI.indentation(gantry, well_id)
-        # receive the gantry for movement and well_id for metadata,
-        # while simple methods like UVVis.measure() still work with no args.
+        # Inject gantry if the method accepts it (e.g. ASMI.indentation
+        # needs the gantry for Z stepping). Simple methods like
+        # UVVis.measure() still work with no args.
         sig = inspect.signature(callable_method)
         kwargs: Dict[str, Any] = {}
         if "gantry" in sig.parameters:
             kwargs["gantry"] = context.board.gantry
-        if "well_id" in sig.parameters:
-            kwargs["well_id"] = well_id
         result = callable_method(**kwargs)
         results[well_id] = result
 

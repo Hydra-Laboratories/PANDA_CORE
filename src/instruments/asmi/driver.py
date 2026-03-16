@@ -190,7 +190,7 @@ class ASMI(BaseInstrument):
         gantry.move_to(x, y, z)
         self._wait_for_idle(gantry)
 
-    def indentation(self, gantry, well_id: str = "") -> dict:
+    def indentation(self, gantry) -> dict:
         """Perform step-by-step indentation at the current XY position.
 
         The scan command positions the gantry at the well before calling
@@ -203,10 +203,9 @@ class ASMI(BaseInstrument):
 
         Args:
             gantry: Gantry instance for Z movement.
-            well_id: Well identifier for logging.
 
         Returns:
-            Dict with keys: well, measurements, baseline_avg, baseline_std,
+            Dict with keys: measurements, baseline_avg, baseline_std,
             force_exceeded, data_points.
         """
         coords = gantry.get_coordinates()
@@ -264,7 +263,6 @@ class ASMI(BaseInstrument):
         self._move_z(gantry, cur_x, cur_y, self._safe_z)
 
         return {
-            "well": well_id,
             "measurements": measurements,
             "baseline_avg": baseline_avg,
             "baseline_std": baseline_std,

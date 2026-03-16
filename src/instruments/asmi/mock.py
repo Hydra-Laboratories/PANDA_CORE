@@ -84,9 +84,9 @@ class MockASMI(BaseInstrument):
     def is_connected(self) -> bool:
         return self._connected
 
-    def indentation(self, gantry, well_id: str = "") -> dict:
+    def indentation(self, gantry) -> dict:
         """Mock indentation: simulate step-by-step Z descent with fake data."""
-        self.command_history.append(f"indentation well_id={well_id}")
+        self.command_history.append("indentation")
         coords = gantry.get_coordinates()
         cur_x, cur_y = coords["x"], coords["y"]
 
@@ -109,7 +109,6 @@ class MockASMI(BaseInstrument):
         gantry.move_to(cur_x, cur_y, self._safe_z)
 
         return {
-            "well": well_id,
             "measurements": measurements,
             "baseline_avg": self._default_force,
             "baseline_std": 0.0,
