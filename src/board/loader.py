@@ -9,6 +9,8 @@ import yaml
 from pydantic import ValidationError
 
 from instruments.base_instrument import BaseInstrument
+from instruments.asmi.driver import ASMI
+from instruments.asmi.mock import MockASMI
 from instruments.filmetrics.driver import Filmetrics
 from instruments.filmetrics.mock import MockFilmetrics
 from instruments.pipette.driver import Pipette
@@ -25,6 +27,8 @@ if TYPE_CHECKING:
     from gantry import Gantry
 
 INSTRUMENT_REGISTRY: Dict[str, Type[BaseInstrument]] = {
+    "asmi": ASMI,
+    "mock_asmi": MockASMI,
     "uvvis_ccs": UVVisCCS,
     "mock_uvvis_ccs": MockUVVisCCS,
     "pipette": Pipette,
