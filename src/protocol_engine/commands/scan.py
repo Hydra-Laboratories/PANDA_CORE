@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import sqlite3
@@ -81,7 +82,18 @@ def scan(
         well = plate_obj.get_well_center(well_id)
         target = (well.x, well.y, well.z + instr.measurement_height)
         context.board.move(instrument, target)
-        result = callable_method()
+
+        # Inject context-aware kwargs if the method accepts them.
+        # This lets instrument methods like ASMI.indentation(gantry, well_id)
+        # receive the gantry for movement and well_id for metadata,
+        # while simple methods like UVVis.measure() still work with no args.
+        sig = inspect.signature(callable_method)
+        kwargs: Dict[str, Any] = {}
+        if "gantry" in sig.parameters:
+            kwargs["gantry"] = context.board.gantry
+        if "well_id" in sig.parameters:
+            kwargs["well_id"] = well_id
+        result = callable_method(**kwargs)
         results[well_id] = result
 
         if context.data_store is not None and context.campaign_id is not None:

@@ -33,6 +33,14 @@ class ASMI(BaseInstrument):
         measurement_height: float = 0.0,
         force_threshold: float = _DEFAULT_FORCE_THRESHOLD,
         sensor_channels: Optional[list[int]] = None,
+        # Indentation measurement parameters (configurable via board YAML)
+        z_target: float = -17.0,
+        step_size: float = 0.01,
+        force_limit: float = 15.0,
+        well_top_z: float = -9.0,
+        safe_z: float = -50.0,
+        baseline_samples: int = 10,
+        idle_timeout: float = 10.0,
     ):
         super().__init__(
             name=name, offset_x=offset_x, offset_y=offset_y,
@@ -40,6 +48,13 @@ class ASMI(BaseInstrument):
         )
         self._force_threshold = force_threshold
         self._sensor_channels = sensor_channels or list(_DEFAULT_SENSOR_CHANNELS)
+        self._z_target = z_target
+        self._step_size = step_size
+        self._force_limit = force_limit
+        self._well_top_z = well_top_z
+        self._safe_z = safe_z
+        self._baseline_samples = baseline_samples
+        self._idle_timeout = idle_timeout
         self._godirect = None
         self._device = None
         self._sensor = None
@@ -160,3 +175,99 @@ class ASMI(BaseInstrument):
     def is_connected(self) -> bool:
         """Check if the force sensor is connected and operational."""
         return self._device is not None and self._sensor is not None
+
+    # ── Indentation measurement ───────────────────────────────────────────
+
+    def _wait_for_idle(self, gantry) -> bool:
+        start = time.time()
+        while time.time() - start < self._idle_timeout:
+            if "Idle" in gantry.get_status():
+                return True
+            time.sleep(0.02)
+        return False
+
+    def _move_z(self, gantry, x, y, z):
+        gantry.move_to(x, y, z)
+        self._wait_for_idle(gantry)
+
+    def indentation(self, gantry, well_id: str = "") -> dict:
+        """Perform step-by-step indentation at the current XY position.
+
+        The scan command positions the gantry at the well before calling
+        this method. Indentation then:
+        1. Lowers to well_top_z
+        2. Takes baseline force readings
+        3. Steps Z toward z_target, reading force at each step
+        4. Stops on force_limit or z_target
+        5. Returns to safe_z
+
+        Args:
+            gantry: Gantry instance for Z movement.
+            well_id: Well identifier for logging.
+
+        Returns:
+            Dict with keys: well, measurements, baseline_avg, baseline_std,
+            force_exceeded, data_points.
+        """
+        coords = gantry.get_coordinates()
+        cur_x, cur_y = coords["x"], coords["y"]
+
+        # Lower to measurement start
+        self._move_z(gantry, cur_x, cur_y, self._well_top_z)
+
+        # Baseline
+        baseline_avg, baseline_std = self.get_baseline_force(
+            samples=self._baseline_samples
+        )
+        self.logger.info(
+            "Baseline: %.3f +/- %.3f N", baseline_avg, baseline_std
+        )
+
+        measurements = []
+        force_exceeded = False
+
+        # Step-by-step indentation
+        while True:
+            coords = gantry.get_coordinates()
+            current_z = coords["z"]
+            if current_z <= self._z_target:
+                self.logger.info("Reached z_target %.3f mm", self._z_target)
+                break
+            next_z = current_z - self._step_size
+            self._move_z(gantry, cur_x, cur_y, next_z)
+
+            coords = gantry.get_coordinates()
+            force = self.get_force_reading()
+            corrected = force - baseline_avg
+            measurements.append({
+                "timestamp": time.time(),
+                "z_mm": coords["z"],
+                "raw_force_n": force,
+                "corrected_force_n": corrected,
+            })
+
+            if len(measurements) % 10 == 0:
+                self.logger.info(
+                    "Step #%d: Z=%.3f mm, F=%.3f N, dF=%.3f N",
+                    len(measurements), coords["z"], force, corrected,
+                )
+
+            if abs(corrected) > self._force_limit:
+                self.logger.info(
+                    "Force limit exceeded: %.3f N > %.1f N",
+                    corrected, self._force_limit,
+                )
+                force_exceeded = True
+                break
+
+        # Return to safe height
+        self._move_z(gantry, cur_x, cur_y, self._safe_z)
+
+        return {
+            "well": well_id,
+            "measurements": measurements,
+            "baseline_avg": baseline_avg,
+            "baseline_std": baseline_std,
+            "force_exceeded": force_exceeded,
+            "data_points": len(measurements),
+        }
