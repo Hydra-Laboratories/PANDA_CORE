@@ -7,6 +7,7 @@ import sqlite3
 import struct
 from typing import Any, List, Optional, Union
 
+from instruments.asmi.models import MeasurementResult as ASMIMeasurementResult
 from instruments.filmetrics.models import MeasurementResult
 from instruments.uvvis_ccs.models import UVVisSpectrum
 from protocol_engine.measurements import InstrumentMeasurement, MeasurementType
@@ -54,6 +55,22 @@ CREATE TABLE IF NOT EXISTS camera_measurements (
     experiment_id INTEGER NOT NULL REFERENCES experiments(id),
     image_path    TEXT    NOT NULL,
     timestamp     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS asmi_measurements (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    experiment_id   INTEGER NOT NULL REFERENCES experiments(id),
+    z_positions     BLOB    NOT NULL,
+    raw_forces      BLOB    NOT NULL,
+    corrected_forces BLOB   NOT NULL,
+    baseline_avg    REAL    NOT NULL,
+    baseline_std    REAL    NOT NULL,
+    force_exceeded  INTEGER NOT NULL DEFAULT 0,
+    data_points     INTEGER NOT NULL,
+    step_size_mm    REAL,
+    z_target_mm     REAL,
+    force_limit_n   REAL,
+    timestamp       TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS labware (
@@ -164,6 +181,18 @@ class DataStore:
                 integration_time_s=integration_time_s,
             )
 
+        if measurement.measurement_type == MeasurementType.ASMI_INDENTATION:
+            return self._log_asmi(
+                experiment_id=experiment_id,
+                z_positions=tuple(measurement.payload["z_positions_mm"]),
+                raw_forces=tuple(measurement.payload["raw_forces_n"]),
+                corrected_forces=tuple(measurement.payload["corrected_forces_n"]),
+                baseline_avg=float(measurement.metadata["baseline_avg"]),
+                baseline_std=float(measurement.metadata["baseline_std"]),
+                force_exceeded=bool(measurement.metadata["force_exceeded"]),
+                data_points=int(measurement.metadata["data_points"]),
+            )
+
         raise TypeError(
             "Unsupported instrument measurement type: "
             f"{measurement.measurement_type}"
@@ -203,6 +232,36 @@ class DataStore:
             "INSERT INTO filmetrics_measurements "
             "(experiment_id, thickness_nm, goodness_of_fit) VALUES (?, ?, ?)",
             (experiment_id, result.thickness_nm, result.goodness_of_fit),
+        )
+        self._conn.commit()
+        return cursor.lastrowid
+
+    def _log_asmi(
+        self,
+        experiment_id: int,
+        z_positions: tuple[float, ...],
+        raw_forces: tuple[float, ...],
+        corrected_forces: tuple[float, ...],
+        baseline_avg: float,
+        baseline_std: float,
+        force_exceeded: bool,
+        data_points: int,
+    ) -> int:
+        cursor = self._conn.execute(
+            "INSERT INTO asmi_measurements "
+            "(experiment_id, z_positions, raw_forces, corrected_forces, "
+            "baseline_avg, baseline_std, force_exceeded, data_points) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                experiment_id,
+                _pack_floats(z_positions),
+                _pack_floats(raw_forces),
+                _pack_floats(corrected_forces),
+                baseline_avg,
+                baseline_std,
+                int(force_exceeded),
+                data_points,
+            ),
         )
         self._conn.commit()
         return cursor.lastrowid

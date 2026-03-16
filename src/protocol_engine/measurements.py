@@ -13,6 +13,7 @@ class MeasurementType(str, Enum):
     """Normalized measurement types understood by protocol persistence."""
 
     UVVIS_SPECTRUM = "uvvis_spectrum"
+    ASMI_INDENTATION = "asmi_indentation"
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,25 @@ def normalize_measurement(
             },
             metadata={
                 "integration_time_s": raw_result.integration_time_s,
+                "instrument_name": instrument_name,
+                "method_name": method_name,
+            },
+        )
+
+    if isinstance(raw_result, dict) and "measurements" in raw_result:
+        steps = raw_result["measurements"]
+        return InstrumentMeasurement(
+            measurement_type=MeasurementType.ASMI_INDENTATION,
+            payload={
+                "z_positions_mm": [s["z_mm"] for s in steps],
+                "raw_forces_n": [s["raw_force_n"] for s in steps],
+                "corrected_forces_n": [s["corrected_force_n"] for s in steps],
+            },
+            metadata={
+                "baseline_avg": raw_result.get("baseline_avg", 0.0),
+                "baseline_std": raw_result.get("baseline_std", 0.0),
+                "force_exceeded": raw_result.get("force_exceeded", False),
+                "data_points": raw_result.get("data_points", len(steps)),
                 "instrument_name": instrument_name,
                 "method_name": method_name,
             },
