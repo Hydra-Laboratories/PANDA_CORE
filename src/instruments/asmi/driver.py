@@ -9,7 +9,8 @@ from instruments.asmi.exceptions import (
 )
 from instruments.asmi.models import ASMIStatus, MeasurementResult
 
-_FORCE_SENSOR_THRESHOLD = -100
+_DEFAULT_FORCE_THRESHOLD = -100
+_DEFAULT_SENSOR_CHANNELS = [1]
 
 
 class ASMI(BaseInstrument):
@@ -17,6 +18,10 @@ class ASMI(BaseInstrument):
 
     Connects to a GoDirect force sensor over USB and provides force
     measurements.  All positioning is handled by the gantry via the Board.
+
+    Constructor accepts BaseInstrument fields plus:
+        force_threshold: GoDirect device detection threshold (default -100).
+        sensor_channels: List of sensor channel indices to enable (default [1]).
     """
 
     def __init__(
@@ -26,11 +31,15 @@ class ASMI(BaseInstrument):
         offset_y: float = 0.0,
         depth: float = 0.0,
         measurement_height: float = 0.0,
+        force_threshold: float = _DEFAULT_FORCE_THRESHOLD,
+        sensor_channels: Optional[list[int]] = None,
     ):
         super().__init__(
             name=name, offset_x=offset_x, offset_y=offset_y,
             depth=depth, measurement_height=measurement_height,
         )
+        self._force_threshold = force_threshold
+        self._sensor_channels = sensor_channels or list(_DEFAULT_SENSOR_CHANNELS)
         self._godirect = None
         self._device = None
         self._sensor = None
@@ -46,7 +55,7 @@ class ASMI(BaseInstrument):
             ) from exc
 
         self._godirect = GoDirect(use_ble=False, use_usb=True)
-        device = self._godirect.get_device(threshold=_FORCE_SENSOR_THRESHOLD)
+        device = self._godirect.get_device(threshold=self._force_threshold)
         if device is None:
             raise ASMIConnectionError(
                 "No GoDirect force sensor found. Check USB connection."
@@ -54,7 +63,7 @@ class ASMI(BaseInstrument):
         if not device.open(auto_start=False):
             raise ASMIConnectionError("Failed to open GoDirect device")
 
-        device.enable_sensors([1])
+        device.enable_sensors(self._sensor_channels)
         sensors = device.get_enabled_sensors()
         if not sensors:
             device.close()

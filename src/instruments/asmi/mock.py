@@ -56,3 +56,16 @@ class MockASMI(BaseInstrument):
             is_connected=self._connected,
             sensor_description="MockSensor" if self._connected else None,
         )
+
+    # ── Convenience methods (match real ASMI driver API) ──────────────────
+
+    def get_force_reading(self) -> float:
+        result = self.measure(n_samples=1)
+        return result.mean_n
+
+    def get_baseline_force(self, samples: int = 10) -> tuple[float, float]:
+        result = self.measure(n_samples=samples)
+        return (result.mean_n, result.std_n)
+
+    def is_connected(self) -> bool:
+        return self._connected
