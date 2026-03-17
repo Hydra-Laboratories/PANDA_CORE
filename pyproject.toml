@@ -17,5 +17,8 @@ include = ["board", "board.*", "data", "data.*", "deck", "deck.*",
            "gantry", "gantry.*", "instruments", "instruments.*",
            "protocol_engine", "protocol_engine.*", "validation", "validation.*"]
 
+[tool.setuptools.package-data]
+"gantry.gantry_driver" = ["*.json"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]
