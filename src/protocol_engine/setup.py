@@ -9,9 +9,9 @@ from board.board import Board
 from board.loader import load_board_from_yaml_safe
 from deck.deck import Deck
 from deck.loader import load_deck_from_yaml_safe
+from gantry.gantry import Gantry
 from gantry.gantry_config import GantryConfig
 from gantry.loader import load_gantry_from_yaml_safe
-from gantry.offline import OfflineGantry
 from protocol_engine.loader import load_protocol_from_yaml_safe
 from protocol_engine.protocol import Protocol, ProtocolContext
 from validation.bounds import validate_deck_positions, validate_gantry_positions
@@ -60,7 +60,7 @@ def setup_protocol(
     deck: Deck = load_deck_from_yaml_safe(deck_path)
 
     if gantry is None:
-        gantry = OfflineGantry()
+        gantry = Gantry(offline=True)
     board: Board = load_board_from_yaml_safe(
         board_path, gantry, mock_mode=mock_mode,
     )
