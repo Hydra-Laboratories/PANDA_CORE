@@ -10,7 +10,6 @@ from pydantic import ValidationError
 
 from instruments.base_instrument import BaseInstrument
 from instruments.asmi.driver import ASMI
-from instruments.asmi.mock import MockASMI
 from instruments.filmetrics.driver import Filmetrics
 from instruments.filmetrics.mock import MockFilmetrics
 from instruments.pipette.driver import Pipette
@@ -26,9 +25,10 @@ from .yaml_schema import BoardYamlSchema
 if TYPE_CHECKING:
     from gantry import Gantry
 
+# Registry maps YAML type strings to instrument classes.
+# Instruments that support offline=True don't need separate mock entries.
 INSTRUMENT_REGISTRY: Dict[str, Type[BaseInstrument]] = {
     "asmi": ASMI,
-    "mock_asmi": MockASMI,
     "uvvis_ccs": UVVisCCS,
     "mock_uvvis_ccs": MockUVVisCCS,
     "pipette": Pipette,
@@ -36,6 +36,9 @@ INSTRUMENT_REGISTRY: Dict[str, Type[BaseInstrument]] = {
     "filmetrics": Filmetrics,
     "mock_filmetrics": MockFilmetrics,
 }
+
+# Instruments that accept offline=True instead of needing a separate mock class.
+_SUPPORTS_OFFLINE = {"asmi"}
 
 
 def _format_loader_exception(path: Path, error: Exception) -> str:
@@ -84,9 +87,9 @@ def load_board_from_yaml(
     Args:
         path: Path to the board YAML file.
         gantry: The Gantry instance to attach to the Board.
-        mock_mode: If True, swap each instrument type for its mock variant
-            (e.g. ``"pipette"`` -> ``"mock_pipette"``). Types that are already
-            mocked or have no mock variant in the registry are left unchanged.
+        mock_mode: If True, instruments that support ``offline=True`` get
+            that flag set. Legacy instruments without offline support are
+            swapped for their ``mock_*`` registry entry instead.
 
     Returns:
         Board with all instruments instantiated from the YAML config.
@@ -109,10 +112,15 @@ def load_board_from_yaml(
     for name, entry in schema.instruments.items():
         kwargs = entry.model_dump()
         type_key = kwargs.pop("type")
-        if mock_mode and not type_key.startswith("mock_"):
-            mock_key = f"mock_{type_key}"
-            if mock_key in INSTRUMENT_REGISTRY:
-                type_key = mock_key
+
+        if mock_mode:
+            if type_key in _SUPPORTS_OFFLINE:
+                kwargs["offline"] = True
+            elif not type_key.startswith("mock_"):
+                mock_key = f"mock_{type_key}"
+                if mock_key in INSTRUMENT_REGISTRY:
+                    type_key = mock_key
+
         if type_key not in INSTRUMENT_REGISTRY:
             raise KeyError(type_key)
         cls = INSTRUMENT_REGISTRY[type_key]
@@ -124,11 +132,7 @@ def load_board_from_yaml(
 def load_board_from_yaml_safe(
     path: str | Path, gantry: Gantry, mock_mode: bool = False,
 ) -> Board:
-    """Load board YAML with user-friendly exception formatting.
-
-    Raises:
-        BoardLoaderError: Concise, actionable message intended for CLI output.
-    """
+    """Load board YAML with user-friendly exception formatting."""
     resolved = Path(path)
     try:
         return load_board_from_yaml(resolved, gantry, mock_mode=mock_mode)

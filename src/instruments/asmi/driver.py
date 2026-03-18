@@ -19,9 +19,8 @@ class ASMI(BaseInstrument):
     Connects to a GoDirect force sensor over USB and provides force
     measurements.  All positioning is handled by the gantry via the Board.
 
-    Constructor accepts BaseInstrument fields plus:
-        force_threshold: GoDirect device detection threshold (default -100).
-        sensor_channels: List of sensor channel indices to enable (default [1]).
+    Pass ``offline=True`` for dry runs and testing — no USB connection,
+    all readings return ``default_force``.
     """
 
     def __init__(
@@ -31,9 +30,10 @@ class ASMI(BaseInstrument):
         offset_y: float = 0.0,
         depth: float = 0.0,
         measurement_height: float = 0.0,
+        offline: bool = False,
+        default_force: float = 0.0,
         force_threshold: float = _DEFAULT_FORCE_THRESHOLD,
         sensor_channels: Optional[list[int]] = None,
-        # Indentation measurement parameters (configurable via board YAML)
         z_target: float = -17.0,
         step_size: float = 0.01,
         force_limit: float = 15.0,
@@ -46,6 +46,8 @@ class ASMI(BaseInstrument):
             name=name, offset_x=offset_x, offset_y=offset_y,
             depth=depth, measurement_height=measurement_height,
         )
+        self._offline = offline
+        self._default_force = default_force
         self._force_threshold = force_threshold
         self._sensor_channels = sensor_channels or list(_DEFAULT_SENSOR_CHANNELS)
         self._z_target = z_target
@@ -62,6 +64,9 @@ class ASMI(BaseInstrument):
     # ── BaseInstrument interface ──────────────────────────────────────────
 
     def connect(self) -> None:
+        if self._offline:
+            self.logger.info("ASMI connected (offline)")
+            return
         try:
             from godirect import GoDirect
         except ImportError as exc:
@@ -91,6 +96,9 @@ class ASMI(BaseInstrument):
         )
 
     def disconnect(self) -> None:
+        if self._offline:
+            self.logger.info("ASMI disconnected (offline)")
+            return
         if self._device is not None:
             try:
                 self._device.close()
@@ -107,6 +115,8 @@ class ASMI(BaseInstrument):
         self.logger.info("ASMI force sensor disconnected")
 
     def health_check(self) -> bool:
+        if self._offline:
+            return True
         if self._device is None or self._sensor is None:
             return False
         try:
@@ -118,13 +128,16 @@ class ASMI(BaseInstrument):
     # ── ASMI-specific commands ────────────────────────────────────────────
 
     def measure(self, n_samples: int = 1) -> MeasurementResult:
-        """Take one or more force readings and return the result.
+        """Take one or more force readings and return the result."""
+        if self._offline:
+            readings = tuple(self._default_force for _ in range(n_samples))
+            return MeasurementResult(
+                readings=readings,
+                mean_n=self._default_force,
+                std_n=0.0,
+                timestamp=time.time(),
+            )
 
-        Args:
-            n_samples: Number of readings to collect. When greater than 1
-                the result includes mean and standard deviation across all
-                samples.
-        """
         if self._device is None or self._sensor is None:
             raise ASMICommandError("Force sensor not connected")
 
@@ -149,6 +162,11 @@ class ASMI(BaseInstrument):
 
     def get_status(self) -> ASMIStatus:
         """Return a snapshot of the sensor state."""
+        if self._offline:
+            return ASMIStatus(
+                is_connected=True,
+                sensor_description="OfflineSensor",
+            )
         description = None
         if self._sensor is not None:
             try:
@@ -164,8 +182,7 @@ class ASMI(BaseInstrument):
 
     def get_force_reading(self) -> float:
         """Take a single force reading and return the value in Newtons."""
-        result = self.measure(n_samples=1)
-        return result.mean_n
+        return self.measure(n_samples=1).mean_n
 
     def get_baseline_force(self, samples: int = 10) -> tuple[float, float]:
         """Collect multiple force readings and return (mean, std) in Newtons."""
@@ -174,6 +191,8 @@ class ASMI(BaseInstrument):
 
     def is_connected(self) -> bool:
         """Check if the force sensor is connected and operational."""
+        if self._offline:
+            return True
         return self._device is not None and self._sensor is not None
 
     # ── Indentation measurement ───────────────────────────────────────────
@@ -208,13 +227,14 @@ class ASMI(BaseInstrument):
             Dict with keys: measurements, baseline_avg, baseline_std,
             force_exceeded, data_points.
         """
+        if self._offline:
+            return self._offline_indentation(gantry)
+
         coords = gantry.get_coordinates()
         cur_x, cur_y = coords["x"], coords["y"]
 
-        # Lower to measurement start
         self._move_z(gantry, cur_x, cur_y, self._well_top_z)
 
-        # Baseline
         baseline_avg, baseline_std = self.get_baseline_force(
             samples=self._baseline_samples
         )
@@ -225,7 +245,6 @@ class ASMI(BaseInstrument):
         measurements = []
         force_exceeded = False
 
-        # Step-by-step indentation
         while True:
             coords = gantry.get_coordinates()
             current_z = coords["z"]
@@ -259,7 +278,6 @@ class ASMI(BaseInstrument):
                 force_exceeded = True
                 break
 
-        # Return to safe height
         self._move_z(gantry, cur_x, cur_y, self._safe_z)
 
         return {
@@ -267,5 +285,33 @@ class ASMI(BaseInstrument):
             "baseline_avg": baseline_avg,
             "baseline_std": baseline_std,
             "force_exceeded": force_exceeded,
+            "data_points": len(measurements),
+        }
+
+    def _offline_indentation(self, gantry) -> dict:
+        """Fast offline indentation — no idle-wait, synthetic data."""
+        coords = gantry.get_coordinates()
+        cur_x, cur_y = coords["x"], coords["y"]
+        gantry.move_to(cur_x, cur_y, self._well_top_z)
+
+        measurements = []
+        z = self._well_top_z
+        while z > self._z_target:
+            z -= self._step_size
+            gantry.move_to(cur_x, cur_y, z)
+            measurements.append({
+                "timestamp": time.time(),
+                "z_mm": z,
+                "raw_force_n": self._default_force,
+                "corrected_force_n": 0.0,
+            })
+
+        gantry.move_to(cur_x, cur_y, self._safe_z)
+
+        return {
+            "measurements": measurements,
+            "baseline_avg": self._default_force,
+            "baseline_std": 0.0,
+            "force_exceeded": False,
             "data_points": len(measurements),
         }

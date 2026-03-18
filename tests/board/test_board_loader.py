@@ -7,6 +7,7 @@ import pytest
 from board.errors import BoardLoaderError
 from board.loader import load_board_from_yaml, load_board_from_yaml_safe
 from board.yaml_schema import BoardYamlSchema, InstrumentYamlEntry
+from instruments.asmi.driver import ASMI
 from instruments.filmetrics.mock import MockFilmetrics
 from instruments.pipette.mock import MockPipette
 from instruments.uvvis_ccs.mock import MockUVVisCCS
@@ -320,3 +321,27 @@ class TestLoadBoardMockMode:
         """)
         board = load_board_from_yaml_safe(yaml_path, _mock_gantry(), mock_mode=True)
         assert isinstance(board.instruments["pip"], MockPipette)
+
+    def test_mock_mode_sets_offline_for_asmi(self, tmp_path):
+        """ASMI supports offline=True — mock_mode should set the flag, not swap class."""
+        yaml_path = _write_yaml(tmp_path, """\
+            instruments:
+              asmi:
+                type: asmi
+                force_threshold: -100
+        """)
+        board = load_board_from_yaml(yaml_path, _mock_gantry(), mock_mode=True)
+        instr = board.instruments["asmi"]
+        assert isinstance(instr, ASMI)
+        assert instr._offline is True
+
+    def test_no_mock_mode_asmi_stays_online(self, tmp_path):
+        yaml_path = _write_yaml(tmp_path, """\
+            instruments:
+              asmi:
+                type: asmi
+        """)
+        board = load_board_from_yaml(yaml_path, _mock_gantry(), mock_mode=False)
+        instr = board.instruments["asmi"]
+        assert isinstance(instr, ASMI)
+        assert instr._offline is False
