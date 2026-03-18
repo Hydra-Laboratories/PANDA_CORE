@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 try:
     from instruments.base_instrument import BaseInstrument
+    from instruments.asmi.driver import ASMI
     from instruments.filmetrics.driver import Filmetrics
     from instruments.filmetrics.mock import MockFilmetrics
     from instruments.pipette.driver import Pipette
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
         raise
 
 INSTRUMENT_REGISTRY: Dict[str, Type[BaseInstrument]] = {
+    "asmi": ASMI,
     "uvvis_ccs": UVVisCCS,
     "mock_uvvis_ccs": MockUVVisCCS,
     "pipette": Pipette,
@@ -78,12 +80,20 @@ def _format_loader_exception(path: Path, error: Exception) -> str:
     )
 
 
-def load_board_from_yaml(path: str | Path, gantry: Gantry) -> Board:
+# Instruments that accept offline=True instead of needing a separate mock class.
+_SUPPORTS_OFFLINE = {"asmi"}
+
+
+def load_board_from_yaml(
+    path: str | Path, gantry: Gantry, mock_mode: bool = False,
+) -> Board:
     """Load a board YAML file and return a Board with instruments.
 
     Args:
         path: Path to the board YAML file.
         gantry: The Gantry instance to attach to the Board.
+        mock_mode: If True, instruments that support offline get that flag;
+            legacy instruments are swapped for their mock_* variant.
 
     Returns:
         Board with all instruments instantiated from the YAML config.
@@ -106,6 +116,15 @@ def load_board_from_yaml(path: str | Path, gantry: Gantry) -> Board:
     for name, entry in schema.instruments.items():
         kwargs = entry.model_dump()
         type_key = kwargs.pop("type")
+
+        if mock_mode:
+            if type_key in _SUPPORTS_OFFLINE:
+                kwargs["offline"] = True
+            elif not type_key.startswith("mock_"):
+                mock_key = f"mock_{type_key}"
+                if mock_key in INSTRUMENT_REGISTRY:
+                    type_key = mock_key
+
         if type_key not in INSTRUMENT_REGISTRY:
             raise KeyError(type_key)
         cls = INSTRUMENT_REGISTRY[type_key]
@@ -114,7 +133,9 @@ def load_board_from_yaml(path: str | Path, gantry: Gantry) -> Board:
     return Board(gantry=gantry, instruments=instruments)
 
 
-def load_board_from_yaml_safe(path: str | Path, gantry: Gantry) -> Board:
+def load_board_from_yaml_safe(
+    path: str | Path, gantry: Gantry, mock_mode: bool = False,
+) -> Board:
     """Load board YAML with user-friendly exception formatting.
 
     Raises:
@@ -122,6 +143,6 @@ def load_board_from_yaml_safe(path: str | Path, gantry: Gantry) -> Board:
     """
     resolved = Path(path)
     try:
-        return load_board_from_yaml(resolved, gantry)
+        return load_board_from_yaml(resolved, gantry, mock_mode=mock_mode)
     except Exception as exc:
         raise BoardLoaderError(_format_loader_exception(resolved, exc)) from exc

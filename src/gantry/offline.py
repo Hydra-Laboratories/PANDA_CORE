@@ -7,9 +7,12 @@ class OfflineGantry:
     """Stub gantry for offline validation and testing.
 
     Provides the same interface as Gantry but does nothing—no serial
-    connection, no hardware movement.  Used by ``setup_protocol()``
-    when no real gantry is provided.
+    connection, no hardware movement. Tracks position in memory so
+    callers can verify movement sequences.
     """
+
+    def __init__(self):
+        self._coords = {"x": 0.0, "y": 0.0, "z": 0.0}
 
     def connect(self) -> None:
         pass
@@ -23,14 +26,17 @@ class OfflineGantry:
     def home(self) -> None:
         pass
 
-    def move_to(self, x: float, y: float, z: float) -> None:
+    def unlock(self) -> None:
         pass
 
+    def move_to(self, x: float, y: float, z: float) -> None:
+        self._coords = {"x": x, "y": y, "z": z}
+
     def get_coordinates(self) -> dict[str, float]:
-        return {"x": 0.0, "y": 0.0, "z": 0.0}
+        return dict(self._coords)
 
     def get_status(self) -> str:
-        return "Offline"
+        return "Idle"
 
     def stop(self) -> None:
         pass

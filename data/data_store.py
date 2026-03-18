@@ -48,6 +48,19 @@ CREATE TABLE IF NOT EXISTS filmetrics_measurements (
     timestamp       TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS asmi_measurements (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    experiment_id   INTEGER NOT NULL REFERENCES experiments(id),
+    z_positions     BLOB    NOT NULL,
+    raw_forces      BLOB    NOT NULL,
+    corrected_forces BLOB   NOT NULL,
+    baseline_avg    REAL    NOT NULL,
+    baseline_std    REAL    NOT NULL,
+    force_exceeded  INTEGER NOT NULL DEFAULT 0,
+    data_points     INTEGER NOT NULL,
+    timestamp       TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS camera_measurements (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     experiment_id INTEGER NOT NULL REFERENCES experiments(id),
@@ -141,6 +154,8 @@ class DataStore:
             return self._log_filmetrics(experiment_id, result)
         if isinstance(result, str):
             return self._log_camera(experiment_id, result)
+        if isinstance(result, dict) and "measurements" in result:
+            return self._log_asmi(experiment_id, result)
         raise TypeError(
             f"Unsupported measurement type: {type(result).__name__}"
         )
@@ -165,6 +180,30 @@ class DataStore:
             "INSERT INTO filmetrics_measurements "
             "(experiment_id, thickness_nm, goodness_of_fit) VALUES (?, ?, ?)",
             (experiment_id, result.thickness_nm, result.goodness_of_fit),
+        )
+        self._conn.commit()
+        return cursor.lastrowid
+
+    def _log_asmi(self, experiment_id: int, result: dict) -> int:
+        steps = result["measurements"]
+        z_positions = tuple(s["z_mm"] for s in steps)
+        raw_forces = tuple(s["raw_force_n"] for s in steps)
+        corrected_forces = tuple(s["corrected_force_n"] for s in steps)
+        cursor = self._conn.execute(
+            "INSERT INTO asmi_measurements "
+            "(experiment_id, z_positions, raw_forces, corrected_forces, "
+            "baseline_avg, baseline_std, force_exceeded, data_points) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                experiment_id,
+                _pack_floats(z_positions),
+                _pack_floats(raw_forces),
+                _pack_floats(corrected_forces),
+                float(result.get("baseline_avg", 0.0)),
+                float(result.get("baseline_std", 0.0)),
+                int(result.get("force_exceeded", False)),
+                int(result.get("data_points", len(steps))),
+            ),
         )
         self._conn.commit()
         return cursor.lastrowid

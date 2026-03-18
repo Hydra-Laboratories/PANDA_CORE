@@ -24,25 +24,17 @@ def setup_protocol(
     board_path: str | Path,
     protocol_path: str | Path,
     gantry=None,
+    mock_mode: bool = False,
 ) -> Tuple[Protocol, ProtocolContext]:
     """Load all configs, validate bounds, and return a ready-to-run protocol.
-
-    Steps:
-        1. Load gantry config (working volume, homing strategy)
-        2. Load deck (labware positions)
-        3. Load board (instruments with offsets)
-        4. Load protocol (command steps)
-        5. Validate all deck positions within gantry bounds
-        6. Validate all gantry positions within gantry bounds
-        7. Return (Protocol, ProtocolContext)
 
     Args:
         gantry_path: Path to gantry YAML config.
         deck_path: Path to deck YAML config.
         board_path: Path to board YAML config.
         protocol_path: Path to protocol YAML config.
-        gantry: Optional Gantry instance. If None, an OfflineGantry is used
-            for offline validation.
+        gantry: Optional Gantry instance. If None, an OfflineGantry is used.
+        mock_mode: If True, instruments are created in offline/mock mode.
 
     Returns:
         Tuple of (Protocol, ProtocolContext) ready for ``protocol.run(context)``.
@@ -62,7 +54,9 @@ def setup_protocol(
 
     if gantry is None:
         gantry = OfflineGantry()
-    board: Board = load_board_from_yaml_safe(board_path, gantry)
+    board: Board = load_board_from_yaml_safe(
+        board_path, gantry, mock_mode=mock_mode,
+    )
 
     protocol: Protocol = load_protocol_from_yaml_safe(protocol_path)
 
