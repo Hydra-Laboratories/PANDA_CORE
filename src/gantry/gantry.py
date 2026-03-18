@@ -181,6 +181,64 @@ class Gantry:
         except (MillConnectionError, CommandExecutionError) as e:
             self.logger.error(f"Error stopping gantry: {e}")
 
+    def set_serial_timeout(self, timeout: float) -> None:
+        """Set the serial read timeout on the underlying connection.
+
+        Useful for switching between long timeouts (homing) and short
+        timeouts (fast status polling during measurement loops).
+        """
+        if self._offline:
+            return
+        if self._mill.ser_mill is not None:
+            self._mill.ser_mill.timeout = timeout
+
+    def set_safe_z(self, z: float) -> None:
+        """Set the clearance height used by safe_move for XY travel."""
+        if self._offline:
+            return
+        self._mill.max_z_height = z
+
+    def zero_coordinates(self) -> None:
+        """Zero the work coordinate system at the current position (G92 X0 Y0 Z0)."""
+        if self._offline:
+            self._offline_coords = {"x": 0.0, "y": 0.0, "z": 0.0}
+            return
+        try:
+            self._mill.execute_command("G92 X0 Y0 Z0")
+            self.logger.info("Work coordinates zeroed")
+        except (MillConnectionError, CommandExecutionError) as e:
+            self.logger.error(f"Error zeroing coordinates: {e}")
+            raise
+
+    def configure_speeds(
+        self,
+        homing_feed: Optional[float] = None,
+        homing_seek: Optional[float] = None,
+        max_rate: Optional[float] = None,
+        acceleration: Optional[float] = None,
+    ) -> None:
+        """Apply speed/acceleration overrides to the GRBL controller.
+
+        Args:
+            homing_feed: $24 homing locate feed rate (mm/min).
+            homing_seek: $25 homing search seek rate (mm/min).
+            max_rate: $110/$111/$112 max rate for all axes (mm/min).
+            acceleration: $120/$121/$122 acceleration for all axes (mm/s^2).
+        """
+        if self._offline:
+            return
+        if homing_feed is not None:
+            self._mill.set_grbl_setting("24", str(homing_feed))
+        if homing_seek is not None:
+            self._mill.set_grbl_setting("25", str(homing_seek))
+        if max_rate is not None:
+            for code in ("110", "111", "112"):
+                self._mill.set_grbl_setting(code, str(max_rate))
+        if acceleration is not None:
+            for code in ("120", "121", "122"):
+                self._mill.set_grbl_setting(code, str(acceleration))
+        self.logger.info("Speed config applied")
+
     def _extract_status(self) -> str:
         """Return the last known status without querying the serial port."""
         return getattr(self, "_last_status", "Unknown")
