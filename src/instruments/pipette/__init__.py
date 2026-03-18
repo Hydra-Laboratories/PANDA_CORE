@@ -1,5 +1,4 @@
 from instruments.pipette.driver import Pipette
-from instruments.pipette.mock import MockPipette
 from instruments.pipette.models import (
     PipetteConfig,
     PipetteFamily,
@@ -18,7 +17,6 @@ from instruments.pipette.exceptions import (
 
 __all__ = [
     "Pipette",
-    "MockPipette",
     "PipetteConfig",
     "PipetteFamily",
     "PipetteStatus",

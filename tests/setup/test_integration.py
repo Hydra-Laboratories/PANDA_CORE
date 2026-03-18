@@ -83,7 +83,7 @@ labware:
 BOARD_YAML = """\
 instruments:
   pipette:
-    type: mock_pipette
+    type: pipette
     offset_x: -5.0
     offset_y: 0.0
     depth: -3.0

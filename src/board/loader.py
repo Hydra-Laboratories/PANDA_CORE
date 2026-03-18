@@ -11,11 +11,8 @@ from pydantic import ValidationError
 from instruments.base_instrument import BaseInstrument
 from instruments.asmi.driver import ASMI
 from instruments.filmetrics.driver import Filmetrics
-from instruments.filmetrics.mock import MockFilmetrics
 from instruments.pipette.driver import Pipette
-from instruments.pipette.mock import MockPipette
 from instruments.uvvis_ccs.driver import UVVisCCS
-from instruments.uvvis_ccs.mock import MockUVVisCCS
 
 from .board import Board
 
@@ -25,20 +22,12 @@ from .yaml_schema import BoardYamlSchema
 if TYPE_CHECKING:
     from gantry import Gantry
 
-# Registry maps YAML type strings to instrument classes.
-# Instruments that support offline=True don't need separate mock entries.
 INSTRUMENT_REGISTRY: Dict[str, Type[BaseInstrument]] = {
     "asmi": ASMI,
     "uvvis_ccs": UVVisCCS,
-    "mock_uvvis_ccs": MockUVVisCCS,
     "pipette": Pipette,
-    "mock_pipette": MockPipette,
     "filmetrics": Filmetrics,
-    "mock_filmetrics": MockFilmetrics,
 }
-
-# Instruments that accept offline=True instead of needing a separate mock class.
-_SUPPORTS_OFFLINE = {"asmi"}
 
 
 def _format_loader_exception(path: Path, error: Exception) -> str:
@@ -87,9 +76,7 @@ def load_board_from_yaml(
     Args:
         path: Path to the board YAML file.
         gantry: The Gantry instance to attach to the Board.
-        mock_mode: If True, instruments that support ``offline=True`` get
-            that flag set. Legacy instruments without offline support are
-            swapped for their ``mock_*`` registry entry instead.
+        mock_mode: If True, all instruments are created with offline=True.
 
     Returns:
         Board with all instruments instantiated from the YAML config.
@@ -112,17 +99,10 @@ def load_board_from_yaml(
     for name, entry in schema.instruments.items():
         kwargs = entry.model_dump()
         type_key = kwargs.pop("type")
-
-        if mock_mode:
-            if type_key in _SUPPORTS_OFFLINE:
-                kwargs["offline"] = True
-            elif not type_key.startswith("mock_"):
-                mock_key = f"mock_{type_key}"
-                if mock_key in INSTRUMENT_REGISTRY:
-                    type_key = mock_key
-
         if type_key not in INSTRUMENT_REGISTRY:
             raise KeyError(type_key)
+        if mock_mode:
+            kwargs["offline"] = True
         cls = INSTRUMENT_REGISTRY[type_key]
         instruments[name] = cls(**kwargs)
 

@@ -19,7 +19,6 @@ from instruments.pipette.models import (
     PIPETTE_MODELS,
 )
 
-# Pawduino command codes
 _CMD_HOME = 10
 _CMD_MOVE_TO = 11
 _CMD_ASPIRATE = 12
@@ -34,14 +33,13 @@ _ARDUINO_SETTLE_TIME = 2.0
 class Pipette(BaseInstrument):
     """Driver for Opentrons pipettes via Arduino serial (Pawduino firmware).
 
-    Supports OT-2 and Flex pipette models. The pipette model determines
-    plunger positions and volume conversion factors.
+    Pass ``offline=True`` for dry runs — simulates plunger state in memory.
     """
 
     def __init__(
         self,
-        pipette_model: str,
-        port: str,
+        pipette_model: str = "p300_single_gen2",
+        port: str = "",
         baud_rate: int = 115200,
         command_timeout: float = 30.0,
         name: Optional[str] = None,
@@ -49,10 +47,13 @@ class Pipette(BaseInstrument):
         offset_y: float = 0.0,
         depth: float = 0.0,
         measurement_height: float = 0.0,
+        offline: bool = False,
+        **kwargs,
     ):
         super().__init__(
             name=name, offset_x=offset_x, offset_y=offset_y,
             depth=depth, measurement_height=measurement_height,
+            offline=offline,
         )
         if pipette_model not in PIPETTE_MODELS:
             raise PipetteConfigError(
@@ -66,6 +67,9 @@ class Pipette(BaseInstrument):
         self._serial: Optional[serial.Serial] = None
         self._lock = threading.Lock()
         self._has_tip = False
+        self._position_mm = 0.0
+        self._is_homed = False
+        self._is_primed = False
 
     @property
     def config(self) -> PipetteConfig:
@@ -74,6 +78,9 @@ class Pipette(BaseInstrument):
     # ── BaseInstrument interface ──────────────────────────────────────────
 
     def connect(self) -> None:
+        if self._offline:
+            self.logger.info("Pipette connected (offline)")
+            return
         try:
             self._serial = serial.Serial(
                 port=self._port,
@@ -100,10 +107,15 @@ class Pipette(BaseInstrument):
         )
 
     def disconnect(self) -> None:
+        if self._offline:
+            self.logger.info("Pipette disconnected (offline)")
+            return
         self._close_serial()
         self.logger.info("Disconnected from pipette")
 
     def health_check(self) -> bool:
+        if self._offline:
+            return True
         if self._serial is None or not self._serial.is_open:
             return False
         try:
@@ -119,22 +131,26 @@ class Pipette(BaseInstrument):
     # ── Pipette-specific commands ─────────────────────────────────────────
 
     def home(self) -> None:
-        """Home plunger to zero position."""
+        if self._offline:
+            self._position_mm = self._config.zero_position
+            self._is_homed = True
+            return
         self._send_command(_CMD_HOME)
-        self.logger.debug("Plunger homed")
 
     def prime(self, speed: float = 50.0) -> None:
-        """Move plunger to prime position."""
+        if self._offline:
+            self._position_mm = self._config.prime_position
+            self._is_primed = True
+            return
         self._send_command(_CMD_MOVE_TO, self._config.prime_position, speed)
-        self.logger.debug("Plunger primed to %.1f mm", self._config.prime_position)
 
     def aspirate(self, volume_ul: float, speed: float = 50.0) -> AspirateResult:
-        """Aspirate a volume of liquid.
-
-        Sends the aspirate command with the volume converted to mm of
-        plunger travel via the mm_to_ul conversion factor.
-        """
         mm_travel = volume_ul * self._config.mm_to_ul
+        if self._offline:
+            self._position_mm += mm_travel
+            return AspirateResult(
+                success=True, volume_ul=volume_ul, position_mm=self._position_mm
+            )
         response = self._send_command(_CMD_ASPIRATE, mm_travel, speed)
         position = self._parse_position(response)
         return AspirateResult(
@@ -142,8 +158,12 @@ class Pipette(BaseInstrument):
         )
 
     def dispense(self, volume_ul: float, speed: float = 50.0) -> AspirateResult:
-        """Dispense a volume of liquid."""
         mm_travel = volume_ul * self._config.mm_to_ul
+        if self._offline:
+            self._position_mm -= mm_travel
+            return AspirateResult(
+                success=True, volume_ul=volume_ul, position_mm=self._position_mm
+            )
         response = self._send_command(_CMD_DISPENSE, mm_travel, speed)
         position = self._parse_position(response)
         return AspirateResult(
@@ -151,34 +171,41 @@ class Pipette(BaseInstrument):
         )
 
     def blowout(self, speed: float = 50.0) -> None:
-        """Move plunger to blowout position to expel remaining liquid."""
+        if self._offline:
+            self._position_mm = self._config.blowout_position
+            return
         self._send_command(_CMD_MOVE_TO, self._config.blowout_position, speed)
-        self.logger.debug("Blowout to %.1f mm", self._config.blowout_position)
 
     def mix(
         self, volume_ul: float, repetitions: int = 3, speed: float = 50.0
     ) -> MixResult:
-        """Perform repeated aspirate/dispense cycles."""
-        mm_travel = volume_ul * self._config.mm_to_ul
-        self._send_command(_CMD_MIX, mm_travel, repetitions, speed)
+        if not self._offline:
+            mm_travel = volume_ul * self._config.mm_to_ul
+            self._send_command(_CMD_MIX, mm_travel, repetitions, speed)
         return MixResult(
             success=True, volume_ul=volume_ul, repetitions=repetitions
         )
 
     def pick_up_tip(self, speed: float = 50.0) -> None:
-        """Seat pipette into a tip."""
-        self._send_command(_CMD_MOVE_TO, self._config.zero_position, speed)
+        if not self._offline:
+            self._send_command(_CMD_MOVE_TO, self._config.zero_position, speed)
         self._has_tip = True
-        self.logger.debug("Tip picked up")
 
     def drop_tip(self, speed: float = 50.0) -> None:
-        """Eject the current tip."""
-        self._send_command(_CMD_MOVE_TO, self._config.drop_tip_position, speed)
+        if not self._offline:
+            self._send_command(_CMD_MOVE_TO, self._config.drop_tip_position, speed)
         self._has_tip = False
-        self.logger.debug("Tip dropped")
+        self._position_mm = self._config.drop_tip_position
 
     def get_status(self) -> PipetteStatus:
-        """Query Arduino for current pipette state."""
+        if self._offline:
+            return PipetteStatus(
+                is_homed=self._is_homed,
+                position_mm=self._position_mm,
+                max_volume=self._config.max_volume,
+                has_tip=self._has_tip,
+                is_primed=self._is_primed,
+            )
         response = self._send_command(_CMD_STATUS)
         parsed = self._parse_key_value(response)
         return PipetteStatus(
@@ -190,20 +217,14 @@ class Pipette(BaseInstrument):
         )
 
     def drip_stop(self, volume_ul: float = 5.0, speed: float = 50.0) -> None:
-        """Small relative aspirate (air) to prevent dripping after dispense."""
+        if self._offline:
+            return
         mm_travel = volume_ul * self._config.mm_to_ul
         self._send_command(_CMD_DRIP_STOP, mm_travel, speed)
-        self.logger.debug("Drip stop: %.1f uL air aspirated", volume_ul)
 
     # ── Private helpers ───────────────────────────────────────────────────
 
     def _send_command(self, code: int, *args: float) -> str:
-        """Send a command to the Arduino and return the response.
-
-        Protocol: sends ``"code,arg1,arg2\\n"``
-        Expects response starting with ``"OK:{...}"`` or ``"ERR:..."``
-        Thread-safe via lock.
-        """
         if self._serial is None or not self._serial.is_open:
             raise PipetteCommandError("Not connected to Arduino")
 
@@ -230,10 +251,8 @@ class Pipette(BaseInstrument):
 
                 if not line:
                     continue
-
                 if line.startswith("OK:"):
                     return line
-
                 if line.startswith("ERR:"):
                     raise PipetteCommandError(
                         f"Command {code} failed: {line}"
@@ -246,11 +265,6 @@ class Pipette(BaseInstrument):
 
     @staticmethod
     def _parse_key_value(response: str) -> dict[str, float]:
-        """Parse ``OK:{key1:val1,key2:val2}`` into a dict of floats.
-
-        The Pawduino firmware returns a custom key:value format (not JSON).
-        Example: ``OK:{homed:1,pos:10.5,max_vol:200}``
-        """
         result: dict[str, float] = {}
         body = response.removeprefix("OK:").strip()
         if body.startswith("{") and body.endswith("}"):
@@ -267,7 +281,6 @@ class Pipette(BaseInstrument):
 
     @staticmethod
     def _parse_position(response: str) -> float:
-        """Extract position_mm from an OK response."""
         parsed = Pipette._parse_key_value(response)
         return float(parsed.get("pos", 0.0))
 

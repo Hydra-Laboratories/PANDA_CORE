@@ -30,7 +30,7 @@ class ASMI(BaseInstrument):
         offset_y: float = 0.0,
         depth: float = 0.0,
         measurement_height: float = 0.0,
-        offline: bool = False,
+        offline: bool = False,  # passed through to BaseInstrument
         default_force: float = 0.0,
         force_threshold: float = _DEFAULT_FORCE_THRESHOLD,
         sensor_channels: Optional[list[int]] = None,
@@ -45,8 +45,8 @@ class ASMI(BaseInstrument):
         super().__init__(
             name=name, offset_x=offset_x, offset_y=offset_y,
             depth=depth, measurement_height=measurement_height,
+            offline=offline,
         )
-        self._offline = offline
         self._default_force = default_force
         self._force_threshold = force_threshold
         self._sensor_channels = sensor_channels or list(_DEFAULT_SENSOR_CHANNELS)

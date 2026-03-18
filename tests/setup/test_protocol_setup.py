@@ -65,7 +65,7 @@ labware:
 BOARD_YAML = """\
 instruments:
   pipette:
-    type: mock_pipette
+    type: pipette
     offset_x: -5.0
     offset_y: 0.0
     depth: 0.0
@@ -258,8 +258,9 @@ instruments:
                 f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
                 mock_mode=True,
             )
-            from instruments.pipette.mock import MockPipette
-            assert isinstance(context.board.instruments["pipette"], MockPipette)
+            from instruments.pipette.driver import Pipette
+            assert isinstance(context.board.instruments["pipette"], Pipette)
+            assert context.board.instruments["pipette"]._offline is True
 
 
 class TestRunProtocolLifecycle:
@@ -268,6 +269,7 @@ class TestRunProtocolLifecycle:
         with _TempYamlFiles() as f:
             results = run_protocol(
                 f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
+                mock_mode=True,
             )
             assert isinstance(results, list)
 
@@ -282,6 +284,7 @@ protocol:
             with pytest.raises(Exception):
                 run_protocol(
                     f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
+                    mock_mode=True,
                 )
 
     def test_run_protocol_mock_mode(self):

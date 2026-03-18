@@ -2,7 +2,7 @@
 
 instruments:
   uvvis:
-      type: mock_uvvis_ccs
+      type: uvvis_ccs
       offset_x: 0.0
       offset_y: 0.0
       depth: 0.0
