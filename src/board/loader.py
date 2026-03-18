@@ -8,22 +8,11 @@ from typing import Dict, TYPE_CHECKING, Type
 import yaml
 from pydantic import ValidationError
 
-try:
-    from instruments.base_instrument import BaseInstrument
-    from instruments.filmetrics.driver import Filmetrics
-    from instruments.filmetrics.mock import MockFilmetrics
-    from instruments.pipette.driver import Pipette
-    from instruments.pipette.mock import MockPipette
-    from instruments.uvvis_ccs.driver import UVVisCCS
-    from instruments.uvvis_ccs.mock import MockUVVisCCS
-except ModuleNotFoundError:  # pragma: no cover - compatibility path for setup scripts
-    from src.instruments.base_instrument import BaseInstrument
-    from src.instruments.filmetrics.driver import Filmetrics
-    from src.instruments.filmetrics.mock import MockFilmetrics
-    from src.instruments.pipette.driver import Pipette
-    from src.instruments.pipette.mock import MockPipette
-    from src.instruments.uvvis_ccs.driver import UVVisCCS
-    from src.instruments.uvvis_ccs.mock import MockUVVisCCS
+from instruments.base_instrument import BaseInstrument
+from instruments.asmi.driver import ASMI
+from instruments.filmetrics.driver import Filmetrics
+from instruments.pipette.driver import Pipette
+from instruments.uvvis_ccs.driver import UVVisCCS
 
 from .board import Board
 
@@ -31,18 +20,13 @@ from .errors import BoardLoaderError
 from .yaml_schema import BoardYamlSchema
 
 if TYPE_CHECKING:
-    try:
-        from gantry import Gantry
-    except ModuleNotFoundError:  # pragma: no cover - compatibility path for setup scripts
-        from src.gantry import Gantry
+    from gantry import Gantry
 
 INSTRUMENT_REGISTRY: Dict[str, Type[BaseInstrument]] = {
+    "asmi": ASMI,
     "uvvis_ccs": UVVisCCS,
-    "mock_uvvis_ccs": MockUVVisCCS,
     "pipette": Pipette,
-    "mock_pipette": MockPipette,
     "filmetrics": Filmetrics,
-    "mock_filmetrics": MockFilmetrics,
 }
 
 
@@ -84,12 +68,15 @@ def _format_loader_exception(path: Path, error: Exception) -> str:
     )
 
 
-def load_board_from_yaml(path: str | Path, gantry: Gantry) -> Board:
+def load_board_from_yaml(
+    path: str | Path, gantry: Gantry, mock_mode: bool = False,
+) -> Board:
     """Load a board YAML file and return a Board with instruments.
 
     Args:
         path: Path to the board YAML file.
         gantry: The Gantry instance to attach to the Board.
+        mock_mode: If True, all instruments are created with offline=True.
 
     Returns:
         Board with all instruments instantiated from the YAML config.
@@ -114,20 +101,20 @@ def load_board_from_yaml(path: str | Path, gantry: Gantry) -> Board:
         type_key = kwargs.pop("type")
         if type_key not in INSTRUMENT_REGISTRY:
             raise KeyError(type_key)
+        if mock_mode:
+            kwargs["offline"] = True
         cls = INSTRUMENT_REGISTRY[type_key]
         instruments[name] = cls(**kwargs)
 
     return Board(gantry=gantry, instruments=instruments)
 
 
-def load_board_from_yaml_safe(path: str | Path, gantry: Gantry) -> Board:
-    """Load board YAML with user-friendly exception formatting.
-
-    Raises:
-        BoardLoaderError: Concise, actionable message intended for CLI output.
-    """
+def load_board_from_yaml_safe(
+    path: str | Path, gantry: Gantry, mock_mode: bool = False,
+) -> Board:
+    """Load board YAML with user-friendly exception formatting."""
     resolved = Path(path)
     try:
-        return load_board_from_yaml(resolved, gantry)
+        return load_board_from_yaml(resolved, gantry, mock_mode=mock_mode)
     except Exception as exc:
         raise BoardLoaderError(_format_loader_exception(resolved, exc)) from exc

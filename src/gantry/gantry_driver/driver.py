@@ -324,11 +324,23 @@ class Mill:
             self.logger.error("Error connecting to the mill: %s", str(exep))
             raise MillConnectionError("Error connecting to the mill") from exep
 
+        # Quick alarm check before sending any commands — GRBL rejects
+        # everything except $X and $H while in alarm state.
+        self.ser_mill.write(b"?")
+        time.sleep(0.2)
+        initial_status = self.read()
+        if initial_status and "alarm" in initial_status.lower():
+            self.logger.warning(
+                "Mill is in alarm state — skipping config/setup. "
+                "Unlock ($X) or home ($H) to clear. Status: %s",
+                initial_status,
+            )
+            return self.ser_mill
+
         self.read_mill_config()
         self.write_mill_config_file("_configuration.json")
         self.read_working_volume()
 
-        self.check_for_alarm_state()
         self.clear_buffers()
         self.set_feed_rate(DEFAULT_FEED_RATE)
         return self.ser_mill
@@ -564,6 +576,10 @@ class Mill:
         """
         Custom homing strategy for machines without valid Z homing.
         Homes X and Y axes independently using hard limits.
+
+        Sets WPos to 0 at the home position after backing off.
+        Gantry._enforce_positive_wpos() handles the final WPos
+        calibration using dir_invert_mask from the YAML config.
         """
         self.logger.info("Starting Custom XY Hard Limit Homing...")
 
@@ -624,7 +640,7 @@ class Mill:
             self.execute_command("G91")
             self.execute_command(f"G0 {axis}{-HOMING_BACKOFF * direction}")
 
-            self.logger.info(f"Setting {axis} Zero...")
+            self.logger.info(f"Setting {axis} WPos to 0 at home position...")
             self.execute_command(f"G10 L20 P1 {axis}0")
 
             self.execute_command("G90")
@@ -728,13 +744,33 @@ class Mill:
         return self.execute_command("$G")
 
     def grbl_settings(self) -> dict:
-        """Ask the mill for its grbl settings."""
-        return self.execute_command("$$")
+        """Return the cached GRBL settings (populated during connect)."""
+        return self.config
 
     def set_grbl_setting(self, setting: str, value: str):
         """Set a grbl setting."""
         command = f"${setting}={value}"
         return self.execute_command(command)
+
+    def is_connected(self) -> bool:
+        """Check if the serial connection is open."""
+        return bool(self.ser_mill and self.ser_mill.is_open)
+
+    def query_raw_status(self) -> str:
+        """Send GRBL '?' and return the raw status string (e.g. '<Idle|WPos:...>')."""
+        if not self.is_connected():
+            return ""
+        try:
+            self.ser_mill.write(b"?")
+            time.sleep(0.1)
+            for _ in range(5):
+                raw = self.read()
+                if isinstance(raw, str) and "<" in raw:
+                    return raw
+                time.sleep(0.05)
+            return str(raw) if raw else ""
+        except Exception:
+            return ""
 
     def current_coordinates(
         self, instrument: Optional[str] = None, instrument_only: bool = True
@@ -780,8 +816,6 @@ class Mill:
                 x_coord = round(float(match.group(1)), 3)
                 y_coord = round(float(match.group(2)), 3)
                 z_coord = round(float(match.group(3)), 3)
-                if coord_type == "MPos":
-                    pass
                 self.logger.info(
                     "%s coordinates: X = %s, Y = %s, Z = %s",
                     coord_type,
@@ -792,14 +826,24 @@ class Mill:
                 break
             else:
                 self.logger.warning(
-                    "%s coordinates not found in the line. Trying again...",
+                    "%s coordinates not found in status: %r. Retrying query...",
                     coord_type,
+                    status,
                 )
-            if i == max_attempts - 1:
-                self.logger.error(
-                    "Error occurred while getting %s coordinates", coord_type
-                )
-                raise LocationNotFound
+                if i == max_attempts - 1:
+                    self.logger.error(
+                        "Error occurred while getting %s coordinates", coord_type
+                    )
+                    raise LocationNotFound
+                # Re-query status for next attempt
+                time.sleep(0.2)
+                self.ser_mill.write(b"?")
+                time.sleep(0.2)
+                status = self.read()
+                retry_attempts = 0
+                while (not status or status[0] != "<") and retry_attempts < 3:
+                    status = self.read()
+                    retry_attempts += 1
 
         mill_center = Coordinates(x_coord, y_coord, z_coord)
         # Adjust coordinates based on the instrument to report where it currently is

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+from typing import Dict, Optional
 
 
 class HomingStrategy(str, Enum):
@@ -17,8 +18,7 @@ class HomingStrategy(str, Enum):
 class WorkingVolume:
     """Gantry working volume bounds in millimeters.
 
-    All coordinates use CNC convention: origin at (0, 0, 0),
-    working area extends into negative space.
+    Coordinates use GRBL WPos (positive X/Y after homing).
     """
 
     x_min: float
@@ -53,3 +53,4 @@ class GantryConfig:
     serial_port: str
     homing_strategy: HomingStrategy
     working_volume: WorkingVolume
+    expected_grbl_settings: Optional[Dict[str, float]] = field(default=None)

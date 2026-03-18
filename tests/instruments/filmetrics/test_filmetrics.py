@@ -11,10 +11,9 @@ from instruments.filmetrics.exceptions import (
     FilmetricsParseError,
 )
 from instruments.filmetrics.driver import Filmetrics
-from instruments.filmetrics.mock import MockFilmetrics
 
 
-# ─── MeasurementResult tests ──────────────────────────────────────────────────
+# --- MeasurementResult tests --------------------------------------------------
 
 class TestMeasurementResult:
 
@@ -50,7 +49,7 @@ class TestMeasurementResult:
             result.thickness_nm = 200.0
 
 
-# ─── Exception hierarchy tests ────────────────────────────────────────────────
+# --- Exception hierarchy tests ------------------------------------------------
 
 class TestExceptions:
 
@@ -69,7 +68,7 @@ class TestExceptions:
         assert issubclass(FilmetricsParseError, FilmetricsError)
 
 
-# ─── Parsing tests ────────────────────────────────────────────────────────────
+# --- Parsing tests ------------------------------------------------------------
 
 class TestParsing:
 
@@ -116,7 +115,7 @@ class TestParsing:
         assert Filmetrics._parse_goodness_of_fit(lines) is None
 
 
-# ─── Driver lifecycle tests (mocked subprocess) ──────────────────────────────
+# --- Driver lifecycle tests (mocked subprocess) -------------------------------
 
 class TestFilmetricsLifecycle:
 
@@ -220,7 +219,7 @@ class TestFilmetricsLifecycle:
         assert isinstance(fm, BaseInstrument)
 
 
-# ─── Command method tests (mocked subprocess) ────────────────────────────────
+# --- Command method tests (mocked subprocess) ---------------------------------
 
 class TestFilmetricsCommands:
 
@@ -336,7 +335,7 @@ class TestFilmetricsCommands:
         # Init uses read(1) char-by-char
         init_text = "Initializing FIRemoteInitializition Complete"
         proc.stdout.read.side_effect = [c for c in init_text]
-        # After init, readline returns EOF — simulates no sentinel
+        # After init, readline returns EOF --- simulates no sentinel
         proc.stdout.readline.side_effect = [""]
 
         mock_popen.return_value = proc
@@ -347,56 +346,39 @@ class TestFilmetricsCommands:
             fm.acquire_sample()
 
 
-# ─── MockFilmetrics tests ────────────────────────────────────────────────────
+# --- Offline Filmetrics tests -------------------------------------------------
 
-class TestMockFilmetrics:
+class TestOfflineFilmetrics:
 
     def test_is_base_instrument(self):
-        mock = MockFilmetrics()
-        assert isinstance(mock, BaseInstrument)
+        fm = Filmetrics(offline=True)
+        assert isinstance(fm, BaseInstrument)
 
     def test_connect_disconnect_cycle(self):
-        mock = MockFilmetrics()
-        mock.connect()
-        assert mock.health_check() is True
-        mock.disconnect()
-        assert mock.health_check() is False
-
-    def test_command_history_tracking(self):
-        mock = MockFilmetrics()
-        mock.connect()
-        mock.acquire_sample()
-        mock.acquire_reference("Si")
-        mock.acquire_background()
-        mock.commit_baseline()
-        mock.measure()
-        mock.save_spectrum("A1")
-
-        assert mock.command_history == [
-            "sample",
-            "reference Si",
-            "background",
-            "commit",
-            "measure",
-            "save A1",
-        ]
+        fm = Filmetrics(offline=True)
+        fm.connect()
+        assert fm.health_check() is True
+        fm.disconnect()  # safe no-op in offline mode
 
     def test_measure_returns_default_result(self):
-        mock = MockFilmetrics()
-        mock.connect()
-        result = mock.measure()
+        fm = Filmetrics(offline=True)
+        fm.connect()
+        result = fm.measure()
         assert isinstance(result, MeasurementResult)
         assert result.is_valid is True
 
     def test_measure_returns_custom_result(self):
-        custom = MeasurementResult(thickness_nm=42.0, goodness_of_fit=0.5)
-        mock = MockFilmetrics(default_result=custom)
-        mock.connect()
-        result = mock.measure()
+        fm = Filmetrics(
+            offline=True,
+            default_thickness_nm=42.0,
+            default_goodness_of_fit=0.5,
+        )
+        fm.connect()
+        result = fm.measure()
         assert result.thickness_nm == 42.0
         assert result.goodness_of_fit == 0.5
         assert result.is_valid is False
 
     def test_disconnect_safe_when_not_connected(self):
-        mock = MockFilmetrics()
-        mock.disconnect()  # Should not raise
+        fm = Filmetrics(offline=True)
+        fm.disconnect()  # Should not raise

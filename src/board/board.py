@@ -3,16 +3,10 @@ from __future__ import annotations
 import logging
 from typing import Any, TYPE_CHECKING
 
-try:
-    from instruments.base_instrument import BaseInstrument
-except ModuleNotFoundError:  # pragma: no cover - compatibility path for setup scripts
-    from src.instruments.base_instrument import BaseInstrument
+from instruments.base_instrument import BaseInstrument
 
 if TYPE_CHECKING:
-    try:
-        from gantry import Gantry
-    except ModuleNotFoundError:  # pragma: no cover - compatibility path for setup scripts
-        from src.gantry import Gantry
+    from gantry import Gantry
 
 # A position is either an (x, y, z) tuple or any object with x, y, z attributes
 # (e.g. a labware object sitting at a fixed deck location).
@@ -91,6 +85,28 @@ class Board:
             )
 
         return (obj.x, obj.y)
+
+    # ── Instrument lifecycle ─────────────────────────────────────────────
+
+    def connect_instruments(self) -> None:
+        """Connect all instruments on the board."""
+        for name, instrument in self.instruments.items():
+            self.logger.info("Connecting instrument: %s", name)
+            instrument.connect()
+
+    def disconnect_instruments(self) -> None:
+        """Disconnect all instruments, logging errors without re-raising.
+
+        Ensures every instrument gets a disconnect attempt even if one fails.
+        """
+        for name, instrument in self.instruments.items():
+            try:
+                self.logger.info("Disconnecting instrument: %s", name)
+                instrument.disconnect()
+            except Exception:
+                self.logger.exception(
+                    "Failed to disconnect instrument '%s'", name,
+                )
 
     # ── Private helpers ───────────────────────────────────────────────────
 

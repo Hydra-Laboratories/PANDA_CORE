@@ -18,10 +18,9 @@ from instruments.pipette.exceptions import (
     PipetteConfigError,
 )
 from instruments.pipette.driver import Pipette
-from instruments.pipette.mock import MockPipette
 
 
-# ─── Model tests ─────────────────────────────────────────────────────────────
+# --- Model tests --------------------------------------------------------------
 
 class TestPipetteConfig:
 
@@ -118,7 +117,7 @@ class TestMixResult:
             result.repetitions = 5
 
 
-# ─── Exception hierarchy tests ───────────────────────────────────────────────
+# --- Exception hierarchy tests ------------------------------------------------
 
 class TestExceptions:
 
@@ -140,7 +139,7 @@ class TestExceptions:
         assert issubclass(PipetteConfigError, PipetteError)
 
 
-# ─── Parsing tests ───────────────────────────────────────────────────────────
+# --- Parsing tests ------------------------------------------------------------
 
 class TestParsing:
 
@@ -173,7 +172,7 @@ class TestParsing:
         assert Pipette._parse_position(response) == 0.0
 
 
-# ─── Driver constructor tests ────────────────────────────────────────────────
+# --- Driver constructor tests -------------------------------------------------
 
 class TestPipetteConstructor:
 
@@ -196,7 +195,7 @@ class TestPipetteConstructor:
         assert pip.name == "my_pip"
 
 
-# ─── Driver lifecycle tests (mocked serial) ─────────────────────────────────
+# --- Driver lifecycle tests (mocked serial) -----------------------------------
 
 class TestPipetteLifecycle:
 
@@ -284,7 +283,7 @@ class TestPipetteLifecycle:
         assert pip.health_check() is True
 
 
-# ─── Driver command tests (mocked serial) ───────────────────────────────────
+# --- Driver command tests (mocked serial) -------------------------------------
 
 class TestPipetteCommands:
 
@@ -442,107 +441,80 @@ class TestPipetteCommands:
         assert "11" in codes  # move_to (prime)
 
 
-# ─── MockPipette tests ──────────────────────────────────────────────────────
+# --- Offline Pipette tests ----------------------------------------------------
 
-class TestMockPipette:
+class TestOfflinePipette:
 
     def test_is_base_instrument(self):
-        mock = MockPipette()
-        assert isinstance(mock, BaseInstrument)
+        pip = Pipette(offline=True)
+        assert isinstance(pip, BaseInstrument)
 
     def test_unknown_model_raises_config_error(self):
         with pytest.raises(PipetteConfigError):
-            MockPipette(pipette_model="p9999_fake")
+            Pipette(pipette_model="p9999_fake", offline=True)
 
     def test_connect_disconnect_cycle(self):
-        mock = MockPipette()
-        mock.connect()
-        assert mock.health_check() is True
-        mock.disconnect()
-        assert mock.health_check() is False
-
-    def test_command_history_tracking(self):
-        mock = MockPipette()
-        mock.connect()
-        mock.home()
-        mock.prime()
-        mock.aspirate(100.0)
-        mock.dispense(100.0)
-        mock.blowout()
-        mock.mix(50.0, repetitions=3)
-        mock.pick_up_tip()
-        mock.drop_tip()
-        mock.get_status()
-        mock.drip_stop(5.0)
-
-        assert mock.command_history == [
-            "home",
-            "prime speed=50.0",
-            "aspirate 100.0uL speed=50.0",
-            "dispense 100.0uL speed=50.0",
-            "blowout speed=50.0",
-            "mix 50.0uL reps=3 speed=50.0",
-            "pick_up_tip",
-            "drop_tip",
-            "get_status",
-            "drip_stop 5.0uL speed=50.0",
-        ]
+        pip = Pipette(offline=True)
+        pip.connect()
+        assert pip.health_check() is True
+        pip.disconnect()  # safe no-op in offline mode
 
     def test_aspirate_returns_result(self):
-        mock = MockPipette()
-        mock.connect()
-        result = mock.aspirate(100.0)
+        pip = Pipette(offline=True)
+        pip.connect()
+        result = pip.aspirate(100.0)
         assert isinstance(result, AspirateResult)
         assert result.success is True
         assert result.volume_ul == 100.0
 
     def test_dispense_returns_result(self):
-        mock = MockPipette()
-        mock.connect()
-        result = mock.dispense(100.0)
+        pip = Pipette(offline=True)
+        pip.connect()
+        result = pip.dispense(100.0)
         assert isinstance(result, AspirateResult)
         assert result.success is True
 
     def test_mix_returns_result(self):
-        mock = MockPipette()
-        mock.connect()
-        result = mock.mix(50.0, repetitions=5)
+        pip = Pipette(offline=True)
+        pip.connect()
+        result = pip.mix(50.0, repetitions=5)
         assert isinstance(result, MixResult)
         assert result.repetitions == 5
 
     def test_get_status_returns_status(self):
-        mock = MockPipette()
-        mock.connect()
-        mock.home()
-        mock.prime()
-        status = mock.get_status()
+        pip = Pipette(offline=True)
+        pip.connect()
+        pip.home()
+        pip.prime()
+        status = pip.get_status()
         assert isinstance(status, PipetteStatus)
         assert status.is_homed is True
         assert status.is_primed is True
         assert status.max_volume == 200.0
 
     def test_tip_tracking(self):
-        mock = MockPipette()
-        mock.connect()
-        mock.pick_up_tip()
-        status = mock.get_status()
+        pip = Pipette(offline=True)
+        pip.connect()
+        pip.pick_up_tip()
+        status = pip.get_status()
         assert status.has_tip is True
-        mock.drop_tip()
-        status = mock.get_status()
+        pip.drop_tip()
+        status = pip.get_status()
         assert status.has_tip is False
 
     def test_warm_up_homes_and_primes(self):
-        mock = MockPipette()
-        mock.connect()
-        mock.warm_up()
-        assert "home" in mock.command_history
-        assert any("prime" in c for c in mock.command_history)
+        pip = Pipette(offline=True)
+        pip.connect()
+        pip.warm_up()
+        status = pip.get_status()
+        assert status.is_homed is True
+        assert status.is_primed is True
 
     def test_disconnect_safe_when_not_connected(self):
-        mock = MockPipette()
-        mock.disconnect()  # Should not raise
+        pip = Pipette(offline=True)
+        pip.disconnect()  # Should not raise
 
     def test_config_property(self):
-        mock = MockPipette(pipette_model="flex_1channel_1000")
-        assert mock.config.family == PipetteFamily.FLEX
-        assert mock.config.max_volume == 1000.0
+        pip = Pipette(pipette_model="flex_1channel_1000", offline=True)
+        assert pip.config.family == PipetteFamily.FLEX
+        assert pip.config.max_volume == 1000.0

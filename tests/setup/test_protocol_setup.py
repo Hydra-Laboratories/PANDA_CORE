@@ -8,27 +8,27 @@ import tempfile
 
 import pytest
 
-from src.board.errors import BoardLoaderError
-from src.deck.errors import DeckLoaderError
-from src.gantry.errors import GantryLoaderError
-from src.gantry.gantry_config import GantryConfig
-from src.protocol_engine.errors import ProtocolLoaderError
-from src.protocol_engine.protocol import Protocol, ProtocolContext
-from src.protocol_engine.registry import CommandRegistry
-from src.protocol_engine.setup import setup_protocol
-from src.validation.errors import SetupValidationError
+from board.errors import BoardLoaderError
+from deck.errors import DeckLoaderError
+from gantry.errors import GantryLoaderError
+from gantry.gantry_config import GantryConfig
+from protocol_engine.errors import ProtocolLoaderError
+from protocol_engine.protocol import Protocol, ProtocolContext
+from protocol_engine.registry import CommandRegistry
+from protocol_engine.setup import run_protocol, setup_protocol
+from validation.errors import SetupValidationError
 
 
 @pytest.fixture(autouse=True)
 def _ensure_commands_registered():
     """Ensure protocol commands are registered (may be cleared by other test fixtures)."""
     if not CommandRegistry.instance().command_names:
-        import src.protocol_engine.commands.move
-        import src.protocol_engine.commands.pipette
-        import src.protocol_engine.commands.scan
-        importlib.reload(src.protocol_engine.commands.move)
-        importlib.reload(src.protocol_engine.commands.pipette)
-        importlib.reload(src.protocol_engine.commands.scan)
+        import protocol_engine.commands.move
+        import protocol_engine.commands.pipette
+        import protocol_engine.commands.scan
+        importlib.reload(protocol_engine.commands.move)
+        importlib.reload(protocol_engine.commands.pipette)
+        importlib.reload(protocol_engine.commands.scan)
 
 
 # ── YAML templates ──────────────────────────────────────────────────────
@@ -65,7 +65,7 @@ labware:
 BOARD_YAML = """\
 instruments:
   pipette:
-    type: mock_pipette
+    type: pipette
     offset_x: -5.0
     offset_y: 0.0
     depth: 0.0
@@ -242,3 +242,64 @@ labware:
             )
             # Board should have a gantry (mock) — verify it exists
             assert context.board.gantry is not None
+
+    def test_mock_mode_swaps_instrument_types(self):
+        board_yaml = """\
+instruments:
+  pipette:
+    type: pipette
+    offset_x: -5.0
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 0.0
+"""
+        with _TempYamlFiles(board=board_yaml) as f:
+            _, context = setup_protocol(
+                f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
+                mock_mode=True,
+            )
+            from instruments.pipette.driver import Pipette
+            assert isinstance(context.board.instruments["pipette"], Pipette)
+            assert context.board.instruments["pipette"]._offline is True
+
+
+class TestRunProtocolLifecycle:
+
+    def test_run_protocol_connects_and_disconnects(self):
+        with _TempYamlFiles() as f:
+            results = run_protocol(
+                f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
+                mock_mode=True,
+            )
+            assert isinstance(results, list)
+
+    def test_run_protocol_disconnects_on_failure(self):
+        bad_protocol = """\
+protocol:
+  - move:
+      instrument: nonexistent_instrument
+      position: vial_1
+"""
+        with _TempYamlFiles(protocol=bad_protocol) as f:
+            with pytest.raises(Exception):
+                run_protocol(
+                    f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
+                    mock_mode=True,
+                )
+
+    def test_run_protocol_mock_mode(self):
+        board_yaml = """\
+instruments:
+  pipette:
+    type: pipette
+    offset_x: -5.0
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 0.0
+"""
+        with _TempYamlFiles(board=board_yaml) as f:
+            results = run_protocol(
+                f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
+                mock_mode=True,
+            )
+            assert isinstance(results, list)

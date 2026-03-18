@@ -10,11 +10,10 @@ from instruments.uvvis_ccs.exceptions import (
     UVVisCCSMeasurementError,
     UVVisCCSTimeoutError,
 )
-from instruments.uvvis_ccs.driver import UVVisCCS
-from instruments.uvvis_ccs.mock import MockUVVisCCS, _synthetic_spectrum
+from instruments.uvvis_ccs.driver import UVVisCCS, _synthetic_spectrum
 
 
-# ─── UVVisSpectrum model tests ───────────────────────────────────────────────
+# --- UVVisSpectrum model tests ------------------------------------------------
 
 
 class TestUVVisSpectrum:
@@ -79,7 +78,7 @@ class TestUVVisSpectrum:
         assert spec.num_pixels == 100
 
 
-# ─── Exception hierarchy tests ───────────────────────────────────────────────
+# --- Exception hierarchy tests ------------------------------------------------
 
 
 class TestExceptions:
@@ -99,7 +98,7 @@ class TestExceptions:
         assert issubclass(UVVisCCSTimeoutError, UVVisCCSError)
 
 
-# ─── Synthetic spectrum helper tests ─────────────────────────────────────────
+# --- Synthetic spectrum helper tests ------------------------------------------
 
 
 class TestSyntheticSpectrum:
@@ -112,14 +111,14 @@ class TestSyntheticSpectrum:
         assert spec.wavelengths[-1] == pytest.approx(800.0)
         assert all(v == 0.5 for v in spec.intensities)
 
-    def test_custom_pixel_count(self):
-        spec = _synthetic_spectrum(n_pixels=10)
-        assert spec.num_pixels == 10
-        assert spec.wavelengths[0] == pytest.approx(200.0)
-        assert spec.wavelengths[-1] == pytest.approx(800.0)
+    def test_custom_integration_time(self):
+        spec = _synthetic_spectrum(integration_time_s=1.0)
+        assert spec.is_valid is True
+        assert spec.num_pixels == NUM_PIXELS
+        assert spec.integration_time_s == pytest.approx(1.0)
 
 
-# ─── Driver tests (mocked ctypes DLL) ───────────────────────────────────────
+# --- Driver tests (mocked ctypes DLL) ----------------------------------------
 
 
 class TestUVVisCCSDriver:
@@ -265,63 +264,35 @@ class TestUVVisCCSDriver:
         assert isinstance(ccs, BaseInstrument)
 
 
-# ─── MockUVVisCCS tests ─────────────────────────────────────────────────────
+# --- Offline UVVisCCS tests ---------------------------------------------------
 
 
-class TestMockUVVisCCS:
+class TestOfflineUVVisCCS:
 
     def test_is_base_instrument(self):
-        mock = MockUVVisCCS()
-        assert isinstance(mock, BaseInstrument)
+        ccs = UVVisCCS(offline=True)
+        assert isinstance(ccs, BaseInstrument)
 
     def test_connect_disconnect_cycle(self):
-        mock = MockUVVisCCS()
-        mock.connect()
-        assert mock.health_check() is True
-        mock.disconnect()
-        assert mock.health_check() is False
+        ccs = UVVisCCS(offline=True)
+        ccs.connect()
+        assert ccs.health_check() is True
+        ccs.disconnect()  # safe no-op in offline mode
 
     def test_measure_returns_default_spectrum(self):
-        mock = MockUVVisCCS()
-        mock.connect()
-        result = mock.measure()
+        ccs = UVVisCCS(offline=True)
+        ccs.connect()
+        result = ccs.measure()
         assert isinstance(result, UVVisSpectrum)
         assert result.is_valid is True
         assert result.num_pixels == NUM_PIXELS
 
-    def test_measure_returns_custom_result(self):
-        custom = UVVisSpectrum(
-            wavelengths=(400.0, 500.0),
-            intensities=(0.1, 0.9),
-            integration_time_s=1.0,
-        )
-        mock = MockUVVisCCS(default_result=custom)
-        mock.connect()
-        result = mock.measure()
-        assert result.wavelengths == (400.0, 500.0)
-        assert result.intensities == (0.1, 0.9)
-
-    def test_command_history_tracking(self):
-        mock = MockUVVisCCS()
-        mock.connect()
-        mock.set_integration_time(0.5)
-        mock.get_integration_time()
-        mock.measure()
-        mock.get_device_info()
-
-        assert mock.command_history == [
-            "set_integration_time 0.5",
-            "get_integration_time",
-            "measure",
-            "get_device_info",
-        ]
-
     def test_set_integration_time_updates_state(self):
-        mock = MockUVVisCCS()
-        mock.connect()
-        mock.set_integration_time(1.5)
-        assert mock.get_integration_time() == 1.5
+        ccs = UVVisCCS(offline=True)
+        ccs.connect()
+        ccs.set_integration_time(1.5)
+        assert ccs.get_integration_time() == 1.5
 
     def test_disconnect_safe_when_not_connected(self):
-        mock = MockUVVisCCS()
-        mock.disconnect()  # should not raise
+        ccs = UVVisCCS(offline=True)
+        ccs.disconnect()  # should not raise

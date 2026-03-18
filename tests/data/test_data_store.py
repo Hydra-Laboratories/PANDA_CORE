@@ -10,6 +10,7 @@ import pytest
 from data.data_store import DataStore
 from instruments.filmetrics.models import MeasurementResult
 from instruments.uvvis_ccs.models import UVVisSpectrum
+from protocol_engine.measurements import InstrumentMeasurement, MeasurementType
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -310,6 +311,52 @@ class TestLogMeasurementDispatch:
         eid = store.create_experiment(cid, "plate_1", "A1", "[]")
         with pytest.raises(TypeError, match="Unsupported measurement type"):
             store.log_measurement(eid, 42)
+        store.close()
+
+    def test_routes_uvvis_instrument_measurement(self):
+        store = _make_store()
+        cid = store.create_campaign(description="test")
+        eid = store.create_experiment(cid, "plate_1", "A1", "[]")
+
+        measurement = InstrumentMeasurement(
+            measurement_type=MeasurementType.UVVIS_SPECTRUM,
+            payload={
+                "wavelength_nm": [500.0, 501.0],
+                "intensity_au": [0.5, 0.6],
+            },
+            metadata={"integration_time_s": 0.24},
+        )
+        mid = store.log_measurement(eid, measurement)
+        assert store._conn.execute(
+            "SELECT COUNT(*) FROM uvvis_measurements WHERE id = ?", (mid,)
+        ).fetchone()[0] == 1
+        store.close()
+
+    def test_uvvis_instrument_measurement_blob_round_trip(self):
+        store = _make_store()
+        cid = store.create_campaign(description="test")
+        eid = store.create_experiment(cid, "plate_1", "A1", "[]")
+
+        measurement = InstrumentMeasurement(
+            measurement_type=MeasurementType.UVVIS_SPECTRUM,
+            payload={
+                "wavelength_nm": [500.0, 501.0, 502.0],
+                "intensity_au": [0.5, 0.6, 0.7],
+            },
+            metadata={"integration_time_s": 1.5},
+        )
+        mid = store.log_measurement(eid, measurement)
+        row = store._conn.execute(
+            "SELECT wavelengths, intensities, integration_time_s "
+            "FROM uvvis_measurements WHERE id = ?",
+            (mid,),
+        ).fetchone()
+
+        recovered_wl = struct.unpack("<3d", row[0])
+        recovered_int = struct.unpack("<3d", row[1])
+        assert recovered_wl == (500.0, 501.0, 502.0)
+        assert recovered_int == (0.5, 0.6, 0.7)
+        assert row[2] == pytest.approx(1.5)
         store.close()
 
 

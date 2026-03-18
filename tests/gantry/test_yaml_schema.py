@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from src.gantry.yaml_schema import GantryYamlSchema
+from gantry.yaml_schema import GantryYamlSchema
 
 
 def _valid_gantry_dict() -> dict:
@@ -120,3 +120,51 @@ class TestGantryYamlSchema:
         data["cnc"]["extra_field"] = "value"
         with pytest.raises(ValidationError):
             GantryYamlSchema.model_validate(data)
+
+
+class TestGrblSettingsYaml:
+
+    def test_grbl_settings_optional(self):
+        data = _valid_gantry_dict()
+        schema = GantryYamlSchema.model_validate(data)
+        assert schema.grbl_settings is None
+
+    def test_grbl_settings_parsed(self):
+        data = _valid_gantry_dict()
+        data["grbl_settings"] = {
+            "dir_invert_mask": 2,
+            "status_report": 1,
+            "max_travel_x": 300.0,
+            "max_travel_y": 200.0,
+            "max_travel_z": 80.0,
+        }
+        schema = GantryYamlSchema.model_validate(data)
+        assert schema.grbl_settings.dir_invert_mask == 2
+        assert schema.grbl_settings.status_report == 1
+        assert schema.grbl_settings.max_travel_x == 300.0
+        assert schema.grbl_settings.max_travel_y == 200.0
+
+    def test_grbl_settings_all_fields_optional(self):
+        data = _valid_gantry_dict()
+        data["grbl_settings"] = {}
+        schema = GantryYamlSchema.model_validate(data)
+        assert schema.grbl_settings.dir_invert_mask is None
+        assert schema.grbl_settings.max_travel_x is None
+
+    def test_grbl_settings_extra_field_rejected(self):
+        data = _valid_gantry_dict()
+        data["grbl_settings"] = {"unknown_setting": 42}
+        with pytest.raises(ValidationError):
+            GantryYamlSchema.model_validate(data)
+
+    def test_grbl_settings_boolean_fields(self):
+        data = _valid_gantry_dict()
+        data["grbl_settings"] = {
+            "hard_limits": True,
+            "soft_limits": False,
+            "homing_enable": True,
+        }
+        schema = GantryYamlSchema.model_validate(data)
+        assert schema.grbl_settings.hard_limits is True
+        assert schema.grbl_settings.soft_limits is False
+        assert schema.grbl_settings.homing_enable is True
