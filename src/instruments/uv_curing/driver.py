@@ -83,7 +83,10 @@ class UVCuring(BaseInstrument):
 
     def disconnect(self) -> None:
         if self._led_on:
-            self.led_off()
+            try:
+                self.led_off()
+            except Exception:
+                self._led_on = False
         if self._offline:
             self.logger.info("UVCuring disconnected (offline)")
             return
@@ -151,6 +154,11 @@ class UVCuring(BaseInstrument):
         intensity = intensity if intensity is not None else self._default_intensity
         exposure_time = exposure_time if exposure_time is not None else self._default_exposure_time
 
+        if intensity <= 0:
+            raise UVCuringCommandError("Intensity must be > 0%")
+        if exposure_time <= 0:
+            raise UVCuringCommandError("Exposure time must be > 0s")
+
         self.set_intensity(intensity)
         self.led_on()
 
@@ -196,6 +204,10 @@ class UVCuring(BaseInstrument):
             self._serial.write((command + "\n").encode())
             self._serial.flush()
             response = self._serial.readline().decode().strip()
+            if not response:
+                raise UVCuringTimeoutError(
+                    f"No response to '{command}' within {self._command_timeout}s"
+                )
             if response.startswith("ERR"):
                 raise UVCuringCommandError(
                     f"UV command '{command}' failed: {response}"
