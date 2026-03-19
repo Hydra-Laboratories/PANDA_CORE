@@ -12,7 +12,6 @@ from instruments.base_instrument import BaseInstrument
 from instruments.asmi.driver import ASMI
 from instruments.filmetrics.driver import Filmetrics
 from instruments.pipette.driver import Pipette
-from instruments.uv_curing.driver import UVCuring
 from instruments.uvvis_ccs.driver import UVVisCCS
 
 from .board import Board
@@ -25,10 +24,9 @@ if TYPE_CHECKING:
 
 INSTRUMENT_REGISTRY: Dict[str, Type[BaseInstrument]] = {
     "asmi": ASMI,
-    "filmetrics": Filmetrics,
-    "pipette": Pipette,
-    "uv_curing": UVCuring,
     "uvvis_ccs": UVVisCCS,
+    "pipette": Pipette,
+    "filmetrics": Filmetrics,
 }
 
 
