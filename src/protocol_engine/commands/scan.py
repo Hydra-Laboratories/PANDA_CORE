@@ -29,21 +29,25 @@ def scan(
     plate: str,
     instrument: str,
     method: str,
+    method_kwargs: Dict[str, Any] = {},
 ) -> Dict[str, Any]:
     """Scan every well on *plate* using *instrument*'s *method*.
 
     Iterates wells in row-major order (A1, A2, ..., B1, B2, ...).
     For each well, moves the instrument into position (applying
-    measurement_height offset) then calls the method.
+    measurement_height offset) then calls the method with any
+    provided keyword arguments.
 
     When a ``DataStore`` is configured on *context*, each measurement
     is persisted as an experiment + measurement row in the database.
 
     Args:
-        context:    Runtime context (board, deck, logger).
-        plate:      Deck key of the well plate (e.g. "plate_1").
-        instrument: Name of the instrument registered on the board.
-        method:     Name of the method on the instrument to call per well.
+        context:       Runtime context (board, deck, logger).
+        plate:         Deck key of the well plate (e.g. "plate_1").
+        instrument:    Name of the instrument registered on the board.
+        method:        Name of the method on the instrument to call per well.
+        method_kwargs: Keyword arguments passed to the instrument method
+                       on each well (e.g. {"intensity": 50, "exposure_time": 10.0}).
 
     Returns:
         Mapping of well ID to the result of each method call.
@@ -72,7 +76,7 @@ def scan(
         well = plate_obj.get_well_center(well_id)
         target = (well.x, well.y, well.z - instr.measurement_height)
         context.board.move(instrument, target)
-        result = callable_method()
+        result = callable_method(**method_kwargs)
         results[well_id] = result
 
         if context.data_store is not None and context.campaign_id is not None:
