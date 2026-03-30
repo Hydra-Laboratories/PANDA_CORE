@@ -33,22 +33,26 @@ def scan(
     instrument: str,
     method: str,
     delay_s: float = 0.0,
+    method_kwargs: Dict[str, Any] = {},
 ) -> Dict[str, Any]:
     """Scan every well on *plate* using *instrument*'s *method*.
 
     Iterates wells in row-major order (A1, A2, ..., B1, B2, ...).
     For each well, moves the instrument into position (applying
-    measurement_height offset) then calls the method.
+    measurement_height offset) then calls the method with any
+    provided keyword arguments.
 
     When a ``DataStore`` is configured on *context*, each measurement
     is persisted as an experiment + measurement row in the database.
 
     Args:
-        context:    Runtime context (board, deck, logger).
-        plate:      Deck key of the well plate (e.g. "plate_1").
-        instrument: Name of the instrument registered on the board.
-        method:     Name of the method on the instrument to call per well.
-        delay_s:    Seconds to pause between wells (default 0.0).
+        context:       Runtime context (board, deck, logger).
+        plate:         Deck key of the well plate (e.g. "plate_1").
+        instrument:    Name of the instrument registered on the board.
+        method:        Name of the method on the instrument to call per well.
+        delay_s:       Seconds to pause between wells (default 0.0).
+        method_kwargs: Keyword arguments passed to the instrument method
+                       on each well (e.g. {"intensity": 50, "exposure_time": 10.0}).
 
     Returns:
         Mapping of well ID to the result of each method call.
@@ -84,10 +88,9 @@ def scan(
         context.board.move(instrument, target)
 
         # Inject gantry if the method accepts it (e.g. ASMI.indentation
-        # needs the gantry for Z stepping). Simple methods like
-        # UVVis.measure() still work with no args.
+        # needs the gantry for Z stepping), then merge with method_kwargs.
         sig = inspect.signature(callable_method)
-        kwargs: Dict[str, Any] = {}
+        kwargs: Dict[str, Any] = dict(method_kwargs)
         if "gantry" in sig.parameters:
             kwargs["gantry"] = context.board.gantry
         result = callable_method(**kwargs)
