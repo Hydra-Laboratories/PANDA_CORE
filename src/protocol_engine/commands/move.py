@@ -1,8 +1,6 @@
 """Protocol command: move."""
 
-from __future__ import annotations
-
-from typing import Any, List, TYPE_CHECKING, Union
+from typing import Any, TYPE_CHECKING
 
 from ..registry import protocol_command
 
@@ -11,7 +9,7 @@ if TYPE_CHECKING:
 
 
 @protocol_command("move")
-def move(context: ProtocolContext, instrument: str, position: Union[str, List[float]]) -> None:
+def move(context: "ProtocolContext", instrument: str, position: Any) -> None:
     """Move *instrument* to *position*.
 
     Position resolution order:
