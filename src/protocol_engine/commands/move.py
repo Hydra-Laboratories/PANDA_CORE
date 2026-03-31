@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any, List, TYPE_CHECKING, Union
 
 from ..registry import protocol_command
 
@@ -11,17 +11,20 @@ if TYPE_CHECKING:
 
 
 @protocol_command("move")
-def move(context: ProtocolContext, instrument: str, position: str) -> None:
-    """Move *instrument* to *position* on the deck.
+def move(context: ProtocolContext, instrument: str, position: Union[str, List[float]]) -> None:
+    """Move *instrument* to *position*.
 
-    Direct 1:1 mapping to ``Board.move(instrument, position)``.
+    Position can be a deck target string (e.g. "plate_1.A1") resolved
+    via Deck.resolve(), or raw [x, y, z] coordinates.
 
     Args:
         context:    Runtime context (board, deck, logger).
-        instrument: Name of the instrument registered on the board (e.g. "pipette").
-        position:   Deck target string resolved via ``Deck.resolve()``
-                    (e.g. "plate_1.A1", "vial_1").
+        instrument: Name of the instrument registered on the board.
+        position:   Deck target string or [x, y, z] coordinate list.
     """
-    coord = context.deck.resolve(position)
-    context.logger.info("move: %s -> %s (%s)", instrument, position, coord)
-    context.board.move(instrument, coord)
+    if isinstance(position, (list, tuple)):
+        target = tuple(position)
+    else:
+        target = context.deck.resolve(position)
+    context.logger.info("move: %s -> %s", instrument, target)
+    context.board.move(instrument, target)
