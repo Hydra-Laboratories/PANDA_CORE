@@ -20,5 +20,8 @@ def home(context: "ProtocolContext") -> None:
         context: Runtime context (board, deck, logger).
     """
     context.logger.info("home: homing gantry")
-    context.board.gantry.home()
-    context.board.gantry.zero_coordinates()
+    gantry = context.board.gantry
+    gantry.set_serial_timeout(10)
+    gantry.home()
+    gantry.zero_coordinates()
+    gantry.set_serial_timeout(0.05)
