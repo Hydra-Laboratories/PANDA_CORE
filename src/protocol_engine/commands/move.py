@@ -14,8 +14,7 @@ if TYPE_CHECKING:
 def move(context: ProtocolContext, instrument: str, position: str) -> None:
     """Move *instrument* to *position* on the deck.
 
-    Resolves the deck position and applies the instrument's
-    measurement_height offset to Z before moving.
+    Direct 1:1 mapping to ``Board.move(instrument, position)``.
 
     Args:
         context:    Runtime context (board, deck, logger).
@@ -24,7 +23,5 @@ def move(context: ProtocolContext, instrument: str, position: str) -> None:
                     (e.g. "plate_1.A1", "vial_1").
     """
     coord = context.deck.resolve(position)
-    instr = context.board.instruments[instrument]
-    target = (coord.x, coord.y, coord.z + instr.measurement_height)
-    context.logger.info("move: %s -> %s (%s)", instrument, position, target)
-    context.board.move(instrument, target)
+    context.logger.info("move: %s -> %s (%s)", instrument, position, coord)
+    context.board.move(instrument, coord)
