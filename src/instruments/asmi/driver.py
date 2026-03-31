@@ -209,7 +209,16 @@ class ASMI(BaseInstrument):
         gantry.move_to(x, y, z)
         self._wait_for_idle(gantry)
 
-    def indentation(self, gantry) -> dict:
+    def indentation(
+        self,
+        gantry,
+        z_target: float | None = None,
+        step_size: float | None = None,
+        force_limit: float | None = None,
+        well_top_z: float | None = None,
+        baseline_samples: int | None = None,
+        safe_z: float | None = None,
+    ) -> dict:
         """Perform step-by-step indentation at the current XY position.
 
         The scan command positions the gantry at the well before calling
@@ -227,16 +236,24 @@ class ASMI(BaseInstrument):
             Dict with keys: measurements, baseline_avg, baseline_std,
             force_exceeded, data_points.
         """
+        # Allow protocol method_kwargs to override instance defaults
+        _z_target = z_target if z_target is not None else self._z_target
+        _step_size = step_size if step_size is not None else self._step_size
+        _force_limit = force_limit if force_limit is not None else self._force_limit
+        _well_top_z = well_top_z if well_top_z is not None else self._well_top_z
+        _baseline_samples = baseline_samples if baseline_samples is not None else self._baseline_samples
+        _safe_z = safe_z if safe_z is not None else self._safe_z
+
         if self._offline:
-            return self._offline_indentation(gantry)
+            return self._offline_indentation(gantry, _z_target, _step_size, _safe_z, _well_top_z)
 
         coords = gantry.get_coordinates()
         cur_x, cur_y = coords["x"], coords["y"]
 
-        self._move_z(gantry, cur_x, cur_y, self._well_top_z)
+        self._move_z(gantry, cur_x, cur_y, _well_top_z)
 
         baseline_avg, baseline_std = self.get_baseline_force(
-            samples=self._baseline_samples
+            samples=_baseline_samples
         )
         self.logger.info(
             "Baseline: %.3f +/- %.3f N", baseline_avg, baseline_std
@@ -248,10 +265,10 @@ class ASMI(BaseInstrument):
         while True:
             coords = gantry.get_coordinates()
             current_z = coords["z"]
-            if current_z <= self._z_target:
-                self.logger.info("Reached z_target %.3f mm", self._z_target)
+            if current_z <= _z_target:
+                self.logger.info("Reached z_target %.3f mm", _z_target)
                 break
-            next_z = current_z - self._step_size
+            next_z = current_z - _step_size
             self._move_z(gantry, cur_x, cur_y, next_z)
 
             coords = gantry.get_coordinates()
@@ -270,15 +287,15 @@ class ASMI(BaseInstrument):
                     len(measurements), coords["z"], force, corrected,
                 )
 
-            if abs(corrected) > self._force_limit:
+            if abs(corrected) > _force_limit:
                 self.logger.info(
                     "Force limit exceeded: %.3f N > %.1f N",
-                    corrected, self._force_limit,
+                    corrected, _force_limit,
                 )
                 force_exceeded = True
                 break
 
-        self._move_z(gantry, cur_x, cur_y, self._safe_z)
+        self._move_z(gantry, cur_x, cur_y, _safe_z)
 
         return {
             "measurements": measurements,
@@ -288,16 +305,16 @@ class ASMI(BaseInstrument):
             "data_points": len(measurements),
         }
 
-    def _offline_indentation(self, gantry) -> dict:
+    def _offline_indentation(self, gantry, z_target, step_size, safe_z, well_top_z) -> dict:
         """Fast offline indentation — no idle-wait, synthetic data."""
         coords = gantry.get_coordinates()
         cur_x, cur_y = coords["x"], coords["y"]
-        gantry.move_to(cur_x, cur_y, self._well_top_z)
+        gantry.move_to(cur_x, cur_y, well_top_z)
 
         measurements = []
-        z = self._well_top_z
-        while z > self._z_target:
-            z -= self._step_size
+        z = well_top_z
+        while z > z_target:
+            z -= step_size
             gantry.move_to(cur_x, cur_y, z)
             measurements.append({
                 "timestamp": time.time(),
@@ -306,7 +323,7 @@ class ASMI(BaseInstrument):
                 "corrected_force_n": 0.0,
             })
 
-        gantry.move_to(cur_x, cur_y, self._safe_z)
+        gantry.move_to(cur_x, cur_y, safe_z)
 
         return {
             "measurements": measurements,
