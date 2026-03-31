@@ -24,6 +24,7 @@ class ProtocolContext:
 
     board: Board
     deck: Deck
+    positions: Dict[str, Any] = field(default_factory=dict)
     gantry: Optional[GantryConfig] = None
     logger: logging.Logger = field(
         default_factory=lambda: logging.getLogger("protocol"),
@@ -81,9 +82,11 @@ class Protocol:
         self,
         steps: List[ProtocolStep],
         source_path: Path | None = None,
+        positions: Dict[str, Any] | None = None,
     ) -> None:
         self._steps = list(steps)
         self.source_path = source_path
+        self.positions = positions or {}
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     @property

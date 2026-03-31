@@ -72,7 +72,7 @@ def setup_protocol(
     if violations:
         raise SetupValidationError(violations)
 
-    context = ProtocolContext(board=board, deck=deck, gantry=gantry_config)
+    context = ProtocolContext(board=board, deck=deck, positions=protocol.positions, gantry=gantry_config)
     return protocol, context
 
 

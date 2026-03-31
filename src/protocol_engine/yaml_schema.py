@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -67,4 +67,5 @@ class ProtocolYamlSchema(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    positions: Optional[Dict[str, List[float]]] = None
     protocol: List[ProtocolStepSchema]

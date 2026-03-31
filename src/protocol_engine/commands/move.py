@@ -14,16 +14,20 @@ if TYPE_CHECKING:
 def move(context: ProtocolContext, instrument: str, position: Union[str, List[float]]) -> None:
     """Move *instrument* to *position*.
 
-    Position can be a deck target string (e.g. "plate_1.A1") resolved
-    via Deck.resolve(), or raw [x, y, z] coordinates.
+    Position resolution order:
+        1. Protocol-defined named position (from ``positions:`` in YAML)
+        2. Raw [x, y, z] coordinates
+        3. Deck target string via ``Deck.resolve()``
 
     Args:
         context:    Runtime context (board, deck, logger).
         instrument: Name of the instrument registered on the board.
-        position:   Deck target string or [x, y, z] coordinate list.
+        position:   Named position, [x, y, z] list, or deck target string.
     """
     if isinstance(position, (list, tuple)):
         target = tuple(position)
+    elif isinstance(position, str) and position in context.positions:
+        target = tuple(context.positions[position])
     else:
         target = context.deck.resolve(position)
     context.logger.info("move: %s -> %s", instrument, target)
