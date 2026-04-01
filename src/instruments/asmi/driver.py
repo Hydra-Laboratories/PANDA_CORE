@@ -34,11 +34,9 @@ class ASMI(BaseInstrument):
         default_force: float = 0.0,
         force_threshold: float = _DEFAULT_FORCE_THRESHOLD,
         sensor_channels: Optional[list[int]] = None,
-        z_target: float = -17.0,
+        z_limit: float = -17.0,
         step_size: float = 0.01,
         force_limit: float = 15.0,
-        well_top_z: float = -9.0,
-        safe_z: float = -50.0,
         baseline_samples: int = 10,
         idle_timeout: float = 10.0,
     ):
@@ -50,11 +48,9 @@ class ASMI(BaseInstrument):
         self._default_force = default_force
         self._force_threshold = force_threshold
         self._sensor_channels = sensor_channels or list(_DEFAULT_SENSOR_CHANNELS)
-        self._z_target = z_target
+        self._z_limit = z_limit
         self._step_size = step_size
         self._force_limit = force_limit
-        self._well_top_z = well_top_z
-        self._safe_z = safe_z
         self._baseline_samples = baseline_samples
         self._idle_timeout = idle_timeout
         self._godirect = None
@@ -212,45 +208,47 @@ class ASMI(BaseInstrument):
     def indentation(
         self,
         gantry,
-        z_target: float | None = None,
+        z_limit: float | None = None,
         step_size: float | None = None,
         force_limit: float | None = None,
-        well_top_z: float | None = None,
+        measurement_height: float | None = None,
         baseline_samples: int | None = None,
-        safe_z: float | None = None,
     ) -> dict:
         """Perform step-by-step indentation at the current XY position.
 
         The scan command positions the gantry at the well before calling
         this method. Indentation then:
-        1. Lowers to well_top_z
+        1. Lowers to measurement_height
         2. Takes baseline force readings
-        3. Steps Z toward z_target, reading force at each step
-        4. Stops on force_limit or z_target
-        5. Returns to safe_z
+        3. Steps Z toward z_limit, reading force at each step
+        4. Stops on force_limit or z_limit
 
         Args:
-            gantry: Gantry instance for Z movement.
+            gantry:             Gantry instance for Z movement.
+            z_limit:            Z position to step down to (overrides instance default).
+            step_size:          Z increment per step in mm (overrides instance default).
+            force_limit:        Stop when corrected force exceeds this in N (overrides instance default).
+            measurement_height: Z to descend to before starting (overrides instance default).
+            baseline_samples:   Number of baseline force readings (overrides instance default).
 
         Returns:
             Dict with keys: measurements, baseline_avg, baseline_std,
             force_exceeded, data_points.
         """
         # Allow protocol method_kwargs to override instance defaults
-        _z_target = z_target if z_target is not None else self._z_target
+        _z_limit = z_limit if z_limit is not None else self._z_limit
         _step_size = step_size if step_size is not None else self._step_size
         _force_limit = force_limit if force_limit is not None else self._force_limit
-        _well_top_z = well_top_z if well_top_z is not None else self._well_top_z
+        _measurement_height = measurement_height if measurement_height is not None else self.measurement_height
         _baseline_samples = baseline_samples if baseline_samples is not None else self._baseline_samples
-        _safe_z = safe_z if safe_z is not None else self._safe_z
 
         if self._offline:
-            return self._offline_indentation(gantry, _z_target, _step_size, _safe_z, _well_top_z)
+            return self._offline_indentation(gantry, _z_limit, _step_size, _measurement_height)
 
         coords = gantry.get_coordinates()
         cur_x, cur_y = coords["x"], coords["y"]
 
-        self._move_z(gantry, cur_x, cur_y, _well_top_z)
+        self._move_z(gantry, cur_x, cur_y, _measurement_height)
 
         baseline_avg, baseline_std = self.get_baseline_force(
             samples=_baseline_samples
@@ -265,8 +263,8 @@ class ASMI(BaseInstrument):
         while True:
             coords = gantry.get_coordinates()
             current_z = coords["z"]
-            if current_z <= _z_target:
-                self.logger.info("Reached z_target %.3f mm", _z_target)
+            if current_z <= _z_limit:
+                self.logger.info("Reached z_limit %.3f mm", _z_limit)
                 break
             next_z = current_z - _step_size
             self._move_z(gantry, cur_x, cur_y, next_z)
@@ -295,8 +293,6 @@ class ASMI(BaseInstrument):
                 force_exceeded = True
                 break
 
-        self._move_z(gantry, cur_x, cur_y, _safe_z)
-
         return {
             "measurements": measurements,
             "baseline_avg": baseline_avg,
@@ -305,15 +301,15 @@ class ASMI(BaseInstrument):
             "data_points": len(measurements),
         }
 
-    def _offline_indentation(self, gantry, z_target, step_size, safe_z, well_top_z) -> dict:
+    def _offline_indentation(self, gantry, z_limit, step_size, measurement_height) -> dict:
         """Fast offline indentation — no idle-wait, synthetic data."""
         coords = gantry.get_coordinates()
         cur_x, cur_y = coords["x"], coords["y"]
-        gantry.move_to(cur_x, cur_y, well_top_z)
+        gantry.move_to(cur_x, cur_y, measurement_height)
 
         measurements = []
-        z = well_top_z
-        while z > z_target:
+        z = measurement_height
+        while z > z_limit:
             z -= step_size
             gantry.move_to(cur_x, cur_y, z)
             measurements.append({
@@ -322,8 +318,6 @@ class ASMI(BaseInstrument):
                 "raw_force_n": self._default_force,
                 "corrected_force_n": 0.0,
             })
-
-        gantry.move_to(cur_x, cur_y, safe_z)
 
         return {
             "measurements": measurements,
