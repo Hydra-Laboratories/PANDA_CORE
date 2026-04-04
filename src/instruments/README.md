@@ -4,9 +4,11 @@ Each subdirectory contains a self-contained instrument driver that implements `B
 
 | Folder | Vendor | Instrument | Description |
 |--------|--------|------------|-------------|
+| `asmi/` | **Vernier** | GoDirect Force Sensor | Force measurement via USB (GoDirect SDK) |
 | `filmetrics/` | **KLA / Filmetrics** | F-Series (via FilmetricsTool.exe) | Thin-film thickness measurement via spectral reflectance |
-| `uvvis_ccs/` | **Thorlabs** | CCS100 / CCS175 / CCS200 | Compact CCD spectrometer for UV-Vis spectroscopy (3648-pixel) |
 | `pipette/` | **Opentrons** | OT-2 / Flex pipettes | Pipette control via Arduino serial (Pawduino firmware) |
+| `uv_curing/` | **Excelitas** | OmniCure S1500 PRO | UV curing system via RS-232 serial |
+| `uvvis_ccs/` | **Thorlabs** | CCS100 / CCS175 / CCS200 | Compact CCD spectrometer for UV-Vis spectroscopy (3648-pixel) |
 
 ## Structure convention
 
@@ -28,4 +30,5 @@ Every instrument folder follows the same layout:
 3. Add a mock that tracks `command_history` for test assertions.
 4. Define a frozen dataclass in `models.py` for measurement results.
 5. Create an exception hierarchy rooted in `InstrumentError`.
-6. Update this README with the vendor and instrument info.
+6. Register the instrument in `registry.yaml` (type, module, class_name, vendors).
+7. Update this README with the vendor and instrument info.

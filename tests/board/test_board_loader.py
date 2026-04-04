@@ -35,18 +35,24 @@ class TestInstrumentYamlEntry:
     def test_allows_extra_fields(self):
         entry = InstrumentYamlEntry(
             type="uvvis_ccs",
+            vendor="thorlabs",
             offset_x=1.0,
             serial_number="ABC123",
         )
         assert entry.type == "uvvis_ccs"
+        assert entry.vendor == "thorlabs"
         assert entry.model_extra["serial_number"] == "ABC123"
 
     def test_defaults_for_optional_fields(self):
-        entry = InstrumentYamlEntry(type="uvvis_ccs")
+        entry = InstrumentYamlEntry(type="uvvis_ccs", vendor="thorlabs")
         assert entry.offset_x == 0.0
         assert entry.offset_y == 0.0
         assert entry.depth == 0.0
         assert entry.measurement_height == 0.0
+
+    def test_missing_vendor_raises(self):
+        with pytest.raises(Exception):
+            InstrumentYamlEntry(type="uvvis_ccs")
 
 
 class TestBoardYamlSchema:
@@ -54,7 +60,7 @@ class TestBoardYamlSchema:
     def test_forbids_extra_root_keys(self):
         with pytest.raises(Exception):
             BoardYamlSchema.model_validate({
-                "instruments": {"a": {"type": "uvvis_ccs"}},
+                "instruments": {"a": {"type": "uvvis_ccs", "vendor": "thorlabs"}},
                 "labware": {},
             })
 
@@ -73,6 +79,7 @@ class TestLoadBoardSingleInstrument:
             instruments:
               uvvis:
                 type: uvvis_ccs
+                vendor: thorlabs
                 offset_x: -15.0
                 offset_y: 0.0
                 depth: -5.0
@@ -97,9 +104,11 @@ class TestLoadBoardMultipleInstruments:
             instruments:
               uvvis:
                 type: uvvis_ccs
+                vendor: thorlabs
                 offset_x: -15.0
               pipette:
                 type: pipette
+                vendor: opentrons
                 offset_x: -10.0
                 offset_y: 5.0
                 depth: -2.0
@@ -116,6 +125,7 @@ class TestLoadBoardMultipleInstruments:
             instruments:
               film:
                 type: filmetrics
+                vendor: kla
                 offset_x: -20.0
                 measurement_height: 1.5
         """)
@@ -133,6 +143,7 @@ class TestLoadBoardMeasurementHeight:
             instruments:
               sensor:
                 type: uvvis_ccs
+                vendor: thorlabs
                 measurement_height: 4.5
         """)
         board = load_board_from_yaml(yaml_path, _mock_gantry())
@@ -143,6 +154,7 @@ class TestLoadBoardMeasurementHeight:
             instruments:
               sensor:
                 type: uvvis_ccs
+                vendor: thorlabs
         """)
         board = load_board_from_yaml(yaml_path, _mock_gantry())
         assert board.instruments["sensor"].measurement_height == 0.0
@@ -155,6 +167,7 @@ class TestLoadBoardGantry:
             instruments:
               uvvis:
                 type: uvvis_ccs
+                vendor: thorlabs
         """)
         gantry = _mock_gantry()
         board = load_board_from_yaml(yaml_path, gantry)
@@ -166,13 +179,14 @@ class TestLoadBoardGantry:
 
 class TestLoadBoardUnknownType:
 
-    def test_unknown_type_raises_key_error(self, tmp_path):
+    def test_unknown_type_raises_value_error(self, tmp_path):
         yaml_path = _write_yaml(tmp_path, """\
             instruments:
               mystery:
                 type: does_not_exist
+                vendor: some_vendor
         """)
-        with pytest.raises(KeyError):
+        with pytest.raises(ValueError):
             load_board_from_yaml(yaml_path, _mock_gantry())
 
 
@@ -182,6 +196,17 @@ class TestLoadBoardMissingField:
         yaml_path = _write_yaml(tmp_path, """\
             instruments:
               sensor:
+                vendor: thorlabs
+                offset_x: 1.0
+        """)
+        with pytest.raises(Exception):
+            load_board_from_yaml(yaml_path, _mock_gantry())
+
+    def test_missing_vendor_raises_validation_error(self, tmp_path):
+        yaml_path = _write_yaml(tmp_path, """\
+            instruments:
+              sensor:
+                type: uvvis_ccs
                 offset_x: 1.0
         """)
         with pytest.raises(Exception):
@@ -195,6 +220,7 @@ class TestLoadBoardExtraRootKey:
             instruments:
               uvvis:
                 type: uvvis_ccs
+                vendor: thorlabs
             labware:
               plate: {}
         """)
@@ -209,6 +235,51 @@ class TestLoadBoardFileNotFound:
             load_board_from_yaml("/nonexistent/board.yaml", _mock_gantry())
 
 
+# --- Vendor validation -------------------------------------------------------
+
+
+class TestLoadBoardVendorValidation:
+
+    def test_invalid_vendor_for_valid_type_raises(self, tmp_path):
+        yaml_path = _write_yaml(tmp_path, """\
+            instruments:
+              uvvis:
+                type: uvvis_ccs
+                vendor: wrong_vendor
+        """)
+        with pytest.raises(ValueError, match="not a supported vendor"):
+            load_board_from_yaml(yaml_path, _mock_gantry())
+
+    def test_invalid_vendor_safe_loader_raises_board_loader_error(self, tmp_path):
+        yaml_path = _write_yaml(tmp_path, """\
+            instruments:
+              uvvis:
+                type: uvvis_ccs
+                vendor: wrong_vendor
+        """)
+        with pytest.raises(BoardLoaderError, match="Instrument validation error"):
+            load_board_from_yaml_safe(yaml_path, _mock_gantry())
+
+    def test_all_valid_vendor_combos_load(self, tmp_path):
+        """Every registered type+vendor pair should load without error."""
+        pairs = [
+            ("asmi", "vernier"),
+            ("filmetrics", "kla"),
+            ("pipette", "opentrons"),
+            ("uv_curing", "excelitas"),
+            ("uvvis_ccs", "thorlabs"),
+        ]
+        for type_key, vendor in pairs:
+            yaml_path = _write_yaml(tmp_path, f"""\
+                instruments:
+                  inst:
+                    type: {type_key}
+                    vendor: {vendor}
+            """)
+            board = load_board_from_yaml(yaml_path, _mock_gantry())
+            assert "inst" in board.instruments
+
+
 # --- Safe loader --------------------------------------------------------------
 
 
@@ -219,6 +290,7 @@ class TestLoadBoardFromYamlSafe:
             instruments:
               uvvis:
                 type: uvvis_ccs
+                vendor: thorlabs
         """)
         board = load_board_from_yaml_safe(yaml_path, _mock_gantry())
         assert isinstance(board, Board)
@@ -229,8 +301,9 @@ class TestLoadBoardFromYamlSafe:
             instruments:
               mystery:
                 type: does_not_exist
+                vendor: some_vendor
         """)
-        with pytest.raises(BoardLoaderError, match="Unknown instrument type"):
+        with pytest.raises(BoardLoaderError, match="Instrument validation error"):
             load_board_from_yaml_safe(yaml_path, _mock_gantry())
 
     def test_wraps_validation_error_in_board_loader_error(self, tmp_path):
@@ -247,6 +320,7 @@ class TestLoadBoardFromYamlSafe:
             instruments:
               uvvis:
                 type: uvvis_ccs
+                vendor: thorlabs
             extra_key: bad
         """)
         with pytest.raises(BoardLoaderError, match="Board YAML error"):
@@ -273,6 +347,7 @@ class TestLoadBoardMockMode:
             instruments:
               pip:
                 type: pipette
+                vendor: opentrons
                 offset_x: -10.0
         """)
         board = load_board_from_yaml(yaml_path, _mock_gantry(), mock_mode=True)
@@ -284,6 +359,7 @@ class TestLoadBoardMockMode:
             instruments:
               uvvis:
                 type: uvvis_ccs
+                vendor: thorlabs
         """)
         board = load_board_from_yaml(yaml_path, _mock_gantry(), mock_mode=False)
         assert isinstance(board.instruments["uvvis"], UVVisCCS)
@@ -294,10 +370,13 @@ class TestLoadBoardMockMode:
             instruments:
               pip:
                 type: pipette
+                vendor: opentrons
               uvvis:
                 type: uvvis_ccs
+                vendor: thorlabs
               film:
                 type: filmetrics
+                vendor: kla
         """)
         board = load_board_from_yaml(yaml_path, _mock_gantry(), mock_mode=True)
         assert isinstance(board.instruments["pip"], Pipette) and board.instruments["pip"]._offline is True
@@ -309,6 +388,7 @@ class TestLoadBoardMockMode:
             instruments:
               pip:
                 type: pipette
+                vendor: opentrons
         """)
         board = load_board_from_yaml_safe(yaml_path, _mock_gantry(), mock_mode=True)
         assert isinstance(board.instruments["pip"], Pipette)
@@ -320,6 +400,7 @@ class TestLoadBoardMockMode:
             instruments:
               asmi:
                 type: asmi
+                vendor: vernier
                 force_threshold: -100
         """)
         board = load_board_from_yaml(yaml_path, _mock_gantry(), mock_mode=True)
@@ -332,6 +413,7 @@ class TestLoadBoardMockMode:
             instruments:
               asmi:
                 type: asmi
+                vendor: vernier
         """)
         board = load_board_from_yaml(yaml_path, _mock_gantry(), mock_mode=False)
         instr = board.instruments["asmi"]
