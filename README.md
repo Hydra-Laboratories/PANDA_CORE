@@ -125,6 +125,16 @@ An experiment in this repo is assembled from four YAML files:
 3. A board config describing which instruments are mounted and what their offsets are
 4. A protocol config describing the step-by-step experiment
 
+In normal day-to-day experiment work, you will usually only change the protocol YAML in `configs/protocol/`.
+
+The other three config types should stay stable unless the physical system changed:
+
+- Change `configs/deck/*.yaml` when labware moved, was re-calibrated, or a different plate/vial layout is on deck
+- Change `configs/board/*.yaml` when instrument hardware, offsets, or instrument-specific connection settings changed
+- Change `configs/gantry/*.yaml` when you are working with a different gantry, different travel limits, or updated machine-level settings
+
+If the machine layout has not changed, treat the deck, board, and gantry files as installation/configuration data and put experiment-specific changes in the protocol file.
+
 ### Gantry Example
 
 `configs/gantry/genmitsu_3018_PROver_v2.yaml` defines the working volume and GRBL settings:
@@ -212,6 +222,8 @@ protocol:
       position: plate_1.A1
 ```
 
+Use this when you want to verify targeting or move a single instrument to one known location.
+
 #### Scan protocol
 
 `configs/protocol/scan.yaml` first moves, then measures the whole plate using the `scan` command:
@@ -233,6 +245,93 @@ This is a good starting point for a real experiment because it demonstrates the 
 - `plate_1` comes from the deck YAML
 - `uvvis` comes from the board YAML
 - Reachability is validated against the gantry YAML before execution
+
+#### Scan with protocol-defined named positions
+
+Named positions are useful when you want reusable aliases for common coordinates or deck targets:
+
+```yaml
+positions:
+  start_well: [10.0, 20.0, 5.0]
+
+protocol:
+  - move:
+      instrument: uvvis
+      position: start_well
+
+  - move:
+      instrument: uvvis
+      position: plate_1.B3
+```
+
+The `move` command accepts:
+
+- A named position from the `positions:` section
+- A raw `[x, y, z]` coordinate list
+- A deck target such as `plate_1.A1` or `vial_1`
+
+#### Multi-step plate measurement experiment
+
+This is a realistic pattern when you want a quick spot check before a full scan:
+
+```yaml
+protocol:
+  - move:
+      instrument: uvvis
+      position: plate_1.A1
+
+  - move:
+      instrument: uvvis
+      position: plate_1.H12
+
+  - scan:
+      plate: plate_1
+      instrument: uvvis
+      method: measure
+      delay_s: 0.25
+```
+
+This kind of variation is usually just a protocol change. You would not edit the deck, board, or gantry YAML unless the physical setup changed.
+
+#### Example pipetting experiment pattern
+
+When a pipette is configured on the board and the deck defines the needed source/destination labware, the protocol can express liquid-handling steps directly:
+
+```yaml
+protocol:
+  - transfer:
+      source: vial_1
+      destination: plate_1.A1
+      volume_ul: 100.0
+
+  - transfer:
+      source: vial_1
+      destination: plate_1.A2
+      volume_ul: 100.0
+
+  - mix:
+      position: plate_1.A2
+      volume_ul: 50.0
+      repetitions: 3
+```
+
+The important part is that the labware names already exist in the deck YAML. If you are only changing which wells get used or how much volume gets transferred, that is still a protocol-only change.
+
+#### Example gradient / screening pattern
+
+For pipette-enabled setups, `serial_transfer` lets you generate a row or column screening pattern from one source:
+
+```yaml
+protocol:
+  - serial_transfer:
+      source: vial_1
+      plate: plate_1
+      axis: "A"
+      volume_range: [20.0, 200.0]
+      speed: 50.0
+```
+
+This fills row `A` across the plate using evenly spaced volumes between `20.0` and `200.0` uL. Again, this is an experiment-definition change, not a deck or gantry reconfiguration.
 
 ## Example End-To-End Workflow
 
@@ -261,6 +360,14 @@ To build your own experiment, copy one file from each config directory and keep 
 - Deck labware names must match protocol position targets
 - Board instrument names must match protocol instrument names
 - Gantry bounds must contain every deck position and every instrument-adjusted target
+
+In practice, a common workflow is:
+
+1. Start from an existing deck, board, and gantry YAML that already match the physical machine.
+2. Copy an existing protocol YAML into a new file.
+3. Change only the protocol steps, wells, scan parameters, transfer volumes, or scan order.
+4. Re-run `setup/validate_setup.py`.
+5. Only edit deck/board/gantry configs if the real-world layout or hardware changed.
 
 ## Programmatic Usage
 
