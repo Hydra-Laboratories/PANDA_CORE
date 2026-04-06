@@ -162,11 +162,11 @@ All instruments have real drivers and mock variants for offline testing.
 
 | Instrument | Type Key | Vendor | Description |
 |------------|----------|--------|-------------|
-| Thorlabs CCS UV-Vis Spectrometer | `uvvis_ccs` | thorlabs | CCS100/CCS175/CCS200 compact spectrometer (3648-pixel CCD) via TLCCS DLL |
-| Opentrons Pipette | `pipette` | opentrons | OT-2/Flex pipette via Arduino serial (Pawduino firmware) |
-| ASMI Force Sensor | `asmi` | vernier | Force measurement via GoDirect USB SDK |
-| Filmetrics Film Thickness | `filmetrics` | kla | Thin-film thickness measurement via C# console app (FilmetricsTool.exe) |
-| Excelitas UV Curing | `uv_curing` | excelitas | OmniCure S1500 PRO UV light control via RS-232 serial |
+| Thorlabs CCS UV-Vis Spectrometer | `uvvis_ccs` | thorlabs | UV-Vis spectroscopy |
+| Opentrons Pipette | `pipette` | opentrons | Liquid handling |
+| ASMI Force Sensor | `asmi` | vernier | Force measurement |
+| Filmetrics | `filmetrics` | kla | Thin-film thickness measurement |
+| Excelitas OmniCure | `uv_curing` | excelitas | UV curing |
 
 ## Installation
 
