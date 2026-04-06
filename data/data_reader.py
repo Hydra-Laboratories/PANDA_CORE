@@ -14,6 +14,7 @@ _VALID_MEASUREMENT_TABLES = frozenset({
     "uvvis_measurements",
     "filmetrics_measurements",
     "camera_measurements",
+    "asmi_measurements",
 })
 
 
