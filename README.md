@@ -142,16 +142,16 @@ Available protocol commands:
 | Command | Description |
 |---------|-------------|
 | `move` | Move an instrument to a deck position |
+| `scan` | Iterate all wells on a plate, calling an instrument method per well |
+| `measure` | Single measurement with an instrument |
 | `pick_up_tip` | Pipette: pick up a tip |
 | `aspirate` | Pipette: draw liquid |
 | `dispense` | Pipette: deliver liquid |
-| `transfer` | Combined move + aspirate + move + dispense |
-| `serial_transfer` | Sequential transfers across positions |
+| `transfer` | Pipette: combined move + aspirate + move + dispense |
+| `serial_transfer` | Pipette: sequential transfers across positions |
 | `mix` | Pipette: aspirate/dispense repeatedly |
 | `blowout` | Pipette: blow out remaining liquid |
 | `drop_tip` | Pipette: drop the tip |
-| `scan` | Iterate all wells on a plate, calling an instrument method per well |
-| `measure` | Single measurement with an instrument |
 | `home` | Home the gantry |
 | `pause` | Pause execution for N seconds |
 | `breakpoint` | Debug pause with user prompt |
