@@ -1,0 +1,49 @@
+site_name: PANDA Core
+site_description: Documentation for PANDA Core, the CNC-based lab automation platform.
+theme:
+  name: readthedocs
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Architecture: architecture.md
+  - Configuration: configuration.md
+  - Protocols: protocols.md
+  - Hardware Operations: hardware-operations.md
+  - Data and Analysis: data-and-analysis.md
+  - Development: development.md
+  - Troubleshooting: troubleshooting.md
+  - API Reference: reference/index.md
+
+not_in_nav: |
+  reference/src/**
+  reference/data/**
+
+plugins:
+  - search
+  - gen-files:
+      scripts:
+        - docs/gen_ref_pages.py
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - src
+            - .
+          options:
+            members_order: source
+            merge_init_into_class: true
+            show_root_heading: true
+            show_root_toc_entry: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            show_source: false
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - fenced_code
+  - tables
+  - toc:
+      permalink: true

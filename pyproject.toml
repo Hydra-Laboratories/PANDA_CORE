@@ -10,6 +10,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest"]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-gen-files>=0.5",
+    "mkdocstrings[python]>=0.27",
+]
 
 [tool.setuptools.packages.find]
 where = ["src", "."]
