@@ -1,8 +1,6 @@
 # PANDA Core
 
-PANDA Core is a lab automation platform that turns a modified Genmitsu 3018 CNC router into a programmable motion system for self-driving experiments. The CNC gantry moves instruments — spectrometers, pipettes, force sensors, UV curing lamps — over a deck of labware (well plates, vials), while a YAML-based protocol engine sequences the entire workflow.
-
-Everything is defined in four YAML config files. No hardware is needed to validate a setup — all positions are bounds-checked offline before the gantry connects.
+PANDA Core is a lab automation software package for running self-driving experiments via a modified, off-the-shelf CNC gantry. 
 
 ## Configuration
 
@@ -179,8 +177,6 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
-
-Dependencies: `pyserial`, `pyyaml`, `pydantic`.
 
 ## Hello World
 
