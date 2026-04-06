@@ -1,0 +1,22 @@
+# ASMI deck configuration — 96-well plate for indentation.
+# Columns (1-12) increase in X, rows (A-H) decrease in Y.
+# A2 = A1 + one column step in X to establish axis mapping.
+
+labware:
+  plate:
+    type: well_plate
+    name: asmi_96_well
+    model_name: asmi_96_well
+    rows: 8
+    columns: 12
+    calibration:
+      a1:
+        x: -49.7
+        y: -236.8
+        z: -50.0 # z_initial (z_safe)
+      a2:
+        x: -58.7
+        y: -236.8
+        z: -50.0 # z_initial (z_safe)
+    x_offset_mm: -9.0
+    y_offset_mm: 9.0

@@ -1,0 +1,12 @@
+# ASMI board configuration — real hardware.
+
+instruments:
+  asmi:
+    type: asmi
+    offset_x: 0.0
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 0.0
+    # Sensor hardware
+    force_threshold: -50
+    sensor_channels: [1]

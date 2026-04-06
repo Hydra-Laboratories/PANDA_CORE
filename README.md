@@ -11,25 +11,20 @@ Four YAML files fully specify a running experiment:
 Defines the CNC hardware: serial port, homing strategy, working volume bounds, and GRBL board settings.
 
 ```yaml
-serial_port: /dev/cu.usbserial-140
+serial_port: /dev/ttyUSB0
 cnc:
-  homing_strategy: xy_hard_limits
+  homing_strategy: standard
 
 working_volume:
-  x_min: 0.0
-  x_max: 300.0
-  y_min: 0.0
-  y_max: 200.0
-  z_min: 0.0
-  z_max: 80.0
+  x_min: -400.0
+  x_max: 0.01
+  y_min: -300.0
+  y_max: 0.01
+  z_min: -80.0
+  z_max: 0.0
 
 grbl_settings:
-  dir_invert_mask: 2
-  status_report: 0
-  hard_limits: true
   homing_enable: true
-  homing_dir_mask: 3
-  homing_pull_off: 2.0
   steps_per_mm_x: 800.0
   steps_per_mm_y: 800.0
   steps_per_mm_z: 800.0
@@ -51,32 +46,17 @@ Defines physical labware on the deck and their positions. Well plates use two-po
 
 ```yaml
 labware:
-  plate_1:
+  plate:
     type: well_plate
-    name: opentrons_96_well_20ml
-    model_name: opentrons_96_well_20ml
+    name: asmi_96_well
+    model_name: asmi_96_well
     rows: 8
     columns: 12
-    length_mm: 127.71
-    width_mm: 85.43
-    height_mm: 14.10
     calibration:
-      a1: { x: -10.0, y: -10.0, z: -15.0 }
-      a2: { x: -10.0, y: -19.0, z: -15.0 }
-    x_offset_mm: 9.0
-    y_offset_mm: -9.0
-    capacity_ul: 200.0
-    working_volume_ul: 150.0
-
-  vial_1:
-    type: vial
-    name: standard_vial
-    model_name: standard_1_5ml_vial
-    height_mm: 66.75
-    diameter_mm: 28.0
-    location: { x: -30.0, y: -40.0, z: -20.0 }
-    capacity_ul: 1500.0
-    working_volume_ul: 1200.0
+      a1: { x: -49.7, y: -236.8, z: -50.0 }
+      a2: { x: -58.7, y: -236.8, z: -50.0 }
+    x_offset_mm: -9.0
+    y_offset_mm: 9.0
 ```
 
 ### 3. Board (`configs/board/*.yaml`)
@@ -85,16 +65,14 @@ Defines instruments mounted on the gantry head — their type, vendor, hardware-
 
 ```yaml
 instruments:
-  uvvis:
-    type: uvvis_ccs
-    vendor: thorlabs
-    serial_number: "M00801544"
-    dll_path: "TLCCS_64.dll"
-    default_integration_time_s: 0.24
+  asmi:
+    type: asmi
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    measurement_height: 3.0
+    measurement_height: 0.0
+    force_threshold: -50
+    sensor_channels: [1]
 ```
 
 ### 4. Protocol (`configs/protocol/*.yaml`)
@@ -103,38 +81,24 @@ Defines the experiment as a sequence of commands. Positions reference labware by
 
 ```yaml
 protocol:
-  - move:
-      instrument: uvvis
-      position: plate_1.A1
-
-  - pick_up_tip:
-      position: tiprack_1.A1
-
-  - aspirate:
-      position: plate_1.A1
-      volume_ul: 100.0
-      speed: 50.0
-
-  - dispense:
-      position: plate_1.B1
-      volume_ul: 100.0
-
-  - mix:
-      position: plate_1.B1
-      volume_ul: 50.0
-      repetitions: 3
-      speed: 50.0
-
-  - blowout:
-      position: plate_1.B1
-
-  - drop_tip:
-      position: waste_1
+  - home:
 
   - scan:
-      plate: plate_1
-      instrument: uvvis
-      method: measure
+      plate: plate
+      instrument: asmi
+      method: indentation
+      method_kwargs:
+        z_limit: -83.0
+        step_size: 0.01
+        force_limit: 10.0
+        measurement_height: -73.0
+        baseline_samples: 10
+
+  - move:
+      instrument: asmi
+      position: safe_z
+
+  - home:
 ```
 
 Available protocol commands:
@@ -194,10 +158,10 @@ This homes the gantry and drops into an interactive jog mode (arrow keys for XY,
 
 ```bash
 python setup/validate_setup.py \
-    configs/gantry/genmitsu_3018_PROver_v2.yaml \
-    configs/deck/deck.sample.yaml \
-    configs/board/mofcat_board.yaml \
-    configs/protocol/protocol.sample.yaml
+    configs/gantry/asmi_gantry.yaml \
+    configs/deck/asmi_deck.yaml \
+    configs/board/asmi_board.yaml \
+    configs/protocol/asmi_indentation.yaml
 ```
 
 Loads all four configs, checks that every labware position and instrument-adjusted position is within the gantry working volume, and prints PASS/FAIL.
@@ -206,10 +170,10 @@ Loads all four configs, checks that every labware position and instrument-adjust
 
 ```bash
 python setup/run_protocol.py \
-    configs/gantry/genmitsu_3018_PROver_v2.yaml \
-    configs/deck/mofcat_deck.yaml \
-    configs/board/mofcat_board.yaml \
-    configs/protocol/protocol.sample.yaml
+    configs/gantry/asmi_gantry.yaml \
+    configs/deck/asmi_deck.yaml \
+    configs/board/asmi_board.yaml \
+    configs/protocol/asmi_indentation.yaml
 ```
 
 Validates offline first, then connects to the gantry and executes the protocol.
@@ -220,10 +184,10 @@ Validates offline first, then connects to the gantry and executes the protocol.
 from src.protocol_engine.setup import setup_protocol
 
 protocol, context = setup_protocol(
-    gantry_path="configs/gantry/genmitsu_3018_PROver_v2.yaml",
-    deck_path="configs/deck/deck.sample.yaml",
-    board_path="configs/board/mofcat_board.yaml",
-    protocol_path="configs/protocol/protocol.sample.yaml",
+    gantry_path="configs/gantry/asmi_gantry.yaml",
+    deck_path="configs/deck/asmi_deck.yaml",
+    board_path="configs/board/asmi_board.yaml",
+    protocol_path="configs/protocol/asmi_indentation.yaml",
 )
 protocol.run(context)
 ```
