@@ -180,7 +180,7 @@ pip install -r requirements.txt
 
 ## Hello World
 
-### 1. Interactive jog test (hardware required)
+### 1. Interactive jog test
 
 Connect the CNC gantry via USB, then:
 
@@ -190,7 +190,7 @@ python setup/hello_world.py
 
 This homes the gantry and drops into an interactive jog mode (arrow keys for XY, Z/X keys for Z).
 
-### 2. Validate a setup (no hardware required)
+### 2. Validate a setup
 
 ```bash
 python setup/validate_setup.py \
@@ -202,7 +202,7 @@ python setup/validate_setup.py \
 
 Loads all four configs, checks that every labware position and instrument-adjusted position is within the gantry working volume, and prints PASS/FAIL.
 
-### 3. Run a protocol (hardware required)
+### 3. Run a protocol
 
 ```bash
 python setup/run_protocol.py \
