@@ -5,7 +5,7 @@ Usage:
 
 Example:
     python setup/run_protocol.py \\
-        configs/gantry/genmitsu_3018_PROver_v2.yaml \\
+        configs/gantry/cubos.yaml \\
         configs/deck/mofcat_deck.yaml \\
         configs/board/mofcat_board.yaml \\
         configs/protocol/protocol.sample.yaml
@@ -42,7 +42,7 @@ def main() -> None:
         print()
         print("Example:")
         print("  python setup/run_protocol.py \\")
-        print("    configs/gantry/genmitsu_3018_PROver_v2.yaml \\")
+        print("    configs/gantry/cubos.yaml \\")
         print("    configs/deck/mofcat_deck.yaml \\")
         print("    configs/board/mofcat_board.yaml \\")
         print("    configs/protocol/protocol.sample.yaml")

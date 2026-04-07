@@ -20,7 +20,7 @@ sys.path.insert(0, str(project_root / "src"))
 from gantry import Gantry, load_gantry_from_yaml_safe
 
 DESKTOP_CONFIG = (
-    project_root / "configs" / "gantry" / "genmitsu_3018_PRO_Desktop.yaml"
+    project_root / "configs" / "gantry" / "cubos.yaml"
 )
 
 

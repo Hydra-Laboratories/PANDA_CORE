@@ -15,7 +15,7 @@ def main():
     print("CNC Homing Wrapper")
     print("--------------------------------------------------")
 
-    config_path = project_root / "configs/gantries/genmitsu_3018_PROver_v2.yaml"
+    config_path = project_root / "configs/gantries/cubos.yaml"
     if not config_path.exists():
         print(f"Config not found at {config_path}")
         return

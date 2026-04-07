@@ -24,11 +24,11 @@ CONFIGS_DIR = project_root / "configs"
 GANTRIES = {
     "PANDA": {
         "label": "PANDA (XL — 415x300x200mm)",
-        "config_file": CONFIGS_DIR / "gantry" / "genmitsu_3018_PROver_v2.yaml",
+        "config_file": CONFIGS_DIR / "gantry" / "cubos_xl.yaml",
     },
     "CUB": {
         "label": "CUB (Small — 300x200x80mm)",
-        "config_file": CONFIGS_DIR / "gantry" / "genmitsu_3018_PRO_Desktop.yaml",
+        "config_file": CONFIGS_DIR / "gantry" / "cubos.yaml",
     },
 }
 

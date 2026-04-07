@@ -86,7 +86,7 @@ class TestManualOriginLoader:
             Path(__file__).parent.parent
             / "configs"
             / "gantry"
-            / "genmitsu_3018_PRO_Desktop.yaml"
+            / "cubos.yaml"
         )
         config = load_gantry_from_yaml(config_path)
         assert config.homing_strategy == HomingStrategy.MANUAL_ORIGIN
