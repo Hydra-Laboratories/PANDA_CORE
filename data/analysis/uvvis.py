@@ -1,13 +1,13 @@
 """UV-Vis specific data retrieval and analysis helpers.
 
-Operates on the uvvis_measurements SQLite table. Provides BLOB unpacking,
-spectrum loading, and common spectral analysis functions.
+Operates on the uvvis_measurements SQLite table. Provides spectrum loading
+and common spectral analysis functions.
 """
 
 from __future__ import annotations
 
+import json
 import math
-import struct
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -27,32 +27,21 @@ class UVVisRecord:
     labware_name: Optional[str] = None
 
 
-# ── BLOB unpacking ────────────────────────────────────────────────────────────
-
-
-def _unpack_floats(blob: bytes) -> tuple[float, ...]:
-    """Unpack a little-endian float64 BLOB into a tuple of floats."""
-    if len(blob) == 0:
-        return ()
-    count = len(blob) // 8
-    return struct.unpack(f"<{count}d", blob)
-
-
-def unpack_spectrum(
-    wavelengths_blob: bytes,
-    intensities_blob: bytes,
+def _parse_spectrum(
+    wavelengths_json: str,
+    intensities_json: str,
     integration_time_s: float,
     experiment_id: int,
     measurement_id: int,
     well_id: Optional[str] = None,
     labware_name: Optional[str] = None,
 ) -> UVVisRecord:
-    """Unpack raw BLOB data from the database into a UVVisRecord."""
+    """Parse JSON-encoded spectrum data from the database into a UVVisRecord."""
     return UVVisRecord(
         measurement_id=measurement_id,
         experiment_id=experiment_id,
-        wavelengths=_unpack_floats(wavelengths_blob),
-        intensities=_unpack_floats(intensities_blob),
+        wavelengths=tuple(json.loads(wavelengths_json)),
+        intensities=tuple(json.loads(intensities_json)),
         integration_time_s=integration_time_s,
         well_id=well_id,
         labware_name=labware_name,
@@ -69,9 +58,9 @@ def load_uvvis_by_experiment(
     """Load all UV-Vis spectra for a given experiment."""
     rows = reader.get_measurements(experiment_id, table="uvvis_measurements")
     return [
-        unpack_spectrum(
-            wavelengths_blob=row["wavelengths"],
-            intensities_blob=row["intensities"],
+        _parse_spectrum(
+            wavelengths_json=row["wavelengths"],
+            intensities_json=row["intensities"],
             integration_time_s=row["integration_time_s"],
             experiment_id=row["experiment_id"],
             measurement_id=row["id"],
@@ -89,9 +78,9 @@ def load_uvvis_by_campaign(
         campaign_id, table="uvvis_measurements",
     )
     return [
-        unpack_spectrum(
-            wavelengths_blob=row["wavelengths"],
-            intensities_blob=row["intensities"],
+        _parse_spectrum(
+            wavelengths_json=row["wavelengths"],
+            intensities_json=row["intensities"],
             integration_time_s=row["integration_time_s"],
             experiment_id=row["experiment_id"],
             measurement_id=row["id"],

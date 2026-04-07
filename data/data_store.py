@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import sqlite3
-import struct
 from typing import Any, List, Optional, Union
 
 from instruments.asmi.models import MeasurementResult as ASMIMeasurementResult
@@ -36,8 +35,8 @@ CREATE TABLE IF NOT EXISTS experiments (
 CREATE TABLE IF NOT EXISTS uvvis_measurements (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     experiment_id     INTEGER NOT NULL REFERENCES experiments(id),
-    wavelengths       BLOB    NOT NULL,
-    intensities       BLOB    NOT NULL,
+    wavelengths       TEXT    NOT NULL,
+    intensities       TEXT    NOT NULL,
     integration_time_s REAL   NOT NULL,
     timestamp         TEXT    NOT NULL DEFAULT (datetime('now'))
 );
@@ -60,9 +59,9 @@ CREATE TABLE IF NOT EXISTS camera_measurements (
 CREATE TABLE IF NOT EXISTS asmi_measurements (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     experiment_id   INTEGER NOT NULL REFERENCES experiments(id),
-    z_positions     BLOB    NOT NULL,
-    raw_forces      BLOB    NOT NULL,
-    corrected_forces BLOB   NOT NULL,
+    z_positions     TEXT    NOT NULL,
+    raw_forces      TEXT    NOT NULL,
+    corrected_forces TEXT   NOT NULL,
     baseline_avg    REAL    NOT NULL,
     baseline_std    REAL    NOT NULL,
     force_exceeded  INTEGER NOT NULL DEFAULT 0,
@@ -87,11 +86,6 @@ CREATE TABLE IF NOT EXISTS labware (
     UNIQUE(campaign_id, labware_key, well_id)
 );
 """
-
-
-def _pack_floats(values: tuple[float, ...]) -> bytes:
-    """Pack a tuple of floats into a little-endian BLOB."""
-    return struct.pack(f"<{len(values)}d", *values)
 
 
 class DataStore:
@@ -219,8 +213,8 @@ class DataStore:
             "VALUES (?, ?, ?, ?)",
             (
                 experiment_id,
-                _pack_floats(wavelengths),
-                _pack_floats(intensities),
+                json.dumps(list(wavelengths)),
+                json.dumps(list(intensities)),
                 integration_time_s,
             ),
         )
@@ -254,9 +248,9 @@ class DataStore:
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 experiment_id,
-                _pack_floats(z_positions),
-                _pack_floats(raw_forces),
-                _pack_floats(corrected_forces),
+                json.dumps(list(z_positions)),
+                json.dumps(list(raw_forces)),
+                json.dumps(list(corrected_forces)),
                 baseline_avg,
                 baseline_std,
                 int(force_exceeded),

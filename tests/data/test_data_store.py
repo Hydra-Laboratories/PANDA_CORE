@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import struct
 
 import pytest
 
@@ -183,12 +182,8 @@ class TestUVVisMeasurementLogging:
             (mid,),
         ).fetchone()
 
-        n = len(spectrum.wavelengths)
-        recovered_wl = struct.unpack(f"<{n}d", row[0])
-        recovered_int = struct.unpack(f"<{n}d", row[1])
-
-        assert recovered_wl == spectrum.wavelengths
-        assert recovered_int == spectrum.intensities
+        assert tuple(json.loads(row[0])) == spectrum.wavelengths
+        assert tuple(json.loads(row[1])) == spectrum.intensities
         assert row[2] == pytest.approx(0.24)
         store.close()
 
@@ -352,10 +347,8 @@ class TestLogMeasurementDispatch:
             (mid,),
         ).fetchone()
 
-        recovered_wl = struct.unpack("<3d", row[0])
-        recovered_int = struct.unpack("<3d", row[1])
-        assert recovered_wl == (500.0, 501.0, 502.0)
-        assert recovered_int == (0.5, 0.6, 0.7)
+        assert json.loads(row[0]) == [500.0, 501.0, 502.0]
+        assert json.loads(row[1]) == [0.5, 0.6, 0.7]
         assert row[2] == pytest.approx(1.5)
         store.close()
 

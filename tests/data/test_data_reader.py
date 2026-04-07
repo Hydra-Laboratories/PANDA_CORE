@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -188,6 +189,62 @@ class TestGetMeasurementsByCampaign:
             campaign_id=999, table="uvvis_measurements",
         )
         assert rows == []
+
+
+class TestDataFrameHelpers:
+
+    def test_get_experiment_ids_dataframe(self, seeded_reader: DataReader):
+        pd = pytest.importorskip("pandas")
+        df = seeded_reader.get_experiment_ids_dataframe(campaign_id=1)
+        assert isinstance(df, pd.DataFrame)
+        assert list(df["experiment_id"]) == [1, 2]
+
+    def test_get_experiment_measurements_dataframe(self, seeded_reader: DataReader):
+        pd = pytest.importorskip("pandas")
+        df = seeded_reader.get_experiment_measurements_dataframe(experiment_id=1)
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 1
+        assert set(df.columns) == {
+            "instrument",
+            "measurement_id",
+            "experiment_id",
+            "timestamp",
+            "data_json",
+        }
+        assert df.iloc[0]["instrument"] == "uvvis"
+
+    def test_get_experiment_measurements_by_instrument_dataframe(
+        self,
+        seeded_reader: DataReader,
+    ):
+        pd = pytest.importorskip("pandas")
+        df = seeded_reader.get_experiment_measurements_by_instrument_dataframe(
+            experiment_id=1,
+            instrument="uvvis",
+        )
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 1
+        assert int(df.iloc[0]["experiment_id"]) == 1
+
+    def test_invalid_instrument_rejected(self, seeded_reader: DataReader):
+        pytest.importorskip("pandas")
+        with pytest.raises(ValueError, match="Unsupported instrument"):
+            seeded_reader.get_experiment_measurements_by_instrument_dataframe(
+                experiment_id=1,
+                instrument="invalid",
+            )
+
+    def test_export_dataframe_to_csv(
+        self,
+        seeded_reader: DataReader,
+        tmp_path: Path,
+    ):
+        pytest.importorskip("pandas")
+        df = seeded_reader.get_experiment_ids_dataframe(campaign_id=1)
+        output_path = tmp_path / "experiment_ids.csv"
+        written = seeded_reader.export_dataframe_to_csv(df, str(output_path))
+        assert written == str(output_path)
+        assert output_path.exists()
 
 
 # ─── Context manager ─────────────────────────────────────────────────────────

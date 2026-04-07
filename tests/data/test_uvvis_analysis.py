@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import struct
-
 import pytest
 
 from data.analysis.uvvis import (
@@ -13,7 +11,6 @@ from data.analysis.uvvis import (
     peak_wavelength,
     absorbance,
     slice_wavelength_range,
-    unpack_spectrum,
 )
 from data.data_reader import DataReader
 from data.data_store import DataStore
@@ -21,10 +18,6 @@ from protocol_engine.measurements import InstrumentMeasurement, MeasurementType
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
-
-
-def _pack_floats(values: tuple[float, ...]) -> bytes:
-    return struct.pack(f"<{len(values)}d", *values)
 
 
 def _seed_uvvis_store() -> DataStore:
@@ -50,40 +43,6 @@ def seeded_reader() -> DataReader:
     reader = DataReader(connection=store._conn)
     yield reader
     store.close()
-
-
-# ─── BLOB unpacking ──────────────────────────────────────────────────────────
-
-
-class TestUnpackSpectrum:
-
-    def test_unpacks_wavelengths_and_intensities(self):
-        wl_blob = _pack_floats((400.0, 500.0, 600.0))
-        int_blob = _pack_floats((0.1, 0.5, 0.3))
-
-        record = unpack_spectrum(
-            wavelengths_blob=wl_blob,
-            intensities_blob=int_blob,
-            integration_time_s=0.24,
-            experiment_id=1,
-            measurement_id=1,
-        )
-
-        assert isinstance(record, UVVisRecord)
-        assert record.wavelengths == (400.0, 500.0, 600.0)
-        assert record.intensities == (0.1, 0.5, 0.3)
-        assert record.integration_time_s == 0.24
-
-    def test_empty_blobs(self):
-        record = unpack_spectrum(
-            wavelengths_blob=b"",
-            intensities_blob=b"",
-            integration_time_s=0.24,
-            experiment_id=1,
-            measurement_id=1,
-        )
-        assert record.wavelengths == ()
-        assert record.intensities == ()
 
 
 # ─── Load from DB ────────────────────────────────────────────────────────────
