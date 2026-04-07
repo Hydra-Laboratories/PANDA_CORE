@@ -80,9 +80,14 @@ instruments:
 Defines the experiment as a sequence of commands. Positions reference labware by key and well ID (e.g. `plate_1.A1`).
 
 ```yaml
+positions:
+  safe_z: [0.0, 0.0, -50.0]
+
 protocol:
+  # Home the gantry and zero coordinates
   - home:
 
+  # Scan all wells: move to each well, run indentation
   - scan:
       plate: plate
       instrument: asmi
@@ -94,10 +99,12 @@ protocol:
         measurement_height: -73.0
         baseline_samples: 10
 
+  # Return to safe Z after scan
   - move:
       instrument: asmi
       position: safe_z
 
+  # Home the gantry
   - home:
 ```
 
