@@ -142,7 +142,7 @@ All instruments have real drivers and mock variants for offline testing.
 ## Installation
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/Hydra-Laboratories/PANDA_CORE.git
 cd PANDA_CORE
 python -m venv .venv
 source .venv/bin/activate
