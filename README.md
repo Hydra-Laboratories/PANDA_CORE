@@ -37,8 +37,8 @@ Two gantry configs are included:
 
 | Config | System | Working Volume |
 |--------|--------|----------------|
-| `genmitsu_3018_PROver_v2.yaml` | CubOS XL | 300 x 200 x 80 mm |
-| `genmitsu_3018_PRO_Desktop.yaml` | CUB (Small) | 300 x 200 x 80 mm |
+| `genmitsu_3018_PROver_v2.yaml` | Cub-XL | 300 x 200 x 80 mm |
+| `genmitsu_3018_PRO_Desktop.yaml` | Cub | 300 x 200 x 80 mm |
 
 ### 2. Deck (`configs/deck/*.yaml`)
 
