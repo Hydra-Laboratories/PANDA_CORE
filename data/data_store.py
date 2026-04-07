@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import sqlite3
-import struct
 from typing import Any, List, Optional, Union
 
 from instruments.asmi.models import MeasurementResult as ASMIMeasurementResult
@@ -36,8 +35,8 @@ CREATE TABLE IF NOT EXISTS experiments (
 CREATE TABLE IF NOT EXISTS uvvis_measurements (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     experiment_id     INTEGER NOT NULL REFERENCES experiments(id),
-    wavelengths       BLOB    NOT NULL,
-    intensities       BLOB    NOT NULL,
+    wavelengths       TEXT    NOT NULL,
+    intensities       TEXT    NOT NULL,
     integration_time_s REAL   NOT NULL,
     timestamp         TEXT    NOT NULL DEFAULT (datetime('now'))
 );
@@ -60,9 +59,9 @@ CREATE TABLE IF NOT EXISTS camera_measurements (
 CREATE TABLE IF NOT EXISTS asmi_measurements (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     experiment_id   INTEGER NOT NULL REFERENCES experiments(id),
-    z_positions     BLOB    NOT NULL,
-    raw_forces      BLOB    NOT NULL,
-    corrected_forces BLOB   NOT NULL,
+    z_positions     TEXT    NOT NULL,
+    raw_forces      TEXT    NOT NULL,
+    corrected_forces TEXT   NOT NULL,
     baseline_avg    REAL    NOT NULL,
     baseline_std    REAL    NOT NULL,
     force_exceeded  INTEGER NOT NULL DEFAULT 0,
@@ -89,11 +88,6 @@ CREATE TABLE IF NOT EXISTS labware (
 """
 
 
-def _pack_floats(values: tuple[float, ...]) -> bytes:
-    """Pack a tuple of floats into a little-endian BLOB."""
-    return struct.pack(f"<{len(values)}d", *values)
-
-
 class DataStore:
     """Local SQLite data store for experiment campaigns and measurements."""
 
@@ -101,9 +95,36 @@ class DataStore:
         self._conn = sqlite3.connect(db_path)
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._create_tables()
+        self._check_schema_migration()
 
     def _create_tables(self) -> None:
         self._conn.executescript(_SCHEMA_SQL)
+
+    _BLOB_COLUMNS = {
+        "uvvis_measurements": ("wavelengths", "intensities"),
+        "asmi_measurements": ("z_positions", "raw_forces", "corrected_forces"),
+    }
+
+    def _check_schema_migration(self) -> None:
+        """Raise if any float-array column still contains binary BLOB data."""
+        for table, columns in self._BLOB_COLUMNS.items():
+            table_exists = self._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table,),
+            ).fetchone()
+            if table_exists is None:
+                continue
+            for column in columns:
+                row = self._conn.execute(
+                    f"SELECT {column} FROM {table} LIMIT 1"
+                ).fetchone()
+                if row is not None and isinstance(row[0], (bytes, bytearray)):
+                    raise RuntimeError(
+                        f"Database contains legacy binary BLOB data in "
+                        f"{table}.{column}. This database was written before "
+                        f"the JSON migration. Re-run experiments or contact "
+                        f"support for a migration script."
+                    )
 
     def create_campaign(
         self,
@@ -219,8 +240,8 @@ class DataStore:
             "VALUES (?, ?, ?, ?)",
             (
                 experiment_id,
-                _pack_floats(wavelengths),
-                _pack_floats(intensities),
+                json.dumps(list(wavelengths)),
+                json.dumps(list(intensities)),
                 integration_time_s,
             ),
         )
@@ -254,9 +275,9 @@ class DataStore:
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 experiment_id,
-                _pack_floats(z_positions),
-                _pack_floats(raw_forces),
-                _pack_floats(corrected_forces),
+                json.dumps(list(z_positions)),
+                json.dumps(list(raw_forces)),
+                json.dumps(list(corrected_forces)),
                 baseline_avg,
                 baseline_std,
                 int(force_exceeded),
@@ -355,7 +376,13 @@ class DataStore:
                 f"for campaign {campaign_id}"
             )
 
-        existing = json.loads(row[1]) if row[1] else []
+        try:
+            existing = json.loads(row[1]) if row[1] else []
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Corrupt contents JSON for labware '{labware_key}' well '{well_id}' "
+                f"in campaign {campaign_id}. Manual database inspection required."
+            ) from exc
         existing.append({"source": source_name, "volume_ul": volume_ul})
 
         self._conn.execute(
@@ -385,7 +412,13 @@ class DataStore:
 
         if row is None or row[0] is None:
             return None
-        return json.loads(row[0])
+        try:
+            return json.loads(row[0])
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Corrupt contents JSON for labware '{labware_key}' well '{well_id}' "
+                f"in campaign {campaign_id}. Manual database inspection required."
+            ) from exc
 
     def close(self) -> None:
         self._conn.close()
