@@ -7,9 +7,20 @@ nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - Configuration: configuration.md
-  - Protocols: protocols.md
-  - Data and Analysis: data-and-analysis.md
-  - API Reference: reference/index.md
+  - Gantry: gantry.md
+  - Deck: deck.md
+  - Board: board.md
+  - Protocol: protocol.md
+  - Data: data.md
+  - API Reference:
+    - Overview: reference/index.md
+    - board: reference/src/board/index.md
+    - deck: reference/src/deck/index.md
+    - gantry: reference/src/gantry/index.md
+    - instruments: reference/src/instruments/index.md
+    - protocol_engine: reference/src/protocol_engine/index.md
+    - validation: reference/src/validation/index.md
+    - data: reference/data/index.md
 
 not_in_nav: |
   reference/src/**

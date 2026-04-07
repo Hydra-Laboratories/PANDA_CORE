@@ -109,19 +109,34 @@ index_lines = [
     "",
 ]
 
+# Group by second-level package (e.g. src.board, src.gantry) instead of
+# lumping everything under a single "src" heading.
+second_level: dict[str, list[tuple[str, Path]]] = defaultdict(list)
+
 for package_name in sorted(top_level_modules):
-    index_lines.append(f"## `{package_name}`")
+    entries = sorted(top_level_modules[package_name])
+    for module_name, docs_path in entries:
+        parts = module_name.split(".")
+        if len(parts) >= 2:
+            heading = ".".join(parts[:2])
+        else:
+            heading = parts[0]
+        second_level[heading].append((module_name, docs_path))
+
+for heading in sorted(second_level):
+    # Use the short name (e.g. "board" not "src.board") for display
+    display = heading.split(".")[-1] if "." in heading else heading
+    index_lines.append(f"## `{display}`")
     index_lines.append("")
 
-    entries = sorted(top_level_modules[package_name])
-    package_index = package_pages.get(package_name)
-    if package_index is not None:
+    pkg_index = package_pages.get(heading)
+    if pkg_index is not None:
         index_lines.append(
-            f"- [{package_name}]({package_index.relative_to('reference')})"
+            f"- [{heading}]({pkg_index.relative_to('reference')})"
         )
 
-    for module_name, docs_path in entries:
-        if module_name == package_name:
+    for module_name, docs_path in second_level[heading]:
+        if module_name == heading:
             continue
         index_lines.append(
             f"- [{module_name}]({docs_path.relative_to('reference')})"
