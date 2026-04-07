@@ -18,7 +18,15 @@ nav:
     - deck: reference/src/deck/index.md
     - gantry: reference/src/gantry/index.md
     - instruments: reference/src/instruments/index.md
-    - protocol_engine: reference/src/protocol_engine/index.md
+    - protocol_engine:
+      - Overview: reference/src/protocol_engine/index.md
+      - Commands:
+        - move: reference/src/protocol_engine/commands/move.md
+        - scan: reference/src/protocol_engine/commands/scan.md
+        - measure: reference/src/protocol_engine/commands/measure.md
+        - pipette: reference/src/protocol_engine/commands/pipette.md
+        - home: reference/src/protocol_engine/commands/home.md
+        - pause: reference/src/protocol_engine/commands/pause.md
     - validation: reference/src/validation/index.md
     - data: reference/data/index.md
 
@@ -45,6 +53,10 @@ plugins:
             show_symbol_type_heading: true
             show_symbol_type_toc: true
             show_source: false
+            separate_signature: true
+            signature_crossrefs: true
+            show_signature_annotations: true
+            unwrap_annotated: true
 
 markdown_extensions:
   - admonition
