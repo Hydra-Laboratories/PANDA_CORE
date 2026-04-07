@@ -22,3 +22,19 @@ jobs:
 
       - name: Run tests
         run: python -m pytest tests/ -v
+
+  digital-twin-validation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run digital twin validation tests
+        run: python -m pytest tests/validation/test_digital_twin.py -v

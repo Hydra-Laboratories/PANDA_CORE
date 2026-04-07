@@ -28,6 +28,7 @@ from gantry.loader import load_gantry_from_yaml
 from gantry.gantry import Gantry
 from protocol_engine.loader import load_protocol_from_yaml
 from validation.bounds import validate_deck_positions, validate_gantry_positions
+from validation.digital_twin import run_digital_twin_validation
 
 SEPARATOR = "-" * 60
 
@@ -73,6 +74,8 @@ def run_validation(
     deck_path: str,
     board_path: str,
     protocol_path: str,
+    twin_json_path: str | None = "artifacts/digital_twin_validation.json",
+    twin_image_path: str | None = "artifacts/digital_twin_overlap.svg",
 ) -> ValidationResult:
     """Run full setup validation and return structured result."""
     lines: list[str] = []
@@ -126,7 +129,7 @@ def run_validation(
     out("[3/4] Loading board config...")
     try:
         offline_gantry = Gantry(offline=True)
-        board = load_board_from_yaml(board_path, offline_gantry)
+        board = load_board_from_yaml(board_path, offline_gantry, mock_mode=True)
     except Exception as exc:
         out(f"  ERROR: {exc}")
         out()
@@ -191,11 +194,37 @@ def run_validation(
         out(f"  OK ({total_positions} positions x {len(board.instruments)} instrument(s) checked)")
     out()
 
+    # 7. Digital twin pre-validation
+    out("Running digital twin pre-validation...")
+    twin_result = run_digital_twin_validation(
+        gantry=gantry_config,
+        deck=deck,
+        board=board,
+        protocol=protocol,
+        json_path=twin_json_path,
+        image_path=twin_image_path,
+    )
+    if twin_result.passed:
+        out("  OK (all simulated steps reachable)")
+    else:
+        out(f"  FAIL — {len(twin_result.violations)} violation(s):")
+        for violation in twin_result.violations:
+            out(
+                f"  - step[{violation.step_index}] {violation.command} / {violation.instrument}: "
+                f"{violation.message}"
+            )
+    if twin_result.image_path:
+        out(f"  Overlap image: {twin_result.image_path}")
+    if twin_json_path:
+        out(f"  JSON artifact: {twin_json_path}")
+    out()
+
     # Final result
     all_violations = deck_violations + gantry_violations
+    twin_violations = twin_result.violations
     out(SEPARATOR)
-    if all_violations:
-        out(f"RESULT: FAIL — {len(all_violations)} violation(s) found")
+    if all_violations or twin_violations:
+        out(f"RESULT: FAIL — {len(all_violations) + len(twin_violations)} total violation(s) found")
         out(SEPARATOR)
         return ValidationResult(output="\n".join(lines), passed=False)
 
