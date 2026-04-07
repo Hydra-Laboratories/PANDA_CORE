@@ -78,8 +78,8 @@ class TestManualOriginLoader:
         finally:
             os.unlink(path)
 
-    def test_load_desktop_config_file(self):
-        """Load the actual Desktop config and verify manual_origin strategy."""
+    def test_load_cubos_config_file(self):
+        """Load the CubOS config and verify xy_hard_limits strategy."""
         from pathlib import Path
 
         config_path = (
@@ -89,7 +89,7 @@ class TestManualOriginLoader:
             / "cubos.yaml"
         )
         config = load_gantry_from_yaml(config_path)
-        assert config.homing_strategy == HomingStrategy.MANUAL_ORIGIN
+        assert config.homing_strategy == HomingStrategy.XY_HARD_LIMITS
 
 
 class TestGantryHomeDispatch:
