@@ -1,13 +1,13 @@
 """UV-Vis specific data retrieval and analysis helpers.
 
-Operates on the uvvis_measurements SQLite table. Provides BLOB unpacking,
-spectrum loading, and common spectral analysis functions.
+Operates on the uvvis_measurements SQLite table. Provides spectrum loading
+and common spectral analysis functions.
 """
 
 from __future__ import annotations
 
+import json
 import math
-import struct
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -27,32 +27,35 @@ class UVVisRecord:
     labware_name: Optional[str] = None
 
 
-# ── BLOB unpacking ────────────────────────────────────────────────────────────
-
-
-def _unpack_floats(blob: bytes) -> tuple[float, ...]:
-    """Unpack a little-endian float64 BLOB into a tuple of floats."""
-    if len(blob) == 0:
-        return ()
-    count = len(blob) // 8
-    return struct.unpack(f"<{count}d", blob)
-
-
-def unpack_spectrum(
-    wavelengths_blob: bytes,
-    intensities_blob: bytes,
+def _parse_spectrum(
+    wavelengths_json: str,
+    intensities_json: str,
     integration_time_s: float,
     experiment_id: int,
     measurement_id: int,
     well_id: Optional[str] = None,
     labware_name: Optional[str] = None,
 ) -> UVVisRecord:
-    """Unpack raw BLOB data from the database into a UVVisRecord."""
+    """Parse JSON-encoded spectrum data from the database into a UVVisRecord."""
+    try:
+        wavelengths = tuple(json.loads(wavelengths_json))
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise ValueError(
+            f"Corrupt wavelengths data for measurement_id={measurement_id}, "
+            f"experiment_id={experiment_id}: {exc}"
+        ) from exc
+    try:
+        intensities = tuple(json.loads(intensities_json))
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise ValueError(
+            f"Corrupt intensities data for measurement_id={measurement_id}, "
+            f"experiment_id={experiment_id}: {exc}"
+        ) from exc
     return UVVisRecord(
         measurement_id=measurement_id,
         experiment_id=experiment_id,
-        wavelengths=_unpack_floats(wavelengths_blob),
-        intensities=_unpack_floats(intensities_blob),
+        wavelengths=wavelengths,
+        intensities=intensities,
         integration_time_s=integration_time_s,
         well_id=well_id,
         labware_name=labware_name,
@@ -69,9 +72,9 @@ def load_uvvis_by_experiment(
     """Load all UV-Vis spectra for a given experiment."""
     rows = reader.get_measurements(experiment_id, table="uvvis_measurements")
     return [
-        unpack_spectrum(
-            wavelengths_blob=row["wavelengths"],
-            intensities_blob=row["intensities"],
+        _parse_spectrum(
+            wavelengths_json=row["wavelengths"],
+            intensities_json=row["intensities"],
             integration_time_s=row["integration_time_s"],
             experiment_id=row["experiment_id"],
             measurement_id=row["id"],
@@ -89,9 +92,9 @@ def load_uvvis_by_campaign(
         campaign_id, table="uvvis_measurements",
     )
     return [
-        unpack_spectrum(
-            wavelengths_blob=row["wavelengths"],
-            intensities_blob=row["intensities"],
+        _parse_spectrum(
+            wavelengths_json=row["wavelengths"],
+            intensities_json=row["intensities"],
             integration_time_s=row["integration_time_s"],
             experiment_id=row["experiment_id"],
             measurement_id=row["id"],
@@ -146,9 +149,23 @@ def absorbance(
     dark_values = dark.intensities if dark is not None else (0.0,) * len(sample.intensities)
 
     abs_values: list[float] = []
-    for s, r, d in zip(sample.intensities, reference.intensities, dark_values):
-        ratio = (s - d) / (r - d)
-        ratio = max(ratio, 1e-10)  # clamp to avoid log10(0)
+    for i, (s, r, d) in enumerate(zip(sample.intensities, reference.intensities, dark_values)):
+        denom = r - d
+        if denom == 0.0:
+            wl = sample.wavelengths[i] if i < len(sample.wavelengths) else "unknown"
+            raise ValueError(
+                f"Reference equals dark at index {i} (wavelength {wl} nm) — "
+                f"division by zero. Check that the reference spectrum is valid "
+                f"and not saturated."
+            )
+        ratio = (s - d) / denom
+        if ratio <= 0:
+            wl = sample.wavelengths[i] if i < len(sample.wavelengths) else "unknown"
+            raise ValueError(
+                f"Non-positive signal ratio {ratio:.6g} at index {i} "
+                f"(wavelength {wl} nm). Check that dark and reference spectra "
+                f"are valid and that the reference is not saturated."
+            )
         abs_values.append(-math.log10(ratio))
 
     return UVVisRecord(

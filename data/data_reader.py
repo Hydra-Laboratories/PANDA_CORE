@@ -5,6 +5,7 @@ Used after experiments for analysis — the write-side counterpart is DataStore.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -14,7 +15,17 @@ _VALID_MEASUREMENT_TABLES = frozenset({
     "uvvis_measurements",
     "filmetrics_measurements",
     "camera_measurements",
+    "asmi_measurements",
 })
+_TABLE_TO_INSTRUMENT = {
+    "uvvis_measurements": "uvvis",
+    "filmetrics_measurements": "filmetrics",
+    "camera_measurements": "camera",
+    "asmi_measurements": "asmi",
+}
+_INSTRUMENT_TO_TABLE = {
+    instrument: table for table, instrument in _TABLE_TO_INSTRUMENT.items()
+}
 
 
 @dataclass(frozen=True)
@@ -121,6 +132,20 @@ class DataReader:
         rows = self._conn.execute(query, params).fetchall()
         return [ExperimentRecord(**dict(r)) for r in rows]
 
+    def get_experiment_ids_dataframe(self, campaign_id: int) -> Any:
+        """Return a pandas DataFrame of experiment IDs for a campaign.
+
+        This helper is intentionally simple for non-software users who only need a
+        campaign → experiment list that can be exported to CSV.
+        """
+        pd = self._require_pandas()
+        rows = self._conn.execute(
+            "SELECT id AS experiment_id FROM experiments "
+            "WHERE campaign_id = ? ORDER BY id",
+            (campaign_id,),
+        ).fetchall()
+        return pd.DataFrame([dict(r) for r in rows], columns=["experiment_id"])
+
     # ── Labware queries ───────────────────────────────────────────────────
 
     def get_labware(
@@ -180,11 +205,126 @@ class DataReader:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_experiment_measurements_dataframe(self, experiment_id: int) -> Any:
+        """Return all measurements for one experiment as a single DataFrame.
+
+        The rows are instrument-agnostic and include:
+        - `instrument` (e.g. uvvis, filmetrics, camera, asmi)
+        - `measurement_id`
+        - `experiment_id`
+        - `timestamp`
+        - `data_json` (instrument-specific payload serialized as JSON)
+        """
+        pd = self._require_pandas()
+        rows: list[dict[str, Any]] = []
+        for table, instrument in _TABLE_TO_INSTRUMENT.items():
+            table_rows = self._conn.execute(
+                f"SELECT * FROM {table} WHERE experiment_id = ? ORDER BY id",
+                (experiment_id,),
+            ).fetchall()
+            for row in table_rows:
+                row_dict = dict(row)
+                rows.append({
+                    "instrument": instrument,
+                    "measurement_id": row_dict.get("id"),
+                    "experiment_id": row_dict.get("experiment_id"),
+                    "timestamp": row_dict.get("timestamp"),
+                    "data_json": self._serialize_row_payload(row_dict),
+                })
+        return pd.DataFrame(
+            rows,
+            columns=[
+                "instrument",
+                "measurement_id",
+                "experiment_id",
+                "timestamp",
+                "data_json",
+            ],
+        )
+
+    def get_experiment_measurements_by_instrument_dataframe(
+        self,
+        experiment_id: int,
+        instrument: str,
+    ) -> Any:
+        """Return measurements for one experiment filtered by instrument.
+
+        Args:
+            experiment_id: Experiment identifier.
+            instrument: One of `uvvis`, `filmetrics`, `camera`, or `asmi`.
+        """
+        pd = self._require_pandas()
+        normalized_instrument = instrument.strip().lower()
+        table = _INSTRUMENT_TO_TABLE.get(normalized_instrument)
+        if table is None:
+            supported = ", ".join(sorted(_INSTRUMENT_TO_TABLE))
+            raise ValueError(
+                f"Unsupported instrument '{instrument}'. Supported: {supported}"
+            )
+        rows = self._conn.execute(
+            f"SELECT * FROM {table} WHERE experiment_id = ? ORDER BY id",
+            (experiment_id,),
+        ).fetchall()
+        return pd.DataFrame([dict(r) for r in rows])
+
+    def export_dataframe_to_csv(
+        self,
+        dataframe: Any,
+        output_path: str,
+        *,
+        include_index: bool = False,
+    ) -> str:
+        """Write a pandas DataFrame to CSV and return the output path."""
+        if not hasattr(dataframe, "to_csv"):
+            raise TypeError("Expected a pandas DataFrame-like object with to_csv()")
+        dataframe.to_csv(output_path, index=include_index)
+        return output_path
+
     # ── Lifecycle ─────────────────────────────────────────────────────────
 
     @property
     def connection(self) -> sqlite3.Connection:
         return self._conn
+
+    @staticmethod
+    def _require_pandas() -> Any:
+        try:
+            import pandas as pd
+        except ImportError as exc:  # pragma: no cover - exercised only when missing
+            raise ImportError(
+                "pandas is required for DataFrame helpers. "
+                "Install with: pip install pandas"
+            ) from exc
+        return pd
+
+    @staticmethod
+    def _serialize_row_payload(row_dict: Dict[str, Any]) -> str:
+        payload: dict[str, Any] = {
+            key: value for key, value in row_dict.items()
+            if key not in {"id", "experiment_id", "timestamp"}
+        }
+        normalized_payload: dict[str, Any] = {}
+        for key, value in payload.items():
+            if isinstance(value, (bytes, bytearray)):
+                raise ValueError(
+                    f"Column '{key}' contains binary data (BLOB). "
+                    f"This database was written before the JSON migration. "
+                    f"Re-run your experiments or migrate the database to TEXT columns."
+                )
+            elif isinstance(value, str):
+                try:
+                    normalized_payload[key] = json.loads(value)
+                except (json.JSONDecodeError, ValueError):
+                    normalized_payload[key] = value
+            else:
+                normalized_payload[key] = value
+        return json.dumps(normalized_payload)
+
+    # _serialize_row_payload note: the str branch attempts json.loads so that
+    # JSON-encoded array columns (wavelengths, z_positions, etc.) are embedded
+    # as proper arrays rather than double-encoded strings. Plain-text columns
+    # (image_path, etc.) that fail json.loads are passed through as-is — this
+    # is intentional and safe for non-array string columns.
 
     def close(self) -> None:
         if self._owns_connection:

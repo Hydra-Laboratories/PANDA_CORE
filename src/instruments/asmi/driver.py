@@ -36,11 +36,13 @@ class ASMI(BaseInstrument):
         default_force: float = 0.0,
         force_threshold: float = _DEFAULT_FORCE_THRESHOLD,
         sensor_channels: Optional[list[int]] = None,
-        z_limit: float = -17.0,
+        z_target: float = -17.0,
         step_size: float = 0.01,
         force_limit: float = 15.0,
         baseline_samples: int = 10,
         idle_timeout: float = 10.0,
+        well_top_z: float | None = None,
+        safe_z: float | None = None,
     ):
         super().__init__(
             name=name, offset_x=offset_x, offset_y=offset_y,
@@ -50,11 +52,13 @@ class ASMI(BaseInstrument):
         self._default_force = default_force
         self._force_threshold = force_threshold
         self._sensor_channels = sensor_channels or list(_DEFAULT_SENSOR_CHANNELS)
-        self._z_limit = z_limit
+        self._z_target = z_target
         self._step_size = step_size
         self._force_limit = force_limit
         self._baseline_samples = baseline_samples
         self._idle_timeout = idle_timeout
+        self._well_top_z = well_top_z
+        self._safe_z = safe_z
         self._godirect = None
         self._device = None
         self._sensor = None
@@ -238,19 +242,21 @@ class ASMI(BaseInstrument):
             force_exceeded, data_points.
         """
         # Allow protocol method_kwargs to override instance defaults
-        _z_limit = z_limit if z_limit is not None else self._z_limit
+        _z_target = z_limit if z_limit is not None else self._z_target
         _step_size = step_size if step_size is not None else self._step_size
         _force_limit = force_limit if force_limit is not None else self._force_limit
-        _measurement_height = measurement_height if measurement_height is not None else self.measurement_height
+        _well_top_z = measurement_height if measurement_height is not None else (
+            self._well_top_z if self._well_top_z is not None else self.measurement_height
+        )
         _baseline_samples = baseline_samples if baseline_samples is not None else self._baseline_samples
 
         if self._offline:
-            return self._offline_indentation(gantry, _z_limit, _step_size, _measurement_height)
+            return self._offline_indentation(gantry, _z_target, _step_size, _well_top_z)
 
         coords = gantry.get_coordinates()
         cur_x, cur_y = coords["x"], coords["y"]
 
-        self._move_z(gantry, cur_x, cur_y, _measurement_height)
+        self._move_z(gantry, cur_x, cur_y, _well_top_z)
 
         baseline_avg, baseline_std = self.get_baseline_force(
             samples=_baseline_samples
@@ -265,8 +271,8 @@ class ASMI(BaseInstrument):
         while True:
             coords = gantry.get_coordinates()
             current_z = coords["z"]
-            if current_z <= _z_limit:
-                self.logger.info("Reached z_limit %.3f mm", _z_limit)
+            if current_z <= _z_target:
+                self.logger.info("Reached z_target %.3f mm", _z_target)
                 break
             next_z = current_z - _step_size
             self._move_z(gantry, cur_x, cur_y, next_z)

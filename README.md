@@ -1,5 +1,7 @@
 # CNC Control Project
 
+[![Tests](https://github.com/Hydra-Laboratories/PANDA_CORE/actions/workflows/tests.yml/badge.svg)](https://github.com/Hydra-Laboratories/PANDA_CORE/actions/workflows/tests.yml)
+
 A standalone project for controlling a GRBL CNC mill.
 
 ## Setup
