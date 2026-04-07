@@ -1,4 +1,4 @@
-"""Simple CLI helpers for exporting PANDA SQLite data to CSV."""
+"""Simple CLI helpers for exporting CubOS SQLite data to CSV."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from data.data_reader import DataReader
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Export campaign/experiment data from PANDA SQLite database.",
+        description="Export campaign/experiment data from CubOS SQLite database.",
     )
     parser.add_argument(
         "--db-path",

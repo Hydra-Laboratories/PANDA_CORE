@@ -53,7 +53,7 @@ Driver for the Thorlabs CCS-series compact spectrometers (CCS100/CCS175/CCS200).
 - **`exceptions.py`**: `UVVisCCSError` hierarchy (`UVVisCCSConnectionError`, `UVVisCCSMeasurementError`, `UVVisCCSTimeoutError`).
 
 #### Pipette (`src/instruments/pipette`)
-Driver for Opentrons OT-2 and Flex pipettes. Communicates with the pipette motor via Arduino serial (Pawduino firmware). Supports 10 pipette models; the P300 single-channel has real calibrated values from PANDA-BEAR.
+Driver for Opentrons OT-2 and Flex pipettes. Communicates with the pipette motor via Arduino serial (Pawduino firmware). Supports 10 pipette models; the P300 single-channel has real calibrated values from the BEAR-DEN workcell.
 
 - **`driver.py`**: `Pipette(BaseInstrument)` — the real serial driver.
     - **Constructor**: `Pipette(pipette_model, port, baud_rate=115200, command_timeout=30.0, name=None)`

@@ -1,5 +1,5 @@
-site_name: PANDA Core
-site_description: Documentation for PANDA Core, the CNC-based lab automation platform.
+site_name: CubOS
+site_description: Documentation for CubOS, the CNC-based lab automation platform.
 theme:
   name: readthedocs
 

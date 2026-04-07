@@ -1,6 +1,6 @@
 # Getting Started
 
-## Two Ways to Use PANDA Core
+## Two Ways to Use CubOS
 
 There are two entrypoints:
 
@@ -22,8 +22,8 @@ Hardware-dependent workflows may also require:
 ## Installation
 
 ```bash
-git clone https://github.com/Hydra-Laboratories/PANDA_CORE.git
-cd PANDA_CORE
+git clone https://github.com/Hydra-Laboratories/CubOS.git
+cd CubOS
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt

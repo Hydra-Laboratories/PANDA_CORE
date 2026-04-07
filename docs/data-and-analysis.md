@@ -1,6 +1,6 @@
 # Data and Analysis
 
-PANDA Core includes a local SQLite-backed persistence layer for campaigns, experiments, measurements, and tracked labware contents.
+CubOS includes a local SQLite-backed persistence layer for campaigns, experiments, measurements, and tracked labware contents.
 
 ## Main Components
 

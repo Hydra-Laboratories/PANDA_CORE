@@ -1,4 +1,4 @@
-"""Read-only query layer for the PANDA SQLite database.
+"""Read-only query layer for the CubOS SQLite database.
 
 Used after experiments for analysis — the write-side counterpart is DataStore.
 """
@@ -70,7 +70,7 @@ class LabwareRecord:
 
 
 class DataReader:
-    """Read-only query interface for the PANDA SQLite database."""
+    """Read-only query interface for the CubOS SQLite database."""
 
     def __init__(
         self,

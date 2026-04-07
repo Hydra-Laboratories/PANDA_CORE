@@ -1,6 +1,6 @@
-# PANDA Core
+# CubOS
 
-PANDA Core is the Python control layer for a CNC-based lab platform. It combines:
+CubOS is the Python control layer for a CNC-based lab platform. It combines:
 
 - Gantry motion control for GRBL-based hardware
 - Instrument drivers for measurement and liquid handling
