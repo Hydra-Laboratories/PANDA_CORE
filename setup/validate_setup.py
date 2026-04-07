@@ -5,7 +5,7 @@ Usage:
 
 Example:
     python setup/validate_setup.py \\
-        configs/gantries/genmitsu_3018_PROver_v2.yaml \\
+        configs/gantries/cubos_xl.yaml \\
         configs/decks/mofcat_deck.yaml \\
         configs/boards/mofcat_board.yaml \\
         configs/protocols/protocol.sample.yaml
@@ -211,7 +211,7 @@ def main() -> None:
         print()
         print("Example:")
         print("  python setup/validate_setup.py \\")
-        print("    configs/gantries/genmitsu_3018_PROver_v2.yaml \\")
+        print("    configs/gantries/cubos_xl.yaml \\")
         print("    configs/decks/mofcat_deck.yaml \\")
         print("    configs/boards/mofcat_board.yaml \\")
         print("    configs/protocols/protocol.sample.yaml")

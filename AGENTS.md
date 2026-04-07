@@ -79,7 +79,7 @@ Gantry YAML loader and domain model for CNC gantry working volume and homing str
 - **`yaml_schema.py`**: `GantryYamlSchema` with strict Pydantic validation (working volume bounds, homing strategy, serial port).
 - **`gantry_config.py`**: `GantryConfig` and `WorkingVolume` frozen dataclasses. `WorkingVolume.contains(x, y, z)` checks if a point is within bounds (inclusive).
 - **`loader.py`**: `load_gantry_from_yaml(path)` and `load_gantry_from_yaml_safe(path)`.
-- **Config files**: `configs/gantries/` (e.g., `genmitsu_3018_PROver_v2.yaml`).
+- **Config files**: `configs/gantries/` (e.g., `cubos_xl.yaml`).
 
 ### Validation (`src/validation`)
 Bounds validation for protocol setup — ensures all deck positions and gantry-computed positions are within the gantry's working volume before the protocol runs.
