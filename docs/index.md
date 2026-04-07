@@ -12,7 +12,6 @@ This site is set up as a practical operator and developer wiki:
 
 - The narrative guides are written manually where operator knowledge matters.
 - The API reference is generated from the Python package tree at build time.
-- Pages marked `TODO(manual)` are deliberate placeholders for lab-specific knowledge that cannot be inferred safely from code alone.
 
 ## Quick Start
 
@@ -35,28 +34,10 @@ python setup/validate_setup.py \
   configs/protocol/scan.yaml
 ```
 
-Build the docs locally:
-
-```bash
-mkdocs serve
-```
-
 ## What To Read First
 
-- [Getting Started](getting-started.md) for installation, local docs, and first commands
-- [Architecture](architecture.md) for the package-level system map
+- [Getting Started](getting-started.md) for installation and first commands
 - [Configuration](configuration.md) for the four YAML surfaces
 - [Protocols](protocols.md) for how protocol execution is assembled and validated
-- [Hardware Operations](hardware-operations.md) for runbooks and safety placeholders
+- [Data and Analysis](data-and-analysis.md) for persistence and analysis helpers
 - [API Reference](reference/index.md) for generated module docs
-
-## Documentation Status
-
-!!! warning "Manual content still needed"
-    This site is scaffolded to be immediately useful, but several pages intentionally leave room for operator-written content:
-
-    - hardware safety and lockout procedures
-    - calibration and re-calibration workflows
-    - vendor driver acquisition and installation notes
-    - experiment-specific protocol conventions
-    - backup, retention, and incident handling policies

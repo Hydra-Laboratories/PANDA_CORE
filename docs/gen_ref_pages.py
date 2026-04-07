@@ -12,6 +12,7 @@ SOURCE_ROOTS = [
     REPO_ROOT / "src",
     REPO_ROOT / "data",
 ]
+EXCLUDED_PARTS = {"asmi"}
 
 
 def iter_python_modules() -> list[tuple[str, Path, Path, bool]]:
@@ -35,6 +36,8 @@ def iter_python_modules() -> list[tuple[str, Path, Path, bool]]:
 
             repo_relative = source_path.relative_to(REPO_ROOT)
             module_parts = list(repo_relative.with_suffix("").parts)
+            if any(part in EXCLUDED_PARTS for part in module_parts):
+                continue
             is_package = module_parts[-1] == "__init__"
 
             if is_package:

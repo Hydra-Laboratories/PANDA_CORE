@@ -128,10 +128,3 @@ Use this file when:
 ## Recommended Editing Rule
 
 If the physical machine setup has not changed, edit the protocol file and leave the gantry, deck, and board files alone.
-
-## TODO(manual)
-
-- Add field-by-field reference tables for each YAML type
-- Record allowed naming conventions for labware keys and instrument keys
-- Document how calibration is performed and who is authorized to update calibration data
-- Add examples for every real protocol command currently used in production

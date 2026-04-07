@@ -1,6 +1,6 @@
 # Getting Started
 
-This page covers local setup, first validation steps, and how to work with the documentation site.
+This page covers local setup and the first validation steps.
 
 ## Prerequisites
 
@@ -66,29 +66,3 @@ Interactive gantry bring-up:
 ```bash
 python3 setup/hello_world.py
 ```
-
-## Local Documentation Workflow
-
-Serve the docs locally:
-
-```bash
-mkdocs serve
-```
-
-Build the static site:
-
-```bash
-mkdocs build
-```
-
-Read the generated API docs from the `API Reference` section. Those pages are built from the package tree during `mkdocs build` and should not be edited by hand.
-
-## TODO(manual)
-
-Fill in these repo-specific onboarding details before treating this as operator-ready documentation:
-
-- Supported operating systems and Python versions in the lab environment
-- Known-good USB serial adapters and port naming expectations
-- Vendor driver download locations and version pins
-- Which sample config files are canonical for each hardware installation
-- Who owns calibration, maintenance, and protocol approval
