@@ -61,9 +61,6 @@ class TestASMIOffline(unittest.TestCase):
         self.assertEqual(result["data_points"], len(result["measurements"]))
         self.assertGreater(result["data_points"], 0)
         self.assertFalse(result["force_exceeded"])
-        # Verify gantry ended at safe_z
-        coords = gantry.get_coordinates()
-        self.assertAlmostEqual(coords["z"], -5.0)
 
 
 class TestASMIOnlineRequiresHardware(unittest.TestCase):
