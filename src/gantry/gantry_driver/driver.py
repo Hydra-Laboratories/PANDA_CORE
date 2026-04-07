@@ -128,7 +128,7 @@ class Mill:
         self.active_connection = False
         self.instrument_manager: InstrumentManager = InstrumentManager()
         self.working_volume: Coordinates = self.read_working_volume()
-        self.safe_z_height = -10.0  # TODO: In the PANDA wrapper, set the safe floor height to the max height of any active object on the mill + the pipette length
+        self.safe_z_height = -10.0  # TODO: set the safe floor height to the max height of any active object on the mill + the pipette length
         self.max_z_height = 0.0
         self.command_logger = set_up_command_logger(self.logger_location)
         self.interactive_mode = False

@@ -1,6 +1,6 @@
 # ASMI indentation protocol.
 # Scans the well plate, performing step-by-step indentation at each well.
-# Uses panda-core protocol engine (feature/uv-curing-instrument).
+# Uses CubOS protocol engine.
 #
 # Flow per well (handled by scan + indentation method):
 #   1. Move to well XY (deck Z + measurement_height offset)

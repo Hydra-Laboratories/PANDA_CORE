@@ -1,6 +1,6 @@
 # Configuration
 
-PANDA Core uses four YAML inputs to define a runnable experiment. Together they describe the machine, the layout, the mounted tools, and the step sequence.
+CubOS uses four YAML inputs to define a runnable experiment. Together they describe the machine, the layout, the mounted tools, and the step sequence.
 
 ## Directory Layout
 

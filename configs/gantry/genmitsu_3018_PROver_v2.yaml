@@ -1,4 +1,4 @@
-# PANDA — Genmitsu 3018 PROver v2 (larger gantry)
+# Cub-XL — Genmitsu 3018 PROver v2 (larger gantry)
 # WPos coordinates — all positive after homing. Home = (x_max, y_max, z_max).
 serial_port: /dev/cu.usbserial-140
 cnc:

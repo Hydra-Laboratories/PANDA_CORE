@@ -1,4 +1,4 @@
-"""Data persistence layer for PANDA_CORE campaigns and measurements."""
+"""Data persistence layer for CubOS campaigns and measurements."""
 
 from .data_reader import DataReader
 from .data_store import DataStore

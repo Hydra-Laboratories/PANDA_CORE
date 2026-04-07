@@ -1,6 +1,6 @@
 # Gantry
 
-The gantry is the CNC motion platform that moves instruments over the deck. PANDA Core communicates with GRBL-based controllers over serial.
+The gantry is the CNC motion platform that moves instruments over the deck. CubOS communicates with GRBL-based controllers over serial.
 
 ## Config
 
@@ -47,5 +47,5 @@ Use this file when:
 
 | Config | System | Working Volume |
 |--------|--------|----------------|
-| `genmitsu_3018_PROver_v2.yaml` | PANDA (XL) | 300 x 200 x 80 mm |
-| `genmitsu_3018_PRO_Desktop.yaml` | CUB (Small) | 300 x 200 x 80 mm |
+| `genmitsu_3018_PROver_v2.yaml` | Cub-XL | 300 x 200 x 80 mm |
+| `genmitsu_3018_PRO_Desktop.yaml` | Cub | 300 x 200 x 80 mm |

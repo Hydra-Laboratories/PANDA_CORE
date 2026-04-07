@@ -1,6 +1,6 @@
 # Data
 
-PANDA Core stores experimental state and labware tracking data locally in a SQLite database. This runs automatically during protocol execution — no external database setup is needed.
+CubOS stores experimental state and labware tracking data locally in a SQLite database. This runs automatically during protocol execution — no external database setup is needed.
 
 ## What Gets Stored
 
@@ -15,7 +15,7 @@ During a protocol run, the database records:
 
 The `data.data_reader` module provides helper functions for extracting data from the SQLite database after a run. Use these to pull measurements, labware state, or campaign metadata into Python for your own analysis.
 
-PANDA Core does not provide analysis tools — it only handles storage and retrieval. Analysis is left to the user.
+CubOS does not provide analysis tools — it only handles storage and retrieval. Analysis is left to the user.
 
 ## Runtime Integration
 

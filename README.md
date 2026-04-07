@@ -1,6 +1,6 @@
-# PANDA Core
+# CubOS
 
-PANDA Core is a lab automation software package for running self-driving experiments via a modified, off-the-shelf CNC gantry. 
+CubOS is a lab automation software package for running self-driving experiments via a modified, off-the-shelf CNC gantry. 
 
 ## Configuration
 
@@ -37,8 +37,8 @@ Two gantry configs are included:
 
 | Config | System | Working Volume |
 |--------|--------|----------------|
-| `genmitsu_3018_PROver_v2.yaml` | PANDA (XL) | 300 x 200 x 80 mm |
-| `genmitsu_3018_PRO_Desktop.yaml` | CUB (Small) | 300 x 200 x 80 mm |
+| `genmitsu_3018_PROver_v2.yaml` | Cub-XL | 300 x 200 x 80 mm |
+| `genmitsu_3018_PRO_Desktop.yaml` | Cub | 300 x 200 x 80 mm |
 
 ### 2. Deck (`configs/deck/*.yaml`)
 
@@ -142,8 +142,8 @@ All instruments have real drivers and mock variants for offline testing.
 ## Installation
 
 ```bash
-git clone https://github.com/Hydra-Laboratories/PANDA_CORE.git
-cd PANDA_CORE
+git clone https://github.com/Hydra-Laboratories/CubOS.git
+cd CubOS
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
