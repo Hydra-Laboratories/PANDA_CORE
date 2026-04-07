@@ -37,11 +37,25 @@ def _parse_spectrum(
     labware_name: Optional[str] = None,
 ) -> UVVisRecord:
     """Parse JSON-encoded spectrum data from the database into a UVVisRecord."""
+    try:
+        wavelengths = tuple(json.loads(wavelengths_json))
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise ValueError(
+            f"Corrupt wavelengths data for measurement_id={measurement_id}, "
+            f"experiment_id={experiment_id}: {exc}"
+        ) from exc
+    try:
+        intensities = tuple(json.loads(intensities_json))
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise ValueError(
+            f"Corrupt intensities data for measurement_id={measurement_id}, "
+            f"experiment_id={experiment_id}: {exc}"
+        ) from exc
     return UVVisRecord(
         measurement_id=measurement_id,
         experiment_id=experiment_id,
-        wavelengths=tuple(json.loads(wavelengths_json)),
-        intensities=tuple(json.loads(intensities_json)),
+        wavelengths=wavelengths,
+        intensities=intensities,
         integration_time_s=integration_time_s,
         well_id=well_id,
         labware_name=labware_name,
@@ -135,9 +149,23 @@ def absorbance(
     dark_values = dark.intensities if dark is not None else (0.0,) * len(sample.intensities)
 
     abs_values: list[float] = []
-    for s, r, d in zip(sample.intensities, reference.intensities, dark_values):
-        ratio = (s - d) / (r - d)
-        ratio = max(ratio, 1e-10)  # clamp to avoid log10(0)
+    for i, (s, r, d) in enumerate(zip(sample.intensities, reference.intensities, dark_values)):
+        denom = r - d
+        if denom == 0.0:
+            wl = sample.wavelengths[i] if i < len(sample.wavelengths) else "unknown"
+            raise ValueError(
+                f"Reference equals dark at index {i} (wavelength {wl} nm) — "
+                f"division by zero. Check that the reference spectrum is valid "
+                f"and not saturated."
+            )
+        ratio = (s - d) / denom
+        if ratio <= 0:
+            wl = sample.wavelengths[i] if i < len(sample.wavelengths) else "unknown"
+            raise ValueError(
+                f"Non-positive signal ratio {ratio:.6g} at index {i} "
+                f"(wavelength {wl} nm). Check that dark and reference spectra "
+                f"are valid and that the reference is not saturated."
+            )
         abs_values.append(-math.log10(ratio))
 
     return UVVisRecord(

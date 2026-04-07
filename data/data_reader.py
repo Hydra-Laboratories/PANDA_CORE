@@ -306,7 +306,11 @@ class DataReader:
         normalized_payload: dict[str, Any] = {}
         for key, value in payload.items():
             if isinstance(value, (bytes, bytearray)):
-                normalized_payload[key] = value.hex()
+                raise ValueError(
+                    f"Column '{key}' contains binary data (BLOB). "
+                    f"This database was written before the JSON migration. "
+                    f"Re-run your experiments or migrate the database to TEXT columns."
+                )
             elif isinstance(value, str):
                 try:
                     normalized_payload[key] = json.loads(value)
@@ -315,6 +319,12 @@ class DataReader:
             else:
                 normalized_payload[key] = value
         return json.dumps(normalized_payload)
+
+    # _serialize_row_payload note: the str branch attempts json.loads so that
+    # JSON-encoded array columns (wavelengths, z_positions, etc.) are embedded
+    # as proper arrays rather than double-encoded strings. Plain-text columns
+    # (image_path, etc.) that fail json.loads are passed through as-is — this
+    # is intentional and safe for non-array string columns.
 
     def close(self) -> None:
         if self._owns_connection:

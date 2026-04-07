@@ -170,6 +170,73 @@ class TestAbsorbance:
         with pytest.raises(ValueError, match="same length"):
             absorbance(sample, reference)
 
+    def test_absorbance_mismatched_dark_length_raises(self):
+        sample = UVVisRecord(
+            measurement_id=1, experiment_id=1,
+            wavelengths=(400.0, 500.0),
+            intensities=(50.0, 25.0),
+            integration_time_s=0.24,
+        )
+        reference = UVVisRecord(
+            measurement_id=2, experiment_id=1,
+            wavelengths=(400.0, 500.0),
+            intensities=(100.0, 100.0),
+            integration_time_s=0.24,
+        )
+        dark = UVVisRecord(
+            measurement_id=3, experiment_id=1,
+            wavelengths=(400.0,),
+            intensities=(10.0,),
+            integration_time_s=0.24,
+        )
+        with pytest.raises(ValueError, match="same length"):
+            absorbance(sample, reference, dark=dark)
+
+    def test_absorbance_reference_equals_dark_raises(self):
+        sample = UVVisRecord(
+            measurement_id=1, experiment_id=1,
+            wavelengths=(400.0,),
+            intensities=(50.0,),
+            integration_time_s=0.24,
+        )
+        reference = UVVisRecord(
+            measurement_id=2, experiment_id=1,
+            wavelengths=(400.0,),
+            intensities=(10.0,),
+            integration_time_s=0.24,
+        )
+        dark = UVVisRecord(
+            measurement_id=3, experiment_id=1,
+            wavelengths=(400.0,),
+            intensities=(10.0,),  # same as reference → division by zero
+            integration_time_s=0.24,
+        )
+        with pytest.raises(ValueError, match="division by zero"):
+            absorbance(sample, reference, dark=dark)
+
+    def test_absorbance_non_positive_ratio_raises(self):
+        # sample below dark → ratio < 0
+        sample = UVVisRecord(
+            measurement_id=1, experiment_id=1,
+            wavelengths=(400.0,),
+            intensities=(5.0,),
+            integration_time_s=0.24,
+        )
+        reference = UVVisRecord(
+            measurement_id=2, experiment_id=1,
+            wavelengths=(400.0,),
+            intensities=(100.0,),
+            integration_time_s=0.24,
+        )
+        dark = UVVisRecord(
+            measurement_id=3, experiment_id=1,
+            wavelengths=(400.0,),
+            intensities=(20.0,),  # dark > sample → negative ratio
+            integration_time_s=0.24,
+        )
+        with pytest.raises(ValueError, match="Non-positive signal ratio"):
+            absorbance(sample, reference, dark=dark)
+
 
 # ─── Wavelength slicing ──────────────────────────────────────────────────────
 

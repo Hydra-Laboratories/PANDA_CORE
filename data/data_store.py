@@ -95,9 +95,36 @@ class DataStore:
         self._conn = sqlite3.connect(db_path)
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._create_tables()
+        self._check_schema_migration()
 
     def _create_tables(self) -> None:
         self._conn.executescript(_SCHEMA_SQL)
+
+    _BLOB_COLUMNS = {
+        "uvvis_measurements": ("wavelengths", "intensities"),
+        "asmi_measurements": ("z_positions", "raw_forces", "corrected_forces"),
+    }
+
+    def _check_schema_migration(self) -> None:
+        """Raise if any float-array column still contains binary BLOB data."""
+        for table, columns in self._BLOB_COLUMNS.items():
+            table_exists = self._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table,),
+            ).fetchone()
+            if table_exists is None:
+                continue
+            for column in columns:
+                row = self._conn.execute(
+                    f"SELECT {column} FROM {table} LIMIT 1"
+                ).fetchone()
+                if row is not None and isinstance(row[0], (bytes, bytearray)):
+                    raise RuntimeError(
+                        f"Database contains legacy binary BLOB data in "
+                        f"{table}.{column}. This database was written before "
+                        f"the JSON migration. Re-run experiments or contact "
+                        f"support for a migration script."
+                    )
 
     def create_campaign(
         self,
@@ -349,7 +376,13 @@ class DataStore:
                 f"for campaign {campaign_id}"
             )
 
-        existing = json.loads(row[1]) if row[1] else []
+        try:
+            existing = json.loads(row[1]) if row[1] else []
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Corrupt contents JSON for labware '{labware_key}' well '{well_id}' "
+                f"in campaign {campaign_id}. Manual database inspection required."
+            ) from exc
         existing.append({"source": source_name, "volume_ul": volume_ul})
 
         self._conn.execute(
@@ -379,7 +412,13 @@ class DataStore:
 
         if row is None or row[0] is None:
             return None
-        return json.loads(row[0])
+        try:
+            return json.loads(row[0])
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Corrupt contents JSON for labware '{labware_key}' well '{well_id}' "
+                f"in campaign {campaign_id}. Manual database inspection required."
+            ) from exc
 
     def close(self) -> None:
         self._conn.close()

@@ -83,6 +83,23 @@ class TestListCampaigns:
         assert len(campaigns) == 1
         assert campaigns[0].description == "test campaign"
 
+    def test_returns_empty_when_no_campaigns(self):
+        from data.data_store import DataStore
+        store = DataStore(db_path=":memory:")
+        reader = DataReader(connection=store._conn)
+        assert reader.list_campaigns() == []
+        store.close()
+
+    def test_returns_campaigns_ordered_by_id(self):
+        from data.data_store import DataStore
+        store = DataStore(db_path=":memory:")
+        store.create_campaign(description="first")
+        store.create_campaign(description="second")
+        reader = DataReader(connection=store._conn)
+        campaigns = reader.list_campaigns()
+        assert campaigns[0].id < campaigns[1].id
+        store.close()
+
 
 # ─── Experiment queries ──────────────────────────────────────────────────────
 
@@ -116,6 +133,32 @@ class TestGetExperiments:
 
 
 class TestGetLabware:
+
+    def test_filter_by_labware_key(self):
+        from data.data_store import DataStore
+        from deck.labware.vial import Vial
+        from deck.labware.labware import Coordinate3D
+
+        store = DataStore(db_path=":memory:")
+        cid = store.create_campaign(description="labware filter test")
+
+        for name in ("vial_1", "vial_2"):
+            vial = Vial(
+                name=name,
+                model_name="standard",
+                height_mm=66.75,
+                diameter_mm=28.0,
+                location=Coordinate3D(x=0.0, y=0.0, z=0.0),
+                capacity_ul=1500.0,
+                working_volume_ul=1200.0,
+            )
+            store.register_labware(cid, name, vial)
+
+        reader = DataReader(connection=store._conn)
+        labware = reader.get_labware(campaign_id=cid, labware_key="vial_1")
+        assert len(labware) == 1
+        assert labware[0].labware_key == "vial_1"
+        store.close()
 
     def test_returns_labware_for_campaign(self):
         store = DataStore(db_path=":memory:")
@@ -170,6 +213,12 @@ class TestGetMeasurementsByExperiment:
 
 
 class TestGetMeasurementsByCampaign:
+
+    def test_rejects_invalid_table_name(self, seeded_reader: DataReader):
+        with pytest.raises(ValueError, match="not a valid measurement table"):
+            seeded_reader.get_measurements_by_campaign(
+                campaign_id=1, table="'; DROP TABLE--"
+            )
 
     def test_returns_all_measurements_for_campaign(self, seeded_reader: DataReader):
         rows = seeded_reader.get_measurements_by_campaign(
@@ -234,6 +283,13 @@ class TestDataFrameHelpers:
                 instrument="invalid",
             )
 
+    def test_get_experiment_ids_dataframe_empty(self, seeded_reader: DataReader):
+        pd = pytest.importorskip("pandas")
+        df = seeded_reader.get_experiment_ids_dataframe(campaign_id=999)
+        assert isinstance(df, pd.DataFrame)
+        assert list(df.columns) == ["experiment_id"]
+        assert len(df) == 0
+
     def test_export_dataframe_to_csv(
         self,
         seeded_reader: DataReader,
@@ -245,6 +301,52 @@ class TestDataFrameHelpers:
         written = seeded_reader.export_dataframe_to_csv(df, str(output_path))
         assert written == str(output_path)
         assert output_path.exists()
+
+    def test_export_dataframe_to_csv_with_index(
+        self,
+        seeded_reader: DataReader,
+        tmp_path: Path,
+    ):
+        pytest.importorskip("pandas")
+        df = seeded_reader.get_experiment_ids_dataframe(campaign_id=1)
+        output_path = tmp_path / "with_index.csv"
+        seeded_reader.export_dataframe_to_csv(df, str(output_path), include_index=True)
+        lines = output_path.read_text().splitlines()
+        # First column is the numeric index when include_index=True
+        assert lines[1].startswith("0,")
+
+    def test_export_dataframe_to_csv_rejects_non_dataframe(
+        self,
+        seeded_reader: DataReader,
+        tmp_path: Path,
+    ):
+        pytest.importorskip("pandas")
+        with pytest.raises(TypeError, match="pandas DataFrame"):
+            seeded_reader.export_dataframe_to_csv(
+                {"not": "a dataframe"}, str(tmp_path / "x.csv")
+            )
+
+    def test_serialize_row_payload_bytes_raises(self):
+        with pytest.raises(ValueError, match="binary data"):
+            DataReader._serialize_row_payload(
+                {"wavelengths": b"\x00\x01\x02", "id": 1, "experiment_id": 1, "timestamp": "t"}
+            )
+
+    def test_serialize_row_payload_plain_string_passthrough(self):
+        result = json.loads(
+            DataReader._serialize_row_payload(
+                {"image_path": "/data/img.png", "id": 1, "experiment_id": 1, "timestamp": "t"}
+            )
+        )
+        assert result["image_path"] == "/data/img.png"
+
+    def test_serialize_row_payload_json_string_expanded(self):
+        result = json.loads(
+            DataReader._serialize_row_payload(
+                {"wavelengths": "[400.0, 500.0]", "id": 1, "experiment_id": 1, "timestamp": "t"}
+            )
+        )
+        assert result["wavelengths"] == [400.0, 500.0]
 
 
 # ─── Context manager ─────────────────────────────────────────────────────────
