@@ -1,36 +1,27 @@
 # Data
 
-PANDA Core includes a local SQLite-backed persistence layer for campaigns, experiments, measurements, and tracked labware contents.
+PANDA Core stores experimental state and labware tracking data locally in a SQLite database. This runs automatically during protocol execution — no external database setup is needed.
 
-## Main Components
+## What Gets Stored
 
-- `data.data_store`: database creation and persistence API
-- `data.data_reader`: read/query helpers
-- `data.analysis.uvvis`: UV-Vis analysis helpers
+During a protocol run, the database records:
 
-## Stored Concepts
+- **Campaigns** — top-level grouping for a set of experiments
+- **Experiments** — individual runs within a campaign
+- **Measurements** — per-well results from instruments (UV-Vis spectra, Filmetrics thickness, force data, etc.)
+- **Labware state** — volume levels and contents for each well and vial, updated after every aspirate/dispense
 
-The data layer models:
+## Reading Data Back
 
-- campaigns
-- experiments
-- UV-Vis measurements
-- Filmetrics measurements
-- camera measurements
-- labware volume/content tracking
+The `data.data_reader` module provides helper functions for extracting data from the SQLite database after a run. Use these to pull measurements, labware state, or campaign metadata into Python for your own analysis.
+
+PANDA Core does not provide analysis tools — it only handles storage and retrieval. Analysis is left to the user.
 
 ## Runtime Integration
 
-When `ProtocolContext.data_store` and `ProtocolContext.campaign_id` are set, relevant protocol commands can persist:
+When `ProtocolContext.data_store` and `ProtocolContext.campaign_id` are set, protocol commands automatically persist measurements and liquid transfers. When these are not set, protocol execution works identically but nothing is saved.
 
-- measurements
-- transfer/dispense state
-- campaign and experiment lineage
+## Components
 
-This design allows protocol execution to remain the same when persistence is absent while enabling stateful experiment tracking when it is present.
-
-## Recommended Usage
-
-- Use an on-disk database for long-lived campaigns
-- Use `:memory:` in tests where persistence should be isolated
-- Treat schema changes as migration-worthy changes, not casual edits
+- `data.data_store` — database creation and write API
+- `data.data_reader` — read and query helpers
