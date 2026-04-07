@@ -3,33 +3,20 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, TYPE_CHECKING, Type
+from typing import Dict, TYPE_CHECKING
 
 import yaml
 from pydantic import ValidationError
 
 from instruments.base_instrument import BaseInstrument
-from instruments.asmi.driver import ASMI
-from instruments.filmetrics.driver import Filmetrics
-from instruments.pipette.driver import Pipette
-from instruments.uv_curing.driver import UVCuring
-from instruments.uvvis_ccs.driver import UVVisCCS
+from instruments.registry import get_instrument_class, get_supported_types, validate_instrument
 
 from .board import Board
-
 from .errors import BoardLoaderError
 from .yaml_schema import BoardYamlSchema
 
 if TYPE_CHECKING:
     from gantry import Gantry
-
-INSTRUMENT_REGISTRY: Dict[str, Type[BaseInstrument]] = {
-    "asmi": ASMI,
-    "filmetrics": Filmetrics,
-    "pipette": Pipette,
-    "uv_curing": UVCuring,
-    "uvvis_ccs": UVVisCCS,
-}
 
 
 def _format_loader_exception(path: Path, error: Exception) -> str:
@@ -58,10 +45,10 @@ def _format_loader_exception(path: Path, error: Exception) -> str:
             "How to fix: Check YAML indentation, colons, and structure."
         )
 
-    if isinstance(error, KeyError):
+    if isinstance(error, ValueError):
         return (
-            f"Unknown instrument type in `{path}`: {detail}\n"
-            f"How to fix: Use one of {sorted(INSTRUMENT_REGISTRY.keys())}."
+            f"Instrument validation error in `{path}`: {detail}\n"
+            f"How to fix: Check type and vendor against the instrument registry."
         )
 
     return (
@@ -87,7 +74,7 @@ def load_board_from_yaml(
         FileNotFoundError: If the YAML file does not exist.
         yaml.YAMLError: If the file is not valid YAML.
         ValidationError: If the YAML does not match the schema.
-        KeyError: If an instrument type is not in the registry.
+        ValueError: If an instrument type or vendor is invalid.
     """
     path = Path(path)
     with path.open() as f:
@@ -101,11 +88,11 @@ def load_board_from_yaml(
     for name, entry in schema.instruments.items():
         kwargs = entry.model_dump()
         type_key = kwargs.pop("type")
-        if type_key not in INSTRUMENT_REGISTRY:
-            raise KeyError(type_key)
+        vendor = kwargs.pop("vendor")
+        validate_instrument(type_key, vendor)
         if mock_mode:
             kwargs["offline"] = True
-        cls = INSTRUMENT_REGISTRY[type_key]
+        cls = get_instrument_class(type_key)
         instruments[name] = cls(**kwargs)
 
     return Board(gantry=gantry, instruments=instruments)

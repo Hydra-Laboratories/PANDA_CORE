@@ -17,6 +17,7 @@ class InstrumentYamlEntry(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     type: str
+    vendor: str
     offset_x: float = 0.0
     offset_y: float = 0.0
     depth: float = 0.0

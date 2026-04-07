@@ -1,7 +1,6 @@
 from .board import Board
 from .errors import BoardLoaderError
 from .loader import (
-    INSTRUMENT_REGISTRY,
     load_board_from_yaml,
     load_board_from_yaml_safe,
 )
@@ -12,7 +11,6 @@ __all__ = [
     "BoardLoaderError",
     "BoardYamlSchema",
     "InstrumentYamlEntry",
-    "INSTRUMENT_REGISTRY",
     "load_board_from_yaml",
     "load_board_from_yaml_safe",
 ]
