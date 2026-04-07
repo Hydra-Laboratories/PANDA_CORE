@@ -28,7 +28,7 @@ Run a safe offline validation first:
 
 ```bash
 python setup/validate_setup.py \
-  configs/gantry/genmitsu_3018_PROver_v2.yaml \
+  configs/gantry/cubos_xl.yaml \
   configs/deck/mofcat_deck.yaml \
   configs/board/mofcat_board.yaml \
   configs/protocol/scan.yaml

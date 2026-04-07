@@ -24,11 +24,11 @@ CONFIGS_DIR = project_root / "configs"
 GANTRIES = {
     "CUB_XL": {
         "label": "Cub-XL (415x300x200mm)",
-        "config_file": CONFIGS_DIR / "gantries" / "genmitsu_3018_PROver_v2.yaml",
+        "config_file": CONFIGS_DIR / "gantries" / "cubos_xl.yaml",
     },
     "CUB": {
         "label": "Cub (300x200x80mm)",
-        "config_file": CONFIGS_DIR / "gantries" / "genmitsu_3018_PRO_Desktop.yaml",
+        "config_file": CONFIGS_DIR / "gantries" / "cubos.yaml",
     },
 }
 
