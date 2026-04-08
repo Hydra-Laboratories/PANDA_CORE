@@ -13,36 +13,51 @@ from instruments.filmetrics.models import MeasurementResult
 _SUCCESS_SENTINELS = ("complete", "successfully")
 _ERROR_SENTINELS = ("error", "exception")
 
+_DEFAULT_RESULT = MeasurementResult(thickness_nm=150.0, goodness_of_fit=0.95)
+
 
 class Filmetrics(BaseInstrument):
     """Driver for the Filmetrics film thickness measurement system.
 
     Communicates with a C# console app (FilmetricsTool.exe) via stdin/stdout.
+    Pass ``offline=True`` for dry runs — returns synthetic measurements.
     """
 
     def __init__(
         self,
-        exe_path: str,
-        recipe_name: str,
+        exe_path: str = "",
+        recipe_name: str = "",
         command_timeout: float = 30.0,
         name: Optional[str] = None,
         offset_x: float = 0.0,
         offset_y: float = 0.0,
         depth: float = 0.0,
         measurement_height: float = 0.0,
+        offline: bool = False,
+        default_thickness_nm: float = 150.0,
+        default_goodness_of_fit: float = 0.95,
+        **kwargs,
     ):
         super().__init__(
             name=name, offset_x=offset_x, offset_y=offset_y,
             depth=depth, measurement_height=measurement_height,
+            offline=offline,
         )
         self._exe_path = exe_path
         self._recipe_name = recipe_name
         self._command_timeout = command_timeout
+        self._default_result = MeasurementResult(
+            thickness_nm=default_thickness_nm,
+            goodness_of_fit=default_goodness_of_fit,
+        )
         self._process: Optional[subprocess.Popen] = None
 
     # ── BaseInstrument interface ──────────────────────────────────────────
 
     def connect(self) -> None:
+        if self._offline:
+            self.logger.info("Filmetrics connected (offline)")
+            return
         try:
             self._process = subprocess.Popen(
                 [self._exe_path, self._recipe_name],
@@ -61,6 +76,9 @@ class Filmetrics(BaseInstrument):
         self.logger.info("Connected to Filmetrics (pid=%s)", self._process.pid)
 
     def disconnect(self) -> None:
+        if self._offline:
+            self.logger.info("Filmetrics disconnected (offline)")
+            return
         if self._process is None:
             return
         try:
@@ -79,23 +97,31 @@ class Filmetrics(BaseInstrument):
             self._process = None
 
     def health_check(self) -> bool:
+        if self._offline:
+            return True
         return self._process is not None and self._process.poll() is None
 
     # ── Filmetrics-specific commands ──────────────────────────────────────
 
     def acquire_sample(self) -> None:
-        self._send_command("sample")
+        if not self._offline:
+            self._send_command("sample")
 
     def acquire_reference(self, reference_standard: str) -> None:
-        self._send_command(f"reference {reference_standard}")
+        if not self._offline:
+            self._send_command(f"reference {reference_standard}")
 
     def acquire_background(self) -> None:
-        self._send_command("background")
+        if not self._offline:
+            self._send_command("background")
 
     def commit_baseline(self) -> None:
-        self._send_command("commit")
+        if not self._offline:
+            self._send_command("commit")
 
     def measure(self) -> MeasurementResult:
+        if self._offline:
+            return self._default_result
         lines = self._send_command("measure")
         return MeasurementResult(
             thickness_nm=self._parse_thickness(lines),
@@ -103,17 +129,12 @@ class Filmetrics(BaseInstrument):
         )
 
     def save_spectrum(self, identifier: str) -> None:
-        """Placeholder — data saving will be a separate cross-instrument process."""
-        self._send_command(f"save {identifier}")
+        if not self._offline:
+            self._send_command(f"save {identifier}")
 
     # ── Private helpers ───────────────────────────────────────────────────
 
     def _wait_for_init(self) -> None:
-        """Read stdout until the C# app signals initialisation is complete.
-
-        The C# app uses Console.Write (no newline) for init messages,
-        so we read character-by-character instead of using readline().
-        """
         buffer = ""
         deadline = time.monotonic() + self._command_timeout
         while time.monotonic() < deadline:
@@ -126,12 +147,6 @@ class Filmetrics(BaseInstrument):
         raise FilmetricsConnectionError("Timed out waiting for init")
 
     def _send_command(self, command: str) -> list[str]:
-        """Send a command string and collect output until a sentinel.
-
-        Returns lines on success. Raises FilmetricsCommandError if the C#
-        app responds with an error/exception message, times out, or the
-        process exits.
-        """
         self._process.stdin.write(command + "\n")
         self._process.stdin.flush()
 
@@ -159,7 +174,6 @@ class Filmetrics(BaseInstrument):
 
     @staticmethod
     def _parse_thickness(lines: list[str]) -> Optional[float]:
-        """Extract thickness in nm from Polyimide result lines."""
         thickness = None
         for line in lines:
             if "Polyimide" in line:
@@ -173,7 +187,6 @@ class Filmetrics(BaseInstrument):
 
     @staticmethod
     def _parse_goodness_of_fit(lines: list[str]) -> Optional[float]:
-        """Extract Goodness of Fit value from output lines."""
         for line in lines:
             if "Goodness of fit" in line:
                 match = re.search(r"[-+]?\d*\.?\d+|\d+", line)

@@ -1,0 +1,39 @@
+# ASMI indentation protocol.
+# Scans the well plate, performing step-by-step indentation at each well.
+# Uses CubOS protocol engine.
+#
+# Flow per well (handled by scan + indentation method):
+#   1. Move to well XY (deck Z + measurement_height offset)
+#   2. Descend to measurement_height, take baseline force readings
+#   3. Step toward z_limit, reading force at each step
+#   4. Stop on force_limit or z_limit
+#
+# Protocol-level flow:
+#   home → scan all wells → move safe_z → home
+
+positions:
+  safe_z: [0.0, 0.0, -50.0]
+
+protocol:
+  # Home the gantry and zero coordinates
+  - home:
+
+  # Scan all wells: move to each well, run indentation
+  - scan:
+      plate: plate
+      instrument: asmi
+      method: indentation
+      method_kwargs:
+        z_limit: -83.0
+        step_size: 0.01
+        force_limit: 10.0
+        measurement_height: -73.0
+        baseline_samples: 10
+
+  # Return to safe Z after scan
+  - move:
+      instrument: asmi
+      position: safe_z
+
+  # Home the gantry
+  - home:

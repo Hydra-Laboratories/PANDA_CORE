@@ -22,13 +22,13 @@ from setup.keyboard_input import read_keypress
 CONFIGS_DIR = project_root / "configs"
 
 GANTRIES = {
-    "PANDA": {
-        "label": "PANDA (XL — 415x300x200mm)",
-        "config_file": CONFIGS_DIR / "gantry" / "genmitsu_3018_PROver_v2.yaml",
+    "CUB_XL": {
+        "label": "Cub-XL (415x300x200mm)",
+        "config_file": CONFIGS_DIR / "gantry" / "cubos_xl.yaml",
     },
     "CUB": {
-        "label": "CUB (Small — 300x200x80mm)",
-        "config_file": CONFIGS_DIR / "gantry" / "genmitsu_3018_PRO_Desktop.yaml",
+        "label": "Cub (300x200x80mm)",
+        "config_file": CONFIGS_DIR / "gantry" / "cubos.yaml",
     },
 }
 
@@ -56,13 +56,13 @@ def load_gantry_config(config_file: Path) -> dict:
 def select_gantry() -> tuple:
     """Returns (gantry_entry, loaded_config)."""
     print("\nWhich system are you working with?")
-    print("  1) PANDA  — the larger XL gantry (415x300x200mm)")
-    print("  2) CUB    — the smaller gantry   (300x200x80mm)")
+    print("  1) Cub-XL — the larger gantry  (415x300x200mm)")
+    print("  2) Cub    — the smaller gantry (300x200x80mm)")
 
     while True:
         choice = input("\nEnter 1 or 2: ").strip()
         if choice in ("1", "2"):
-            key = "PANDA" if choice == "1" else "CUB"
+            key = "CUB_XL" if choice == "1" else "CUB"
             gantry_entry = GANTRIES[key]
             config = load_gantry_config(gantry_entry["config_file"])
             return gantry_entry, config
@@ -71,7 +71,7 @@ def select_gantry() -> tuple:
 
 def main() -> None:
     print("=" * 50)
-    print("  PANDA CNC — Hello World")
+    print("  CubOS — Hello World")
     print("  First-run interactive jog test")
     print("=" * 50)
 

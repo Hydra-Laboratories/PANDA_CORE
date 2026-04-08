@@ -1,0 +1,33 @@
+# Supported instruments, their allowed vendors, and driver class paths.
+# The board loader uses this to validate board.yaml and import driver classes.
+
+instruments:
+  asmi:
+    module: instruments.asmi.driver
+    class_name: ASMI
+    vendors:
+      - vernier
+
+  filmetrics:
+    module: instruments.filmetrics.driver
+    class_name: Filmetrics
+    vendors:
+      - kla
+
+  pipette:
+    module: instruments.pipette.driver
+    class_name: Pipette
+    vendors:
+      - opentrons
+
+  uv_curing:
+    module: instruments.uv_curing.driver
+    class_name: UVCuring
+    vendors:
+      - excelitas
+
+  uvvis_ccs:
+    module: instruments.uvvis_ccs.driver
+    class_name: UVVisCCS
+    vendors:
+      - thorlabs

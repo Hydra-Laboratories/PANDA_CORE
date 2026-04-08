@@ -28,20 +28,22 @@ class WellPlateYamlEntry(BaseModel):
 
     type: Literal["well_plate"] = "well_plate"
     name: str
-    model_name: str
+    model_name: str = ""
     rows: int = Field(..., gt=0)
     columns: int = Field(..., gt=0)
-    length_mm: float
-    width_mm: float
-    height_mm: float
+    # Geometry — optional metadata, not used for well position computation.
+    length_mm: Optional[float] = None
+    width_mm: Optional[float] = None
+    height_mm: Optional[float] = None
     height: Optional[float] = Field(default=None, gt=0)
     # Backward compatibility: top-level A1 is accepted but deprecated.
     a1: Optional[_YamlPoint3D] = None
     calibration: _YamlCalibrationPoints
     x_offset_mm: float
     y_offset_mm: float
-    capacity_ul: float
-    working_volume_ul: float
+    # Volume — optional metadata.
+    capacity_ul: Optional[float] = None
+    working_volume_ul: Optional[float] = None
 
     @property
     def a1_point(self) -> _YamlPoint3D:
@@ -62,10 +64,13 @@ class WellPlateYamlEntry(BaseModel):
             raise ValueError(
                 "Calibration A2 must be axis-aligned with A1 (same x or same y); diagonal orientation is invalid."
             )
-        if self.working_volume_ul > self.capacity_ul:
+        if self.capacity_ul is not None and self.capacity_ul <= 0:
+            raise ValueError("capacity_ul must be positive when specified.")
+        if self.working_volume_ul is not None and self.working_volume_ul <= 0:
+            raise ValueError("working_volume_ul must be positive when specified.")
+        if (self.capacity_ul is not None and self.working_volume_ul is not None
+                and self.working_volume_ul > self.capacity_ul):
             raise ValueError("working_volume_ul must be <= capacity_ul.")
-        if self.capacity_ul <= 0 or self.working_volume_ul <= 0:
-            raise ValueError("capacity_ul and working_volume_ul must be positive.")
         if self.x_offset_mm == 0 or self.y_offset_mm == 0:
             raise ValueError("x_offset_mm and y_offset_mm must be non-zero.")
         return self
@@ -78,7 +83,7 @@ class VialYamlEntry(BaseModel):
 
     type: Literal["vial"] = "vial"
     name: str
-    model_name: str
+    model_name: str = ""
     height_mm: float
     diameter_mm: float
     height: Optional[float] = Field(default=None, gt=0)

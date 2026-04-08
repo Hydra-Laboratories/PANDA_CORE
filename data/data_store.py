@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import sqlite3
-import struct
 from typing import Any, List, Optional, Union
 
+from instruments.asmi.models import MeasurementResult as ASMIMeasurementResult
 from instruments.filmetrics.models import MeasurementResult
 from instruments.uvvis_ccs.models import UVVisSpectrum
+from protocol_engine.measurements import InstrumentMeasurement, MeasurementType
 
 _SCHEMA_SQL = """\
 CREATE TABLE IF NOT EXISTS campaigns (
@@ -34,8 +35,8 @@ CREATE TABLE IF NOT EXISTS experiments (
 CREATE TABLE IF NOT EXISTS uvvis_measurements (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     experiment_id     INTEGER NOT NULL REFERENCES experiments(id),
-    wavelengths       BLOB    NOT NULL,
-    intensities       BLOB    NOT NULL,
+    wavelengths       TEXT    NOT NULL,
+    intensities       TEXT    NOT NULL,
     integration_time_s REAL   NOT NULL,
     timestamp         TEXT    NOT NULL DEFAULT (datetime('now'))
 );
@@ -55,6 +56,22 @@ CREATE TABLE IF NOT EXISTS camera_measurements (
     timestamp     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS asmi_measurements (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    experiment_id   INTEGER NOT NULL REFERENCES experiments(id),
+    z_positions     TEXT    NOT NULL,
+    raw_forces      TEXT    NOT NULL,
+    corrected_forces TEXT   NOT NULL,
+    baseline_avg    REAL    NOT NULL,
+    baseline_std    REAL    NOT NULL,
+    force_exceeded  INTEGER NOT NULL DEFAULT 0,
+    data_points     INTEGER NOT NULL,
+    step_size_mm    REAL,
+    z_target_mm     REAL,
+    force_limit_n   REAL,
+    timestamp       TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS labware (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     campaign_id       INTEGER NOT NULL REFERENCES campaigns(id),
@@ -71,11 +88,6 @@ CREATE TABLE IF NOT EXISTS labware (
 """
 
 
-def _pack_floats(values: tuple[float, ...]) -> bytes:
-    """Pack a tuple of floats into a little-endian BLOB."""
-    return struct.pack(f"<{len(values)}d", *values)
-
-
 class DataStore:
     """Local SQLite data store for experiment campaigns and measurements."""
 
@@ -83,9 +95,36 @@ class DataStore:
         self._conn = sqlite3.connect(db_path)
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._create_tables()
+        self._check_schema_migration()
 
     def _create_tables(self) -> None:
         self._conn.executescript(_SCHEMA_SQL)
+
+    _BLOB_COLUMNS = {
+        "uvvis_measurements": ("wavelengths", "intensities"),
+        "asmi_measurements": ("z_positions", "raw_forces", "corrected_forces"),
+    }
+
+    def _check_schema_migration(self) -> None:
+        """Raise if any float-array column still contains binary BLOB data."""
+        for table, columns in self._BLOB_COLUMNS.items():
+            table_exists = self._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table,),
+            ).fetchone()
+            if table_exists is None:
+                continue
+            for column in columns:
+                row = self._conn.execute(
+                    f"SELECT {column} FROM {table} LIMIT 1"
+                ).fetchone()
+                if row is not None and isinstance(row[0], (bytes, bytearray)):
+                    raise RuntimeError(
+                        f"Database contains legacy binary BLOB data in "
+                        f"{table}.{column}. This database was written before "
+                        f"the JSON migration. Re-run experiments or contact "
+                        f"support for a migration script."
+                    )
 
     def create_campaign(
         self,
@@ -121,13 +160,13 @@ class DataStore:
     def log_measurement(
         self,
         experiment_id: int,
-        result: Union[UVVisSpectrum, MeasurementResult, str],
+        result: Union[InstrumentMeasurement, UVVisSpectrum, MeasurementResult, str],
     ) -> int:
         """Log a measurement result, dispatching by type.
 
         Args:
             experiment_id: FK to the experiments table.
-            result: One of UVVisSpectrum, MeasurementResult, or str (image path).
+            result: An InstrumentMeasurement or legacy measurement value.
 
         Returns:
             The newly inserted measurement row ID.
@@ -135,6 +174,8 @@ class DataStore:
         Raises:
             TypeError: If *result* is not a recognised measurement type.
         """
+        if isinstance(result, InstrumentMeasurement):
+            return self._log_instrument_measurement(experiment_id, result)
         if isinstance(result, UVVisSpectrum):
             return self._log_uvvis(experiment_id, result)
         if isinstance(result, MeasurementResult):
@@ -145,16 +186,63 @@ class DataStore:
             f"Unsupported measurement type: {type(result).__name__}"
         )
 
+    def _log_instrument_measurement(
+        self,
+        experiment_id: int,
+        measurement: InstrumentMeasurement,
+    ) -> int:
+        if measurement.measurement_type == MeasurementType.UVVIS_SPECTRUM:
+            wavelengths = tuple(measurement.payload["wavelength_nm"])
+            intensities = tuple(measurement.payload["intensity_au"])
+            integration_time_s = float(measurement.metadata["integration_time_s"])
+            return self._log_uvvis_values(
+                experiment_id=experiment_id,
+                wavelengths=wavelengths,
+                intensities=intensities,
+                integration_time_s=integration_time_s,
+            )
+
+        if measurement.measurement_type == MeasurementType.ASMI_INDENTATION:
+            return self._log_asmi(
+                experiment_id=experiment_id,
+                z_positions=tuple(measurement.payload["z_positions_mm"]),
+                raw_forces=tuple(measurement.payload["raw_forces_n"]),
+                corrected_forces=tuple(measurement.payload["corrected_forces_n"]),
+                baseline_avg=float(measurement.metadata["baseline_avg"]),
+                baseline_std=float(measurement.metadata["baseline_std"]),
+                force_exceeded=bool(measurement.metadata["force_exceeded"]),
+                data_points=int(measurement.metadata["data_points"]),
+            )
+
+        raise TypeError(
+            "Unsupported instrument measurement type: "
+            f"{measurement.measurement_type}"
+        )
+
     def _log_uvvis(self, experiment_id: int, spectrum: UVVisSpectrum) -> int:
+        return self._log_uvvis_values(
+            experiment_id=experiment_id,
+            wavelengths=spectrum.wavelengths,
+            intensities=spectrum.intensities,
+            integration_time_s=spectrum.integration_time_s,
+        )
+
+    def _log_uvvis_values(
+        self,
+        experiment_id: int,
+        wavelengths: tuple[float, ...],
+        intensities: tuple[float, ...],
+        integration_time_s: float,
+    ) -> int:
         cursor = self._conn.execute(
             "INSERT INTO uvvis_measurements "
             "(experiment_id, wavelengths, intensities, integration_time_s) "
             "VALUES (?, ?, ?, ?)",
             (
                 experiment_id,
-                _pack_floats(spectrum.wavelengths),
-                _pack_floats(spectrum.intensities),
-                spectrum.integration_time_s,
+                json.dumps(list(wavelengths)),
+                json.dumps(list(intensities)),
+                integration_time_s,
             ),
         )
         self._conn.commit()
@@ -165,6 +253,36 @@ class DataStore:
             "INSERT INTO filmetrics_measurements "
             "(experiment_id, thickness_nm, goodness_of_fit) VALUES (?, ?, ?)",
             (experiment_id, result.thickness_nm, result.goodness_of_fit),
+        )
+        self._conn.commit()
+        return cursor.lastrowid
+
+    def _log_asmi(
+        self,
+        experiment_id: int,
+        z_positions: tuple[float, ...],
+        raw_forces: tuple[float, ...],
+        corrected_forces: tuple[float, ...],
+        baseline_avg: float,
+        baseline_std: float,
+        force_exceeded: bool,
+        data_points: int,
+    ) -> int:
+        cursor = self._conn.execute(
+            "INSERT INTO asmi_measurements "
+            "(experiment_id, z_positions, raw_forces, corrected_forces, "
+            "baseline_avg, baseline_std, force_exceeded, data_points) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                experiment_id,
+                json.dumps(list(z_positions)),
+                json.dumps(list(raw_forces)),
+                json.dumps(list(corrected_forces)),
+                baseline_avg,
+                baseline_std,
+                int(force_exceeded),
+                data_points,
+            ),
         )
         self._conn.commit()
         return cursor.lastrowid
@@ -258,7 +376,13 @@ class DataStore:
                 f"for campaign {campaign_id}"
             )
 
-        existing = json.loads(row[1]) if row[1] else []
+        try:
+            existing = json.loads(row[1]) if row[1] else []
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Corrupt contents JSON for labware '{labware_key}' well '{well_id}' "
+                f"in campaign {campaign_id}. Manual database inspection required."
+            ) from exc
         existing.append({"source": source_name, "volume_ul": volume_ul})
 
         self._conn.execute(
@@ -288,7 +412,13 @@ class DataStore:
 
         if row is None or row[0] is None:
             return None
-        return json.loads(row[0])
+        try:
+            return json.loads(row[0])
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Corrupt contents JSON for labware '{labware_key}' well '{well_id}' "
+                f"in campaign {campaign_id}. Manual database inspection required."
+            ) from exc
 
     def close(self) -> None:
         self._conn.close()

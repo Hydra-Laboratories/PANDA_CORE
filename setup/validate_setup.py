@@ -5,7 +5,7 @@ Usage:
 
 Example:
     python setup/validate_setup.py \\
-        configs/gantry/genmitsu_3018_PROver_v2.yaml \\
+        configs/gantry/cubos_xl.yaml \\
         configs/deck/mofcat_deck.yaml \\
         configs/board/mofcat_board.yaml \\
         configs/protocol/protocol.sample.yaml
@@ -25,7 +25,7 @@ from deck.labware.vial import Vial
 from deck.labware.well_plate import WellPlate
 from deck.loader import load_deck_from_yaml
 from gantry.loader import load_gantry_from_yaml
-from gantry.offline import OfflineGantry
+from gantry.gantry import Gantry
 from protocol_engine.loader import load_protocol_from_yaml
 from validation.bounds import validate_deck_positions, validate_gantry_positions
 
@@ -128,8 +128,8 @@ def run_validation(
     # 3. Board
     out("[3/4] Loading board config...")
     try:
-        offline_gantry = OfflineGantry()
-        board = load_board_from_yaml(board_path, offline_gantry)
+        offline_gantry = Gantry(offline=True)
+        board = load_board_from_yaml(board_path, offline_gantry, mock_mode=True)
     except Exception as exc:
         out(f"  ERROR: {exc}")
         out()
@@ -214,7 +214,7 @@ def main() -> None:
         print()
         print("Example:")
         print("  python setup/validate_setup.py \\")
-        print("    configs/gantry/genmitsu_3018_PROver_v2.yaml \\")
+        print("    configs/gantry/cubos_xl.yaml \\")
         print("    configs/deck/mofcat_deck.yaml \\")
         print("    configs/board/mofcat_board.yaml \\")
         print("    configs/protocol/protocol.sample.yaml")

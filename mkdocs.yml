@@ -1,0 +1,68 @@
+site_name: CubOS
+site_description: Documentation for CubOS, the CNC-based lab automation platform.
+theme:
+  name: readthedocs
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Configuration: configuration.md
+  - Gantry: gantry.md
+  - Deck: deck.md
+  - Board: board.md
+  - Protocol: protocol.md
+  - Data: data.md
+  - API Reference:
+    - Overview: reference/index.md
+    - board: reference/src/board/index.md
+    - deck: reference/src/deck/index.md
+    - gantry: reference/src/gantry/index.md
+    - instruments: reference/src/instruments/index.md
+    - protocol_engine:
+      - Overview: reference/src/protocol_engine/index.md
+      - Commands:
+        - move: reference/src/protocol_engine/commands/move.md
+        - scan: reference/src/protocol_engine/commands/scan.md
+        - measure: reference/src/protocol_engine/commands/measure.md
+        - pipette: reference/src/protocol_engine/commands/pipette.md
+        - home: reference/src/protocol_engine/commands/home.md
+        - pause: reference/src/protocol_engine/commands/pause.md
+    - validation: reference/src/validation/index.md
+    - data: reference/data/index.md
+
+not_in_nav: |
+  reference/src/**
+  reference/data/**
+
+plugins:
+  - search
+  - gen-files:
+      scripts:
+        - docs/gen_ref_pages.py
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - src
+            - .
+          options:
+            members_order: source
+            merge_init_into_class: true
+            show_root_heading: true
+            show_root_toc_entry: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            show_source: false
+            separate_signature: true
+            signature_crossrefs: true
+            show_signature_annotations: true
+            unwrap_annotated: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - fenced_code
+  - tables
+  - toc:
+      permalink: true

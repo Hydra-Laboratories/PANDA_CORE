@@ -1,3 +1,9 @@
+# Claude Code local settings (personal overrides, not for team)
+.claude/settings.local.json
+
+# oh-my-codex local tooling
+.omx/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -163,3 +169,4 @@ src/protocol_engine/__pycache__/
 architecture.md
 test_scripts/
 src/gantry/gantry_driver/mill_port.txt
+.omx/

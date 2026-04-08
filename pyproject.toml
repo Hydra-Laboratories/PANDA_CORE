@@ -1,5 +1,5 @@
 [project]
-name = "panda-core"
+name = "cubos"
 version = "0.1.0"
 requires-python = ">=3.9"
 dependencies = [
@@ -10,12 +10,20 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest"]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-gen-files>=0.5",
+    "mkdocstrings[python]>=0.27",
+]
 
 [tool.setuptools.packages.find]
 where = ["src", "."]
-include = ["data", "data.*", "deck", "deck.*", "gantry", "gantry.*",
-           "instruments", "instruments.*", "protocol_engine", "protocol_engine.*",
-           "board", "board.*", "validation", "validation.*"]
+include = ["board", "board.*", "data", "data.*", "deck", "deck.*",
+           "gantry", "gantry.*", "instruments", "instruments.*",
+           "protocol_engine", "protocol_engine.*", "validation", "validation.*"]
+
+[tool.setuptools.package-data]
+"gantry.gantry_driver" = ["*.json"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]

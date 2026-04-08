@@ -193,15 +193,15 @@ def test_vial_dimensions_and_location_lookup():
     assert vial.get_initial_position() == Coordinate3D(x=30.0, y=40.0, z=20.0)
 
 
-def test_vial_requires_positive_geometry_and_location():
-    """Vial validates geometry and requires a location."""
+def test_vial_requires_positive_diameter():
+    """Vial validates diameter must be positive."""
     with pytest.raises(ValidationError):
         Vial(
             name="invalid_vial",
             model_name="test_model",
-            height_mm=0.0,
-            diameter_mm=28.0,
-            location=Coordinate3D(x=30.0, y=40.0, z=20.0),
+            height_mm=-20.0,
+            diameter_mm=0.0,
+            location=Coordinate3D(x=-30.0, y=-40.0, z=-20.0),
             capacity_ul=1500.0,
             working_volume_ul=1200.0,
         )
@@ -365,4 +365,3 @@ def test_well_plate_rows_limited_to_26():
             capacity_ul=200.0,
             working_volume_ul=150.0,
         )
-

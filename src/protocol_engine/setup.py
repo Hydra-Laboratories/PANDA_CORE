@@ -9,9 +9,9 @@ from board.board import Board
 from board.loader import load_board_from_yaml_safe
 from deck.deck import Deck
 from deck.loader import load_deck_from_yaml_safe
+from gantry.gantry import Gantry
 from gantry.gantry_config import GantryConfig
 from gantry.loader import load_gantry_from_yaml_safe
-from gantry.offline import OfflineGantry
 from protocol_engine.loader import load_protocol_from_yaml_safe
 from protocol_engine.protocol import Protocol, ProtocolContext
 from validation.bounds import validate_deck_positions, validate_gantry_positions
@@ -24,6 +24,7 @@ def setup_protocol(
     board_path: str | Path,
     protocol_path: str | Path,
     gantry=None,
+    mock_mode: bool = False,
 ) -> Tuple[Protocol, ProtocolContext]:
     """Load all configs, validate bounds, and return a ready-to-run protocol.
 
@@ -41,8 +42,9 @@ def setup_protocol(
         deck_path: Path to deck YAML config.
         board_path: Path to board YAML config.
         protocol_path: Path to protocol YAML config.
-        gantry: Optional Gantry instance. If None, an OfflineGantry is used
-            for offline validation.
+        gantry: Optional Gantry instance. If None, an offline Gantry is used
+            for validation.
+        mock_mode: If True, instantiate real driver classes in offline mode.
 
     Returns:
         Tuple of (Protocol, ProtocolContext) ready for ``protocol.run(context)``.
@@ -61,8 +63,10 @@ def setup_protocol(
     )
 
     if gantry is None:
-        gantry = OfflineGantry()
-    board: Board = load_board_from_yaml_safe(board_path, gantry)
+        gantry = Gantry(offline=True)
+    board: Board = load_board_from_yaml_safe(
+        board_path, gantry, mock_mode=mock_mode,
+    )
 
     protocol: Protocol = load_protocol_from_yaml_safe(protocol_path)
 
@@ -71,7 +75,7 @@ def setup_protocol(
     if violations:
         raise SetupValidationError(violations)
 
-    context = ProtocolContext(board=board, deck=deck, gantry=gantry_config)
+    context = ProtocolContext(board=board, deck=deck, positions=protocol.positions, gantry=gantry_config)
     return protocol, context
 
 
@@ -81,15 +85,22 @@ def run_protocol(
     board_path: str | Path,
     protocol_path: str | Path,
     gantry=None,
+    mock_mode: bool = False,
 ) -> List[Any]:
     """Load configs, validate, and execute the protocol in one call.
 
-    Convenience wrapper around ``setup_protocol`` + ``protocol.run(context)``.
+    Connects instruments before running and disconnects them afterwards,
+    even if the protocol raises an exception.
 
     Returns:
         List of step results from protocol execution.
     """
     protocol, context = setup_protocol(
-        gantry_path, deck_path, board_path, protocol_path, gantry=gantry,
+        gantry_path, deck_path, board_path, protocol_path,
+        gantry=gantry, mock_mode=mock_mode,
     )
-    return protocol.run(context)
+    context.board.connect_instruments()
+    try:
+        return protocol.run(context)
+    finally:
+        context.board.disconnect_instruments()

@@ -192,3 +192,59 @@ class TestBoardObjectPosition:
         board = Board(gantry=_mock_gantry())
         with pytest.raises(KeyError, match="Unknown instrument 'nope'"):
             board.object_position("nope")
+
+
+# ─── connect/disconnect lifecycle tests ─────────────────────────────────────
+
+
+class TestBoardConnectInstruments:
+
+    def test_connect_calls_each_instrument(self):
+        pip = _mock_instrument("pipette")
+        uv = _mock_instrument("uvvis")
+        board = Board(gantry=_mock_gantry(), instruments={"pipette": pip, "uvvis": uv})
+
+        board.connect_instruments()
+
+        pip.connect.assert_called_once()
+        uv.connect.assert_called_once()
+
+    def test_connect_empty_instruments_is_noop(self):
+        board = Board(gantry=_mock_gantry())
+        board.connect_instruments()
+
+    def test_connect_propagates_exception(self):
+        pip = _mock_instrument("pipette")
+        pip.connect.side_effect = RuntimeError("no port")
+        board = Board(gantry=_mock_gantry(), instruments={"pipette": pip})
+
+        with pytest.raises(RuntimeError, match="no port"):
+            board.connect_instruments()
+
+
+class TestBoardDisconnectInstruments:
+
+    def test_disconnect_calls_each_instrument(self):
+        pip = _mock_instrument("pipette")
+        uv = _mock_instrument("uvvis")
+        board = Board(gantry=_mock_gantry(), instruments={"pipette": pip, "uvvis": uv})
+
+        board.disconnect_instruments()
+
+        pip.disconnect.assert_called_once()
+        uv.disconnect.assert_called_once()
+
+    def test_disconnect_continues_after_failure(self):
+        pip = _mock_instrument("pipette")
+        uv = _mock_instrument("uvvis")
+        pip.disconnect.side_effect = RuntimeError("port stuck")
+        board = Board(gantry=_mock_gantry(), instruments={"pipette": pip, "uvvis": uv})
+
+        board.disconnect_instruments()
+
+        pip.disconnect.assert_called_once()
+        uv.disconnect.assert_called_once()
+
+    def test_disconnect_empty_instruments_is_noop(self):
+        board = Board(gantry=_mock_gantry())
+        board.disconnect_instruments()

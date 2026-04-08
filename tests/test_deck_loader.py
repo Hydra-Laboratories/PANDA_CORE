@@ -771,6 +771,71 @@ labware:
         Path(path).unlink(missing_ok=True)
 
 
+# ----- Optional fields -----
+
+def test_well_plate_without_geometry_and_volume():
+    """Well plate with only required fields (no L/W/H, no capacity/volume) loads fine."""
+    yaml_str = """
+labware:
+  p:
+    type: well_plate
+    name: minimal plate
+    model_name: custom
+    rows: 2
+    columns: 3
+    a1: { x: 10.0, y: 20.0, z: -5.0 }
+    calibration:
+      a2: { x: 19.0, y: 20.0, z: -5.0 }
+    x_offset_mm: 9.0
+    y_offset_mm: -9.0
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(yaml_str)
+        path = f.name
+    try:
+        deck = load_deck_from_yaml(path)
+        plate = deck.labware["p"]
+        assert isinstance(plate, WellPlate)
+        assert plate.length_mm is None
+        assert plate.width_mm is None
+        assert plate.height_mm is None
+        assert plate.capacity_ul is None
+        assert plate.working_volume_ul is None
+        assert len(plate.wells) == 6
+        assert "A1" in plate.wells
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_well_plate_partial_volume_ok():
+    """Specifying only capacity_ul without working_volume_ul is valid."""
+    yaml_str = """
+labware:
+  p:
+    type: well_plate
+    name: partial vol
+    model_name: custom
+    rows: 1
+    columns: 2
+    a1: { x: 0.0, y: 0.0, z: 0.0 }
+    calibration:
+      a2: { x: 9.0, y: 0.0, z: 0.0 }
+    x_offset_mm: 9.0
+    y_offset_mm: -9.0
+    capacity_ul: 200.0
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(yaml_str)
+        path = f.name
+    try:
+        deck = load_deck_from_yaml(path)
+        plate = deck.labware["p"]
+        assert plate.capacity_ul == 200.0
+        assert plate.working_volume_ul is None
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
 # ----- Empty labware -----
 
 def test_empty_labware_dict_allowed():

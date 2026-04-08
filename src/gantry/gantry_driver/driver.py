@@ -129,7 +129,7 @@ class Mill:
         self.active_connection = False
         self.instrument_manager: InstrumentManager = InstrumentManager()
         self.working_volume: Coordinates = self.read_working_volume()
-        self.safe_z_height = -10.0  # TODO: In the PANDA wrapper, set the safe floor height to the max height of any active object on the mill + the pipette length
+        self.safe_z_height = -10.0  # TODO: set the safe floor height to the max height of any active object on the mill + the pipette length
         self.max_z_height = 0.0
         self.command_logger = set_up_command_logger(self.logger_location)
         self.interactive_mode = False
@@ -334,15 +334,33 @@ class Mill:
             self.logger.error("Error connecting to the mill: %s", str(exep))
             raise MillConnectionError("Error connecting to the mill") from exep
 
+        # Quick alarm check before sending any commands — GRBL rejects
+        # everything except $X and $H while in alarm state.
+        self.ser_mill.write(b"?")
+        time.sleep(0.2)
+        initial_status = self.read()
+        if initial_status and "alarm" in initial_status.lower():
+            self.logger.warning(
+                "Mill is in alarm state — skipping config/setup. "
+                "Unlock ($X) or home ($H) to clear. Status: %s",
+                initial_status,
+            )
+            return self.ser_mill
+
         self.read_mill_config()
         self.write_mill_config_file("_configuration.json")
         self.read_working_volume()
 
-        self.check_for_alarm_state()
         self.clear_buffers()
-        self._enforce_wpos_mode()
+        if initial_status:
+            self._enforce_wpos_mode()
+        else:
+            self.logger.warning(
+                "No initial GRBL status response; skipping WPos enforcement during connect"
+            )
         self.set_feed_rate(DEFAULT_FEED_RATE)
-        self._seed_wco()
+        if initial_status:
+            self._seed_wco()
         return self.ser_mill
 
     def check_for_alarm_state(self):
@@ -643,6 +661,10 @@ class Mill:
         """
         Custom homing strategy for machines without valid Z homing.
         Homes X and Y axes independently using hard limits.
+
+        Sets WPos to 0 at the home position after backing off.
+        Gantry._enforce_positive_wpos() handles the final WPos
+        calibration using dir_invert_mask from the YAML config.
         """
         self.logger.info("Starting Custom XY Hard Limit Homing...")
 
@@ -703,7 +725,7 @@ class Mill:
             self.execute_command("G91")
             self.execute_command(f"G0 {axis}{-HOMING_BACKOFF * direction}")
 
-            self.logger.info(f"Setting {axis} Zero...")
+            self.logger.info(f"Setting {axis} WPos to 0 at home position...")
             self.execute_command(f"G10 L20 P1 {axis}0")
 
             self.execute_command("G90")
@@ -877,8 +899,8 @@ class Mill:
         return self.execute_command("$G")
 
     def grbl_settings(self) -> dict:
-        """Ask the mill for its grbl settings."""
-        return self.execute_command("$$")
+        """Return the cached GRBL settings (populated during connect)."""
+        return self.config
 
     def set_grbl_setting(self, setting: str, value: str):
         """Set a grbl setting."""
@@ -892,7 +914,12 @@ class Mill:
             self.logger.info("Setting $10=0 (WPos status reporting)")
             self.execute_command("$10=0")
             self.config["$10"] = "0"
-        self.execute_command("G90")
+        try:
+            self.execute_command("G90")
+        except CommandExecutionError:
+            self.logger.warning(
+                "Could not verify G90 during connect; continuing with existing parser state"
+            )
         self.logger.info("WPos mode and absolute positioning enforced")
 
     def _seed_wco(self):
@@ -939,6 +966,26 @@ class Mill:
             round(wpos.y + wco.y, 3),
             round(wpos.z + wco.z, 3),
         )
+
+    def is_connected(self) -> bool:
+        """Check if the serial connection is open."""
+        return bool(self.ser_mill and self.ser_mill.is_open)
+
+    def query_raw_status(self) -> str:
+        """Send GRBL '?' and return the raw status string (e.g. '<Idle|WPos:...>')."""
+        if not self.is_connected():
+            return ""
+        try:
+            self.ser_mill.write(b"?")
+            time.sleep(0.1)
+            for _ in range(5):
+                raw = self.read()
+                if isinstance(raw, str) and "<" in raw:
+                    return raw
+                time.sleep(0.05)
+            return str(raw) if raw else ""
+        except Exception:
+            return ""
 
     def current_coordinates(
         self, instrument: Optional[str] = None, instrument_only: bool = True
@@ -1015,14 +1062,24 @@ class Mill:
                 break
             else:
                 self.logger.warning(
-                    "%s coordinates not found in the line. Trying again...",
+                    "%s coordinates not found in status: %r. Retrying query...",
                     coord_type,
+                    status,
                 )
-            if i == max_attempts - 1:
-                self.logger.error(
-                    "Error occurred while getting %s coordinates", coord_type
-                )
-                raise LocationNotFound
+                if i == max_attempts - 1:
+                    self.logger.error(
+                        "Error occurred while getting %s coordinates", coord_type
+                    )
+                    raise LocationNotFound
+                # Re-query status for next attempt
+                time.sleep(0.2)
+                self.ser_mill.write(b"?")
+                time.sleep(0.2)
+                status = self.read()
+                retry_attempts = 0
+                while (not status or status[0] != "<") and retry_attempts < 3:
+                    status = self.read()
+                    retry_attempts += 1
 
         mill_center = Coordinates(x_coord, y_coord, z_coord)
         # Adjust coordinates based on the instrument to report where it currently is

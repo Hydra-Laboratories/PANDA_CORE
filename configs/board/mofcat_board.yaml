@@ -3,6 +3,7 @@
 instruments:
   uvvis:
     type: uvvis_ccs
+    vendor: thorlabs
     serial_number: "M00801544"
     dll_path: "TLCCS_64.dll"
     default_integration_time_s: 0.24

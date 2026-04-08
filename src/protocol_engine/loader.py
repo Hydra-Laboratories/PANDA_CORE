@@ -88,7 +88,8 @@ def load_protocol_from_yaml(path: str | Path) -> Protocol:
         raw = {}
     schema = ProtocolYamlSchema.model_validate(raw)
     steps = _compile_steps(schema)
-    return Protocol(steps=steps, source_path=path)
+    positions = schema.positions or {}
+    return Protocol(steps=steps, source_path=path, positions=positions)
 
 
 def load_protocol_from_yaml_safe(path: str | Path) -> Protocol:

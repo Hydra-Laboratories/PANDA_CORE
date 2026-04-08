@@ -1,216 +1,149 @@
-# CNC Control Project
+# CubOS
 
-A standalone project for controlling a GRBL CNC mill.
+CubOS is a lab automation package for running self-driving experiments on a
+modified CNC gantry.
 
-## Setup
+## Configuration
 
-1. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+Four YAML files define a runnable experiment:
 
-## Experiment Protocol Engine
+### 1. Gantry (`configs/gantry/*.yaml`)
 
-This project features a robust **Protocol Engine** for defining and executing automated experiments on the CNC mill.
+Defines the controller serial port, homing strategy, working volume, optional
+GRBL expectations, and `cnc.total_z_height`.
 
-### Key Features
-- **YAML-based Protocols**: Define experiments in simple YAML files (see `experiments/`).
-- **Safe Path Planning**: Automatic "Safe Z" travel and optimization to prevent collisions.
-- **Hardware Abstraction**: Clean separation between protocol logic and hardware drivers.
-- **Labware Abstractions**: Centralized models for well plates and vials, making it easy to target logical positions (e.g., `A1`) and resolve them into absolute deck coordinates.
+```yaml
+serial_port: /dev/ttyUSB0
+cnc:
+  homing_strategy: standard
+  total_z_height: 90.0
 
-### Running an Experiment
-1. **Configure Hardware**: Update config files in `configs/gantry/`, `configs/deck/`, `configs/board/`, and `configs/protocol/` for your hardware setup.
-2. **Define Experiment**: Create a YAML file in `experiments/` (e.g., `experiments/my_experiment.yaml`).
-3. **Run**:
-   ```bash
-   python verify_experiment.py experiments/my_experiment.yaml
-   ```
-
-## Config Directory Structure
-
-Config files are organized into subdirectories by type:
-
-```
-configs/
-  gantry/       # Gantry configs (serial port, homing, working volume)
-  deck/         # Deck configs (labware positions)
-  board/        # Board configs (instrument offsets)
-  protocol/     # Protocol configs (command sequences)
+working_volume:
+  x_min: 0.0
+  x_max: 300.0
+  y_min: 0.0
+  y_max: 200.0
+  z_min: 0.0
+  z_max: 80.0
 ```
 
-## Gantry Config
+Included examples:
 
-Gantry YAML defines the CNC gantry's working volume bounds, serial port, homing strategy, and `cnc.total_z_height`. User-facing XYZ values are positive-space; translation to GRBL negative-space happens inside the `Gantry` wrapper. Load with:
+| Config | System |
+|--------|--------|
+| `cubos.yaml` | Cub |
+| `cubos_xl.yaml` | Cub-XL |
 
-```python
-from src.gantry import load_gantry_from_yaml
+### 2. Deck (`configs/deck/*.yaml`)
 
-gantry = load_gantry_from_yaml("configs/gantry/genmitsu_3018_PROver_v2.yaml")
-# gantry.working_volume.x_min, gantry.working_volume.x_max, etc.
-# gantry.homing_strategy, gantry.serial_port
+Defines physical labware on the deck. Well plates use two-point calibration
+(`calibration.a1` + `calibration.a2`); vials use a single fixed location.
+
+```yaml
+labware:
+  plate:
+    type: well_plate
+    name: asmi_96_well
+    model_name: asmi_96_well
+    rows: 8
+    columns: 12
+    calibration:
+      a1: { x: 100.0, y: 100.0, z: 15.0 }
+      a2: { x: 109.0, y: 100.0, z: 15.0 }
+    x_offset_mm: 9.0
+    y_offset_mm: 9.0
 ```
 
-See `configs/gantry/genmitsu_3018_PROver_v2.yaml` for the required schema.
+### 3. Board (`configs/board/*.yaml`)
 
-## Labware Models and Deck YAML
+Defines instruments mounted on the gantry head, including offsets and
+hardware-specific parameters.
 
-Logical labware (well plates and vials) is modeled in `src/deck/labware/`:
-
-- `Labware` is a high-level base for shared behavior (`get_location`, `get_initial_position`) and common validation helpers.
-- `WellPlate` defines all required plate fields directly: `name`, `model_name`, geometry (`length_mm`, `width_mm`, `height_mm`), layout (`rows`, `columns`), `wells`, and volume fields (`capacity_ul`, `working_volume_ul`).
-- `Vial` defines all required vial fields directly: `name`, `model_name`, geometry (`height_mm`, `diameter_mm`), a single `location`, and volume fields.
-
-**Deck configuration (YAML)** defines which labware is on the deck (no gantry/serial settings in the deck file). Use a strict deck YAML with a single top-level key `labware`; each entry is either a well plate (with two-point calibration A1 + A2 and x/y offsets) or a single vial (with explicit `location`). Optional `height` can be provided to compute z as `total_z_height - height`. Load into Python objects with:
-
-```python
-from src.deck import load_deck_from_yaml
-
-deck = load_deck_from_yaml("configs/deck/deck.sample.yaml", total_z_height=90.0)
-# deck["plate_1"] -> WellPlate; deck["vial_1"] -> Vial
-# deck.resolve("plate_1.A1")  # absolute XYZ coordinate
+```yaml
+instruments:
+  pipette:
+    type: pipette
+    vendor: opentrons
+    offset_x: 5.0
+    offset_y: 0.0
+    depth: 0.0
 ```
 
-See `configs/deck/deck.sample.yaml` for the required schema. Validation is strict: missing, extra, or wrong-type fields raise `ValidationError`; two-point calibration for well plates must be axis-aligned (A1 and A2 share either x or y).
+### 4. Protocol (`configs/protocol/*.yaml`)
 
-## Instrument Drivers
+Defines the experiment as a sequence of commands. Positions can reference
+labware by key and well ID, for example `plate_1.A1`.
 
-Lab instruments are implemented as `BaseInstrument` subclasses in `src/instruments/`.
-
-### Filmetrics Film Thickness
-
-Driver for the Filmetrics measurement system (`src/instruments/filmetrics/`). Communicates with a C# console app via stdin/stdout.
-
-```python
-from src.instruments.filmetrics import Filmetrics, MockFilmetrics
-
-# Real hardware
-fm = Filmetrics(exe_path="path/to/FilmetricsTool.exe", recipe_name="MyRecipe")
-fm.connect()
-result = fm.measure()
-print(result.thickness_nm, result.goodness_of_fit, result.is_valid)
-fm.disconnect()
-
-# Testing
-mock = MockFilmetrics()
-mock.connect()
-mock.measure()
-print(mock.command_history)  # ['measure']
+```yaml
+protocol:
+  - home:
+  - move:
+      instrument: pipette
+      position: plate_1.A1
 ```
 
-### Thorlabs CCS UV-Vis Spectrometer
+Available protocol commands include `home`, `move`, `scan`, `measure`,
+`pause`, and the pipette command set.
 
-Driver for Thorlabs CCS100/CCS175/CCS200 compact spectrometers (`src/instruments/uvvis_ccs/`). Communicates via the TLCCS DLL through ctypes.
+## Setup and Execution
 
-```python
-from src.instruments.uvvis_ccs import UVVisCCS, MockUVVisCCS
+Install dependencies:
 
-# Real hardware (requires TLCCS_64.dll and USB-connected spectrometer)
-ccs = UVVisCCS(serial_number="M01216839", dll_path="TLCCS_64.dll")
-ccs.connect()
-ccs.set_integration_time(0.24)
-spectrum = ccs.measure()
-print(spectrum.wavelengths, spectrum.intensities, spectrum.is_valid)
-ccs.disconnect()
-
-# Testing
-mock = MockUVVisCCS()
-mock.connect()
-mock.measure()
-print(mock.command_history)  # ['measure']
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
 ```
 
-<<<<<<< HEAD
-## Protocol Setup and Validation
+Interactive jog test:
 
-The `setup_protocol()` function loads all four configs, validates that all deck positions and gantry-computed positions are within the gantry's working volume, and returns a ready-to-run `Protocol` + `ProtocolContext`:
-
-```python
-from src.protocol_engine.setup import setup_protocol
-
-protocol, context = setup_protocol(
-    gantry_path="configs/gantry/genmitsu_3018_PROver_v2.yaml",
-    deck_path="configs/deck/mofcat_deck.yaml",
-    board_path="configs/board/mofcat_board.yaml",
-    protocol_path="configs/protocol/protocol.sample.yaml",
-)
-# Protocol is ready to run once validation passes:
-protocol.run(context)
+```bash
+python setup/hello_world.py
 ```
 
-Validation checks:
-- All labware positions (every well, every vial) are within gantry working volume
-- For every (instrument, position) pair, the computed gantry position is within bounds
-- Raises `SetupValidationError` with all violations listed if any checks fail
-
-### Validate Setup (CLI)
-
-Run validation from the command line to see human-readable output:
+Validate a setup:
 
 ```bash
 python setup/validate_setup.py \
-    configs/gantry/genmitsu_3018_PROver_v2.yaml \
+    configs/gantry/cubos.yaml \
     configs/deck/mofcat_deck.yaml \
     configs/board/mofcat_board.yaml \
     configs/protocol/protocol.sample.yaml
 ```
 
-The script prints step-by-step output: each config loaded with details (gantry bounds, labware list, instruments, protocol steps), followed by deck and gantry bounds validation results, and a final PASS/FAIL summary.
-
-### Run Protocol (CLI)
-
-Validate and run a protocol end-to-end (requires hardware connection):
+Run a protocol:
 
 ```bash
 python setup/run_protocol.py \
-    configs/gantry/genmitsu_3018_PROver_v2.yaml \
+    configs/gantry/cubos.yaml \
     configs/deck/mofcat_deck.yaml \
     configs/board/mofcat_board.yaml \
     configs/protocol/protocol.sample.yaml
 ```
 
-This first runs offline validation (same output as `validate_setup.py`), then connects to the gantry and executes the protocol.
-
-=======
-## Data Persistence
-
-Campaign data is persisted to a local SQLite database via `DataStore`. All state lives in SQLite (not in Python objects) so nothing is lost on interrupt or crash. Tracks campaigns, labware volumes/contents, per-well experiments, and instrument measurements.
+Programmatic setup:
 
 ```python
-from data import DataStore
-from protocol_engine.protocol import ProtocolContext
+from protocol_engine.setup import setup_protocol
 
-store = DataStore(db_path="my_campaign.db")
-campaign_id = store.create_campaign(
-    description="MOF-5 screening run",
-    deck_config="configs/deck.yaml",
-    protocol_config="protocols/screen.yaml",
-)
-
-# Register labware so the DB tracks volume and contents per well/vial
-store.register_labware(campaign_id, "plate_1", deck["plate_1"])
-store.register_labware(campaign_id, "vial_1", deck["vial_1"])
-
-# Pass into ProtocolContext — commands auto-log measurements and dispenses
-context = ProtocolContext(
-    board=board,
-    deck=deck,
-    data_store=store,
-    campaign_id=campaign_id,
+protocol, context = setup_protocol(
+    gantry_path="configs/gantry/cubos.yaml",
+    deck_path="configs/deck/mofcat_deck.yaml",
+    board_path="configs/board/mofcat_board.yaml",
+    protocol_path="configs/protocol/protocol.sample.yaml",
+    mock_mode=True,
 )
 protocol.run(context)
-store.close()
 ```
 
-An empty initialized database template is at `data/databases/panda_data.db` — inspect the schema with:
-```bash
-sqlite3 data/databases/panda_data.db ".schema"
-```
+## Data Persistence
 
->>>>>>> main
+Campaign state can be stored in SQLite through `data.DataStore`. Measurement
+commands can log into a `ProtocolContext` when `data_store` and `campaign_id`
+are provided.
+
 ## Development
 
-Run unit tests:
 ```bash
 pytest tests/
 ```

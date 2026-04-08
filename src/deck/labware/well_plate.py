@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
@@ -17,10 +17,11 @@ class WellPlate(Labware):
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
 
     name: str = Field(..., description="Unique well plate name.")
-    model_name: str = Field(..., description="Well plate model identifier.")
-    length_mm: float = Field(..., description="Overall plate length in millimeters.")
-    width_mm: float = Field(..., description="Overall plate width in millimeters.")
-    height_mm: float = Field(..., description="Overall plate height in millimeters.")
+    model_name: str = Field("", description="Well plate model identifier.")
+    # Geometry — optional metadata, not used for well position computation.
+    length_mm: Optional[float] = Field(None, description="Overall plate length in millimeters.")
+    width_mm: Optional[float] = Field(None, description="Overall plate width in millimeters.")
+    height_mm: Optional[float] = Field(None, description="Z position of the plate surface (absolute WPos).")
     rows: int = Field(
         ...,
         gt=0,
@@ -32,28 +33,30 @@ class WellPlate(Labware):
         ...,
         description="Mapping from well ID (e.g. 'A1') to absolute XYZ centers.",
     )
-    capacity_ul: float = Field(..., description="Well capacity in microliters.")
-    working_volume_ul: float = Field(..., description="Working volume per well in microliters.")
+    # Volume — optional metadata.
+    capacity_ul: Optional[float] = Field(None, description="Well capacity in microliters.")
+    working_volume_ul: Optional[float] = Field(None, description="Working volume per well in microliters.")
 
-    @field_validator("name", "model_name")
+    @field_validator("name")
     def _validate_non_empty_text(cls, value: str) -> str:
         return Labware.validate_name(value)
 
     @field_validator("capacity_ul", "working_volume_ul")
-    def _validate_positive_volume(cls, value: float, info):  # type: ignore[override]
-        if value <= 0:
+    def _validate_positive_volume(cls, value: Optional[float], info):  # type: ignore[override]
+        if value is not None and value <= 0:
             raise ValueError(f"{info.field_name} must be positive.")
         return value
 
     @model_validator(mode="after")
     def _validate_working_le_capacity(self) -> "WellPlate":
-        if self.working_volume_ul > self.capacity_ul:
+        if (self.capacity_ul is not None and self.working_volume_ul is not None
+                and self.working_volume_ul > self.capacity_ul):
             raise ValueError("working_volume_ul must be <= capacity_ul.")
         return self
 
-    @field_validator("length_mm", "width_mm", "height_mm")
-    def _validate_positive_dimension(cls, value: float, info):  # type: ignore[override]
-        if value <= 0:
+    @field_validator("length_mm", "width_mm")
+    def _validate_positive_dimension(cls, value: Optional[float], info):  # type: ignore[override]
+        if value is not None and value <= 0:
             raise ValueError(f"{info.field_name} must be positive.")
         return value
 

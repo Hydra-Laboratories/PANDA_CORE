@@ -155,16 +155,16 @@ class TestGantryConfig:
             )
 
 
-class TestWorkingVolumeMinBounds:
+class TestWorkingVolumeSignedBounds:
 
-    def test_rejects_negative_x_min(self):
-        with pytest.raises(ValueError, match="x_min"):
-            _make_volume(x_min=-1.0)
+    def test_allows_negative_x_min(self):
+        vol = _make_volume(x_min=-1.0)
+        assert vol.x_min == -1.0
 
-    def test_rejects_negative_y_min(self):
-        with pytest.raises(ValueError, match="y_min"):
-            _make_volume(y_min=-1.0)
+    def test_allows_negative_y_min(self):
+        vol = _make_volume(y_min=-1.0)
+        assert vol.y_min == -1.0
 
-    def test_rejects_negative_z_min(self):
-        with pytest.raises(ValueError, match="z_min"):
-            _make_volume(z_min=-1.0)
+    def test_allows_negative_z_min(self):
+        vol = _make_volume(z_min=-1.0)
+        assert vol.z_min == -1.0

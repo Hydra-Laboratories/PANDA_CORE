@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+from typing import Dict, Optional
 
 
 class HomingStrategy(str, Enum):
@@ -25,8 +26,8 @@ class YAxisMotion(str, Enum):
 class WorkingVolume:
     """Gantry working volume bounds in millimeters.
 
-    User-facing coordinates use positive working space with
-    origin at (0, 0, 0) and inclusive min/max bounds.
+    Bounds are inclusive and may be either positive-space or negative-space,
+    depending on the gantry calibration in use.
     """
 
     x_min: float
@@ -40,8 +41,6 @@ class WorkingVolume:
         for axis in ("x", "y", "z"):
             lo = getattr(self, f"{axis}_min")
             hi = getattr(self, f"{axis}_max")
-            if lo < 0:
-                raise ValueError(f"{axis}_min ({lo}) must be >= 0")
             if lo >= hi:
                 raise ValueError(
                     f"{axis}_min ({lo}) must be < {axis}_max ({hi})"
@@ -65,6 +64,7 @@ class GantryConfig:
     total_z_height: float
     working_volume: WorkingVolume
     y_axis_motion: YAxisMotion = YAxisMotion.HEAD
+    expected_grbl_settings: Optional[Dict[str, float]] = field(default=None)
 
     def __post_init__(self) -> None:
         if self.total_z_height <= 0:
