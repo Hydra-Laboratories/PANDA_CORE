@@ -23,6 +23,7 @@ include = ["board", "board.*", "data", "data.*", "deck", "deck.*",
            "protocol_engine", "protocol_engine.*", "validation", "validation.*"]
 
 [tool.setuptools.package-data]
+"instruments" = ["registry.yaml"]
 "gantry.gantry_driver" = ["*.json"]
 
 [tool.pytest.ini_options]

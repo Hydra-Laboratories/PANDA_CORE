@@ -1,8 +1,14 @@
-from typing import Optional, Dict, Any
+from __future__ import annotations
+
 import logging
 import re
-import time
+from typing import Any, Dict, Optional
 
+from .coordinate_translator import (
+    to_machine_coordinates,
+    to_user_coordinates,
+    translate_status_string,
+)
 from .gantry_driver.driver import Mill
 from .gantry_driver.exceptions import (
     CommandExecutionError,
@@ -11,203 +17,287 @@ from .gantry_driver.exceptions import (
     StatusReturnError,
 )
 
-_STATUS_RE = re.compile(r"<(\w+)\|")
-_MPOS_RE = re.compile(r"MPos:([\d.-]+),([\d.-]+),([\d.-]+)")
-_WPOS_RE = re.compile(r"WPos:([\d.-]+),([\d.-]+),([\d.-]+)")
-_WCO_RE = re.compile(r"WCO:([\d.-]+),([\d.-]+),([\d.-]+)")
+_STATUS_RE = re.compile(r"<([^|>]+)")
 
 logger = logging.getLogger(__name__)
 
 
 class Gantry:
-    """Hardware interface for the CNC Gantry / Motion Controller.
+    """High-level gantry wrapper around the low-level Mill driver.
 
-    This class wraps the low-level Mill driver to provide a high-level
-    interface for moving the gantry. It is NOT an Instrument and does
-    not inherit from BaseInstrument.
-
-    Pass ``offline=True`` for dry runs and testing — no serial connection
-    is opened, all movement is simulated in memory.
+    User-facing coordinates are positive-space XYZ. The underlying GRBL
+    controller still operates in negative machine space, so this wrapper
+    handles translation at the boundary.
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None, offline: bool = False):
+    def __init__(
+        self,
+        config: Optional[Dict[str, Any]] = None,
+        offline: bool = False,
+    ) -> None:
         self.config = config or {}
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self._offline = offline
-        self._mill = None
         self._offline_coords = {"x": 0.0, "y": 0.0, "z": 0.0}
-        if not offline:
-            self._mill = Mill()
+        self._mill: Mill | None = None if offline else Mill()
+
+    @property
+    def total_z_height(self) -> Optional[float]:
+        """Return configured total Z height in user space, if available."""
+        if isinstance(self.config, dict):
+            cnc = self.config.get("cnc", {})
+            if isinstance(cnc, dict) and "total_z_height" in cnc:
+                return float(cnc["total_z_height"])
+            working_volume = self.config.get("working_volume", {})
+            if isinstance(working_volume, dict) and "z_max" in working_volume:
+                return float(working_volume["z_max"])
+            return None
+
+        if hasattr(self.config, "total_z_height"):
+            return float(getattr(self.config, "total_z_height"))
+        return None
 
     def connect(self) -> None:
-        """Connect to the CNC mill and validate GRBL settings.
-
-        After establishing the serial connection:
-        1. Validates GRBL settings against expected values from gantry YAML
-        2. Switches GRBL to report WPos directly ($10=0)
-
-        No-op in offline mode.
-        """
+        """Connect to the CNC mill via auto-scan of available serial ports."""
         if self._offline:
             return
+        assert self._mill is not None
         try:
-            self.logger.info("Connecting to gantry (auto-scan)")
+            self.logger.info("Connecting to gantry via auto-scan")
             self._mill.connect_to_mill(port=None)
             self._validate_grbl_settings()
-            self._switch_to_wpos_reporting()
             self._check_alarm_state()
-        except MillConnectionError as e:
-            self.logger.error(f"Error connecting to gantry: {e}")
+        except MillConnectionError as exc:
+            self.logger.error("Error connecting to gantry: %s", exc)
             raise
 
     def disconnect(self) -> None:
         if self._offline:
             return
+        assert self._mill is not None
         try:
             self._mill.disconnect()
-        except MillConnectionError as e:
-            self.logger.error(f"Error disconnecting gantry: {e}")
+        except MillConnectionError as exc:
+            self.logger.error("Error disconnecting gantry: %s", exc)
 
     def is_healthy(self) -> bool:
         """Check if the gantry is connected and healthy."""
         if self._offline:
             return True
+        assert self._mill is not None
         if not self._mill.active_connection:
+            self.logger.debug("Health check: no active connection")
             return False
+
         try:
-            if not self._mill.is_connected():
+            if not self._mill.ser_mill or not self._mill.ser_mill.is_open:
+                self.logger.debug("Health check: serial port not open")
                 return False
+
             status = self._mill.current_status()
             if "Alarm" in status or "Error" in status:
+                self.logger.debug("Health check: unhealthy status: %s", status)
                 return False
+
             return True
-        except (MillConnectionError, StatusReturnError):
+        except (MillConnectionError, StatusReturnError) as exc:
+            self.logger.debug("Health check failed: %s", exc)
             return False
 
     def home(self) -> None:
-        """Home the gantry using the strategy from config."""
+        """Home the gantry using the configured homing strategy."""
         if self._offline:
             return
-        self._last_status = "Home"
+        assert self._mill is not None
+        strategy = self._homing_strategy()
         try:
-            strategy = self.config.get("cnc", {}).get("homing_strategy")
-            if strategy == "xy_hard_limits":
-                self.logger.info("Using custom XY hard limit homing strategy")
+            if strategy == "manual_origin":
+                self._mill.home_manual_origin()
+            elif strategy == "standard":
+                self._mill.home()
+            elif strategy == "xy_hard_limits":
                 self._mill.home_xy_hard_limits()
             else:
-                self._mill.home()
-            self._set_home_wpos()
-        except (MillConnectionError, StatusReturnError) as e:
-            self.logger.error(f"Error homing gantry: {e}")
+                raise ValueError(f"Unknown homing strategy: {strategy!r}")
+        except (MillConnectionError, StatusReturnError) as exc:
+            self.logger.error("Error homing gantry: %s", exc)
             raise
 
     def home_xy(self) -> None:
-        """Home X and Y axes using the hard-limits strategy."""
+        """Home X/Y using the hard-limits strategy, ignoring config."""
         if self._offline:
             return
-        self._last_status = "Home"
+        assert self._mill is not None
         try:
             self._mill.home_xy_hard_limits()
-            self._set_home_wpos()
-        except (MillConnectionError, StatusReturnError) as e:
-            self.logger.error(f"Error homing XY: {e}")
+        except (MillConnectionError, StatusReturnError) as exc:
+            self.logger.error("Error homing gantry: %s", exc)
             raise
 
     def move_to(self, x: float, y: float, z: float) -> None:
-        """Move to absolute coordinates (x, y, z)."""
+        """Move to absolute user-space coordinates."""
         if self._offline:
             self._offline_coords = {"x": x, "y": y, "z": z}
             return
+        assert self._mill is not None
         try:
-            self._mill.safe_move(x_coord=x, y_coord=y, z_coord=z)
-        except (MillConnectionError, StatusReturnError, CommandExecutionError,
-                ValueError) as e:
-            self.logger.error(f"Error moving gantry to ({x}, {y}, {z}): {e}")
+            machine_x, machine_y, machine_z = to_machine_coordinates(x, y, z)
+            self._mill.safe_move(
+                x_coord=machine_x,
+                y_coord=machine_y,
+                z_coord=machine_z,
+            )
+        except (
+            MillConnectionError,
+            StatusReturnError,
+            CommandExecutionError,
+            ValueError,
+        ) as exc:
+            self.logger.error(
+                "Error moving gantry to (%s, %s, %s): %s", x, y, z, exc
+            )
             raise
 
-    def get_status(self) -> str:
-        """Return the current status string of the mill."""
+    def jog(
+        self,
+        x: float = 0,
+        y: float = 0,
+        z: float = 0,
+        feed_rate: float = 2000,
+    ) -> None:
+        """Jog by a relative user-space offset."""
         if self._offline:
-            return "Idle"
+            self._offline_coords = {
+                "x": self._offline_coords["x"] + x,
+                "y": self._offline_coords["y"] + y,
+                "z": self._offline_coords["z"] + z,
+            }
+            return
+        assert self._mill is not None
         try:
-            status = self._mill.current_status()
-            self._last_status = status
-            return status
-        except (MillConnectionError, StatusReturnError) as e:
-            self.logger.error(f"Error getting status: {e}")
-            return "Error"
+            self._mill.jog(x=-x, y=-y, z=-z, feed_rate=feed_rate)
+        except (MillConnectionError, CommandExecutionError) as exc:
+            self.logger.error("Jog error: %s", exc)
+            raise
 
-    def get_coordinates(self) -> Dict[str, float]:
-        """Return current coordinates as a dict.
-
-        Raises on communication failure so callers can distinguish
-        a real (0, 0, 0) position from a failed read.
-        """
+    def jog_cancel(self) -> None:
+        """Cancel any in-progress jog motion immediately."""
         if self._offline:
-            return dict(self._offline_coords)
+            return
+        assert self._mill is not None
         try:
-            coords = self._mill.current_coordinates()
-            return {"x": coords.x, "y": coords.y, "z": coords.z}
-        except (MillConnectionError, StatusReturnError, LocationNotFound) as e:
-            self.logger.error(f"Error getting coordinates: {e}")
+            self._mill.jog_cancel()
+        except (MillConnectionError, CommandExecutionError) as exc:
+            self.logger.error("Jog cancel error: %s", exc)
+            raise
+
+    def soft_reset(self) -> None:
+        """Send a GRBL soft reset (Ctrl-X) to the controller."""
+        if self._offline:
+            return
+        assert self._mill is not None
+        try:
+            self._mill.soft_reset()
+        except Exception as exc:
+            self.logger.error("Soft reset error: %s", exc)
             raise
 
     def unlock(self) -> None:
-        """Send GRBL $X to clear alarm state."""
+        """Send GRBL unlock command ($X) to clear alarm state."""
         if self._offline:
             return
+        assert self._mill is not None
         try:
             self._mill.reset()
-            time.sleep(0.3)
-            raw = self._mill.query_raw_status()
-            if raw and "Alarm" in raw:
-                self.logger.warning("Alarm still active after $X: %s", raw)
-            else:
-                self.logger.info("Alarm cleared")
-        except (MillConnectionError, CommandExecutionError, StatusReturnError):
-            time.sleep(0.3)
-            raw = self._mill.query_raw_status()
-            if raw and "Alarm" not in raw:
-                self.logger.info("Alarm cleared (reset raised but status is clean)")
-            else:
-                self.logger.warning("Alarm may still be active: %s", raw)
+        except (MillConnectionError, CommandExecutionError) as exc:
+            self.logger.error("Unlock error: %s", exc)
+            raise
+
+    def reset_and_unlock(self) -> None:
+        """Soft reset + unlock in a single serial sequence."""
+        if self._offline:
+            return
+        assert self._mill is not None
+        try:
+            self._mill.soft_reset_and_unlock()
+        except (MillConnectionError, CommandExecutionError) as exc:
+            self.logger.error("Reset and unlock error: %s", exc)
+            raise
+
+    def get_status(self) -> str:
+        """Return the current status string translated to user-space coords."""
+        if self._offline:
+            return "Idle"
+        assert self._mill is not None
+        try:
+            return translate_status_string(self._mill.current_status())
+        except (MillConnectionError, StatusReturnError) as exc:
+            self.logger.error("Error getting status: %s", exc)
+            return "StatusQueryFailed"
 
     def stop(self) -> None:
         """Immediately stop all gantry motion (GRBL feed hold)."""
         if self._offline:
             return
+        assert self._mill is not None
         try:
             self._mill.stop()
-        except (MillConnectionError, CommandExecutionError) as e:
-            self.logger.error(f"Error stopping gantry: {e}")
+        except (MillConnectionError, CommandExecutionError) as exc:
+            self.logger.error("Error stopping gantry: %s", exc)
+            raise
+
+    def get_coordinates(self) -> Dict[str, float]:
+        """Return current user-space coordinates as a dict."""
+        if self._offline:
+            return dict(self._offline_coords)
+        assert self._mill is not None
+        coords = self._mill.current_coordinates()
+        x_user, y_user, z_user = to_user_coordinates(coords.x, coords.y, coords.z)
+        return {"x": x_user, "y": y_user, "z": z_user}
+
+    def get_position_info(self) -> Dict[str, Any]:
+        """Return coordinates, work position, and last-known status."""
+        if self._offline:
+            coords = dict(self._offline_coords)
+            return {"coords": coords, "work_pos": coords, "status": "Idle"}
+
+        assert self._mill is not None
+        coords = self._mill.current_coordinates()
+        x_user, y_user, z_user = to_user_coordinates(coords.x, coords.y, coords.z)
+        user_coords = {"x": x_user, "y": y_user, "z": z_user}
+        status = self._extract_status()
+        return {
+            "coords": user_coords,
+            "work_pos": user_coords,
+            "status": status,
+        }
 
     def set_serial_timeout(self, timeout: float) -> None:
-        """Set the serial read timeout on the underlying connection.
-
-        Useful for switching between long timeouts (homing) and short
-        timeouts (fast status polling during measurement loops).
-        """
+        """Set the serial read timeout on the active mill connection."""
         if self._offline:
             return
+        assert self._mill is not None
         if self._mill.ser_mill is not None:
             self._mill.ser_mill.timeout = timeout
 
     def set_safe_z(self, z: float) -> None:
-        """Set the clearance height used by safe_move for XY travel."""
+        """Set the clearance height used by Mill.safe_move for XY travel."""
         if self._offline:
             return
+        assert self._mill is not None
         self._mill.max_z_height = z
 
     def zero_coordinates(self) -> None:
-        """Zero the work coordinate system at the current position (G92 X0 Y0 Z0)."""
+        """Zero the work coordinate system at the current position."""
         if self._offline:
             self._offline_coords = {"x": 0.0, "y": 0.0, "z": 0.0}
             return
+        assert self._mill is not None
         try:
             self._mill.execute_command("G92 X0 Y0 Z0")
             self.logger.info("Work coordinates zeroed")
-        except (MillConnectionError, CommandExecutionError) as e:
-            self.logger.error(f"Error zeroing coordinates: {e}")
+        except (MillConnectionError, CommandExecutionError) as exc:
+            self.logger.error("Error zeroing coordinates: %s", exc)
             raise
 
     def configure_speeds(
@@ -217,16 +307,10 @@ class Gantry:
         max_rate: Optional[float] = None,
         acceleration: Optional[float] = None,
     ) -> None:
-        """Apply speed/acceleration overrides to the GRBL controller.
-
-        Args:
-            homing_feed: $24 homing locate feed rate (mm/min).
-            homing_seek: $25 homing search seek rate (mm/min).
-            max_rate: $110/$111/$112 max rate for all axes (mm/min).
-            acceleration: $120/$121/$122 acceleration for all axes (mm/s^2).
-        """
+        """Apply speed and acceleration overrides to the GRBL controller."""
         if self._offline:
             return
+        assert self._mill is not None
         if homing_feed is not None:
             self._mill.set_grbl_setting("24", str(homing_feed))
         if homing_seek is not None:
@@ -239,190 +323,101 @@ class Gantry:
                 self._mill.set_grbl_setting(code, str(acceleration))
         self.logger.info("Speed config applied")
 
+    def _homing_strategy(self) -> str:
+        """Extract the configured homing strategy from dict or dataclass config."""
+        if isinstance(self.config, dict):
+            cnc = self.config.get("cnc", {})
+            if isinstance(cnc, dict):
+                return cnc.get("homing_strategy", "xy_hard_limits")
+        if hasattr(self.config, "homing_strategy"):
+            value = getattr(self.config, "homing_strategy")
+            return getattr(value, "value", value)
+        return "xy_hard_limits"
+
     def _extract_status(self) -> str:
-        """Return the last known status without querying the serial port."""
-        return getattr(self, "_last_status", "Unknown")
-
-    def jog(
-        self, x: float = 0, y: float = 0, z: float = 0, feed: float = 1000
-    ) -> None:
-        """Jog the gantry by a relative offset using GRBL's $J= command."""
-        if self._offline:
-            c = self._offline_coords
-            self._offline_coords = {
-                "x": c["x"] + x, "y": c["y"] + y, "z": c["z"] + z,
-            }
-            return
-        parts = []
-        if x != 0:
-            parts.append(f"X{x}")
-        if y != 0:
-            parts.append(f"Y{y}")
-        if z != 0:
-            parts.append(f"Z{z}")
-        if not parts:
-            return
-        cmd = f"$J=G91 {''.join(parts)} F{feed}"
+        """Extract the GRBL state word from the last raw status string."""
         try:
-            self._mill.execute_command(cmd)
-        except (MillConnectionError, CommandExecutionError) as e:
-            self.logger.error(f"Jog error: {e}")
-            raise
+            assert self._mill is not None
+            raw = getattr(self._mill, "last_status", "") or ""
+            if not raw:
+                return "Unknown"
+            match = _STATUS_RE.search(raw)
+            if match:
+                return match.group(1)
+            if "alarm" in raw.lower():
+                return "Alarm"
+            return translate_status_string(raw)
+        except (ValueError, AttributeError) as exc:
+            self.logger.debug("Failed to extract status: %s", exc)
+            return "Unknown"
 
-    def get_position_info(self) -> Dict[str, Any]:
-        """Return status, machine coords, and work coords from GRBL status."""
-        if self._offline:
-            return {
-                "status": "Idle",
-                "coords": dict(self._offline_coords),
-                "work_pos": dict(self._offline_coords),
-            }
-        try:
-            raw = self._mill.query_raw_status()
-        except Exception as e:
-            self.logger.error("Error querying position: %s", e)
-            return {
-                "status": "Error",
-                "coords": {"x": 0, "y": 0, "z": 0},
-                "work_pos": None,
-            }
+    def _expected_grbl_settings(self) -> Optional[Dict[str, float]]:
+        """Return expected GRBL settings normalized to $-code keys."""
+        if isinstance(self.config, dict):
+            raw = self.config.get("grbl_settings")
+            if not raw:
+                return None
+            from .yaml_schema import GRBL_FIELD_TO_SETTING
 
-        status_match = _STATUS_RE.search(raw)
-        self._last_status = status_match.group(1) if status_match else "Unknown"
+            expected: Dict[str, float] = {}
+            for field_name, grbl_code in GRBL_FIELD_TO_SETTING.items():
+                value = raw.get(field_name)
+                if value is not None:
+                    expected[grbl_code] = float(value)
+            return expected
 
-        mpos_match = _MPOS_RE.search(raw)
-        wpos_match = _WPOS_RE.search(raw)
-        wco_match = _WCO_RE.search(raw)
-
-        if wco_match:
-            self._last_wco = {
-                "x": float(wco_match.group(1)),
-                "y": float(wco_match.group(2)),
-                "z": float(wco_match.group(3)),
-            }
-
-        wco = getattr(self, "_last_wco", None)
-        coords: Dict[str, float] = {"x": 0.0, "y": 0.0, "z": 0.0}
-        work_pos: Optional[Dict[str, float]] = None
-
-        if mpos_match:
-            coords = {
-                "x": float(mpos_match.group(1)),
-                "y": float(mpos_match.group(2)),
-                "z": float(mpos_match.group(3)),
-            }
-            if wco:
-                work_pos = {
-                    "x": coords["x"] - wco["x"],
-                    "y": coords["y"] - wco["y"],
-                    "z": coords["z"] - wco["z"],
-                }
-        elif wpos_match:
-            work_pos = {
-                "x": float(wpos_match.group(1)),
-                "y": float(wpos_match.group(2)),
-                "z": float(wpos_match.group(3)),
-            }
-            if wco:
-                coords = {
-                    "x": work_pos["x"] + wco["x"],
-                    "y": work_pos["y"] + wco["y"],
-                    "z": work_pos["z"] + wco["z"],
-                }
-            else:
-                coords = dict(work_pos)
-
-        return {"status": self._last_status, "coords": coords, "work_pos": work_pos}
-
-    # ── Private helpers (online only) ────────────────────────────────────
+        expected = getattr(self.config, "expected_grbl_settings", None)
+        return expected or None
 
     def _validate_grbl_settings(self) -> None:
-        expected = self.config.get("grbl_settings")
-        if not expected:
+        """Compare configured GRBL expectations against the connected controller."""
+        expected = self._expected_grbl_settings()
+        if not expected or self._offline:
             return
-        from .yaml_schema import GRBL_FIELD_TO_SETTING
+
+        assert self._mill is not None
         live = self._mill.grbl_settings()
         mismatches = []
-        for field_name, grbl_code in GRBL_FIELD_TO_SETTING.items():
-            yaml_value = expected.get(field_name)
-            if yaml_value is None:
-                continue
+        for grbl_code, expected_value in expected.items():
             live_raw = live.get(grbl_code)
             if live_raw is None:
                 self.logger.warning(
-                    "GRBL setting %s (%s) not found on controller",
-                    grbl_code, field_name,
+                    "GRBL setting %s not found on controller", grbl_code
                 )
                 continue
-            if abs(float(live_raw) - float(yaml_value)) > 0.001:
-                mismatches.append((field_name, grbl_code, float(yaml_value), float(live_raw)))
+            if abs(float(live_raw) - float(expected_value)) > 0.001:
+                mismatches.append((grbl_code, float(expected_value), float(live_raw)))
+
         if not mismatches:
             self.logger.info("GRBL settings validation passed")
             return
-        for field_name, grbl_code, expected_val, live_val in mismatches:
+
+        critical = {"$3", "$23", "$100", "$101", "$102", "$130", "$131", "$132"}
+        critical_mismatches = [item for item in mismatches if item[0] in critical]
+        for grbl_code, expected_value, live_value in mismatches:
             self.logger.error(
-                "GRBL mismatch: %s (%s) — YAML expects %.3f, controller has %.3f",
-                field_name, grbl_code, expected_val, live_val,
+                "GRBL mismatch: %s expected %.3f, controller has %.3f",
+                grbl_code,
+                expected_value,
+                live_value,
             )
-        critical_fields = {
-            "dir_invert_mask", "homing_dir_mask",
-            "max_travel_x", "max_travel_y", "max_travel_z",
-            "steps_per_mm_x", "steps_per_mm_y", "steps_per_mm_z",
-        }
-        critical = [m for m in mismatches if m[0] in critical_fields]
-        if critical:
+        if critical_mismatches:
             details = "; ".join(
-                f"{f} ({c}): expected {e}, got {l}" for f, c, e, l in critical
+                f"{code}: expected {expected_value}, got {live_value}"
+                for code, expected_value, live_value in critical_mismatches
             )
             raise MillConnectionError(
                 f"Critical GRBL settings mismatch — motion would be wrong. {details}"
             )
 
-    def _switch_to_wpos_reporting(self) -> None:
-        max_attempts = 3
-        for attempt in range(1, max_attempts + 1):
-            time.sleep(0.5 * attempt)
-            try:
-                self._mill.set_grbl_setting("10", "0")
-                self.logger.info("Switched GRBL to WPos reporting ($10=0)")
-                break
-            except (CommandExecutionError, MillConnectionError) as e:
-                if attempt == max_attempts:
-                    self.logger.error(
-                        "Failed to set $10=0 after %d attempts: %s", max_attempts, e
-                    )
-                    raise
-                self.logger.warning(
-                    "$10=0 attempt %d failed, retrying: %s", attempt, e
-                )
-        time.sleep(0.2)
-        raw = self._mill.query_raw_status()
-        if raw and "MPos" in raw and "WPos" not in raw:
-            self.logger.warning(
-                "$10=0 did not take effect — status still reports MPos: %s", raw
-            )
-        elif raw and "WPos" in raw:
-            self.logger.info("Verified: GRBL is reporting WPos")
-
     def _check_alarm_state(self) -> None:
+        """Log an alarm state after connect without raising."""
+        if self._offline:
+            return
+        assert self._mill is not None
         raw = self._mill.query_raw_status()
         if raw and "Alarm" in raw:
             self.logger.warning(
                 "GRBL is in Alarm state after connect. Home to clear. Status: %s",
                 raw,
             )
-
-    def _set_home_wpos(self) -> None:
-        wv = self.config.get("working_volume", {})
-        x_max = float(wv.get("x_max", 0))
-        y_max = float(wv.get("y_max", 0))
-        if x_max <= 0 or y_max <= 0:
-            self.logger.warning(
-                "working_volume not set — cannot calibrate WPos."
-            )
-            return
-        self.logger.info(
-            "Setting home WPos to (%.1f, %.1f) from working_volume",
-            x_max, y_max,
-        )
-        self._mill.execute_command(f"G10 L20 P1 X{x_max} Y{y_max}")

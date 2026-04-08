@@ -80,9 +80,9 @@ class TestLoadBoardSingleInstrument:
               uvvis:
                 type: uvvis_ccs
                 vendor: thorlabs
-                offset_x: -15.0
+                offset_x: 15.0
                 offset_y: 0.0
-                depth: -5.0
+                depth: 5.0
                 measurement_height: 3.0
         """)
         board = load_board_from_yaml(yaml_path, _mock_gantry())
@@ -91,9 +91,9 @@ class TestLoadBoardSingleInstrument:
         assert "uvvis" in board.instruments
         instr = board.instruments["uvvis"]
         assert isinstance(instr, UVVisCCS)
-        assert instr.offset_x == -15.0
+        assert instr.offset_x == 15.0
         assert instr.offset_y == 0.0
-        assert instr.depth == -5.0
+        assert instr.depth == 5.0
         assert instr.measurement_height == 3.0
 
 
@@ -105,20 +105,20 @@ class TestLoadBoardMultipleInstruments:
               uvvis:
                 type: uvvis_ccs
                 vendor: thorlabs
-                offset_x: -15.0
+                offset_x: 15.0
               pipette:
                 type: pipette
                 vendor: opentrons
-                offset_x: -10.0
+                offset_x: 10.0
                 offset_y: 5.0
-                depth: -2.0
+                depth: 2.0
         """)
         board = load_board_from_yaml(yaml_path, _mock_gantry())
 
         assert len(board.instruments) == 2
         assert isinstance(board.instruments["uvvis"], UVVisCCS)
         assert isinstance(board.instruments["pipette"], Pipette)
-        assert board.instruments["pipette"].offset_x == -10.0
+        assert board.instruments["pipette"].offset_x == 10.0
 
     def test_loads_filmetrics(self, tmp_path):
         yaml_path = _write_yaml(tmp_path, """\
@@ -126,7 +126,7 @@ class TestLoadBoardMultipleInstruments:
               film:
                 type: filmetrics
                 vendor: kla
-                offset_x: -20.0
+                offset_x: 20.0
                 measurement_height: 1.5
         """)
         board = load_board_from_yaml(yaml_path, _mock_gantry())

@@ -17,30 +17,29 @@ project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
 from gantry import Gantry
-from setup.keyboard_input import read_keypress_batch, flush_stdin
+from setup.keyboard_input import read_keypress
 
 CONFIGS_DIR = project_root / "configs"
 
 GANTRIES = {
     "CUB_XL": {
         "label": "Cub-XL (415x300x200mm)",
-        "config_file": CONFIGS_DIR / "gantries" / "cubos_xl.yaml",
+        "config_file": CONFIGS_DIR / "gantry" / "cubos_xl.yaml",
     },
     "CUB": {
         "label": "Cub (300x200x80mm)",
-        "config_file": CONFIGS_DIR / "gantries" / "cubos.yaml",
+        "config_file": CONFIGS_DIR / "gantry" / "cubos.yaml",
     },
 }
 
 STEP = 1.0
-MAX_STEP = 10.0
 
 CONTROLS_LEGEND = """
 Controls:
   Arrow LEFT/RIGHT  — Move X axis (±1mm)
-  Arrow UP/DOWN     — Move Y axis (±1mm)
-  Z                 — Move Z down (1mm)
-  X                 — Move Z up (1mm)
+  Arrow UP/DOWN     — Move Y axis (-/+1mm)
+  Z                 — Move Z down (+1mm)
+  X                 — Move Z up (-1mm)
   Q                 — Quit
 """
 
@@ -80,6 +79,7 @@ def main() -> None:
     print(f"\nSelected: {gantry_entry['label']}")
 
     gantry = Gantry(config=config)
+    volume = config["working_volume"]
 
     t0 = time.monotonic()
     print("\nConnecting to gantry...")
@@ -104,31 +104,26 @@ def main() -> None:
         print(CONTROLS_LEGEND)
 
         while True:
-            key, count = read_keypress_batch()
-            step = min(STEP * count, MAX_STEP)
-
-            x, y, z = coords["x"], coords["y"], coords["z"]
+            key = read_keypress()
 
             if key == "LEFT":
-                x -= step
+                gantry.jog(x=-STEP)
             elif key == "RIGHT":
-                x += step
+                gantry.jog(x=STEP)
             elif key == "UP":
-                y += step
+                gantry.jog(y=-STEP)
             elif key == "DOWN":
-                y -= step
+                gantry.jog(y=STEP)
             elif key == "Z":
-                z -= step
+                gantry.jog(z=STEP)
             elif key == "X":
-                z += step
+                gantry.jog(z=-STEP)
             elif key == "Q":
                 print("\nExiting...")
                 break
             else:
                 continue
 
-            gantry.move_to(x, y, z)
-            flush_stdin()
             coords = gantry.get_coordinates()
             print_position(coords)
 

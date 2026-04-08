@@ -20,7 +20,7 @@ def _mock_instrument(name="mock", offset_x=0.0, offset_y=0.0, depth=0.0):
     return instr
 
 
-def _mock_labware(x=-150.0, y=-75.0, z=-10.0):
+def _mock_labware(x=150.0, y=75.0, z=10.0):
     """Create a mock labware object with x, y, z deck position."""
     lw = MagicMock()
     lw.x = x
@@ -41,8 +41,8 @@ class TestBoardConstruction:
 
     def test_creates_with_instruments(self):
         gantry = _mock_gantry()
-        pip = _mock_instrument("pipette", offset_x=-10.0, offset_y=5.0)
-        fm = _mock_instrument("filmetrics", offset_x=-20.0, offset_y=0.0)
+        pip = _mock_instrument("pipette", offset_x=10.0, offset_y=5.0)
+        fm = _mock_instrument("filmetrics", offset_x=20.0, offset_y=0.0)
         board = Board(gantry=gantry, instruments={"pipette": pip, "filmetrics": fm})
         assert len(board.instruments) == 2
         assert board.instruments["pipette"] is pip
@@ -60,11 +60,11 @@ class TestBoardConstruction:
         assert board.instruments["uvvis"] is instr
 
     def test_instrument_offsets_accessible(self):
-        pip = _mock_instrument("pipette", offset_x=-15.0, offset_y=3.5, depth=-8.0)
+        pip = _mock_instrument("pipette", offset_x=15.0, offset_y=3.5, depth=8.0)
         board = Board(gantry=_mock_gantry(), instruments={"pipette": pip})
-        assert board.instruments["pipette"].offset_x == -15.0
+        assert board.instruments["pipette"].offset_x == 15.0
         assert board.instruments["pipette"].offset_y == 3.5
-        assert board.instruments["pipette"].depth == -8.0
+        assert board.instruments["pipette"].depth == 8.0
 
 
 # ─── move() tests ────────────────────────────────────────────────────────────
@@ -73,30 +73,30 @@ class TestBoardMove:
 
     def test_move_by_name_calls_gantry_move_to(self):
         gantry = _mock_gantry()
-        pip = _mock_instrument("pipette", offset_x=-10.0, offset_y=5.0, depth=-2.0)
+        pip = _mock_instrument("pipette", offset_x=10.0, offset_y=5.0, depth=2.0)
         board = Board(gantry=gantry, instruments={"pipette": pip})
 
-        board.move("pipette", (-100.0, -50.0, -20.0))
+        board.move("pipette", (100.0, 50.0, 20.0))
 
-        gantry.move_to.assert_called_once_with(-90.0, -55.0, -18.0)
+        gantry.move_to.assert_called_once_with(90.0, 45.0, 18.0)
 
     def test_move_by_instance_calls_gantry_move_to(self):
         gantry = _mock_gantry()
-        pip = _mock_instrument("pipette", offset_x=-10.0, offset_y=5.0, depth=-2.0)
+        pip = _mock_instrument("pipette", offset_x=10.0, offset_y=5.0, depth=2.0)
         board = Board(gantry=gantry, instruments={"pipette": pip})
 
-        board.move(pip, (-100.0, -50.0, -20.0))
+        board.move(pip, (100.0, 50.0, 20.0))
 
-        gantry.move_to.assert_called_once_with(-90.0, -55.0, -18.0)
+        gantry.move_to.assert_called_once_with(90.0, 45.0, 18.0)
 
     def test_move_zero_offset_passes_position_through(self):
         gantry = _mock_gantry()
         instr = _mock_instrument("router", offset_x=0.0, offset_y=0.0, depth=0.0)
         board = Board(gantry=gantry, instruments={"router": instr})
 
-        board.move("router", (-200.0, -100.0, -10.0))
+        board.move("router", (200.0, 100.0, 10.0))
 
-        gantry.move_to.assert_called_once_with(-200.0, -100.0, -10.0)
+        gantry.move_to.assert_called_once_with(200.0, 100.0, 10.0)
 
     def test_move_positive_offset(self):
         """Instrument mounted to the right (+x) of the router."""
@@ -104,10 +104,10 @@ class TestBoardMove:
         instr = _mock_instrument("sensor", offset_x=15.0, offset_y=10.0, depth=3.0)
         board = Board(gantry=gantry, instruments={"sensor": instr})
 
-        board.move("sensor", (-50.0, -30.0, -5.0))
+        board.move("sensor", (50.0, 30.0, 5.0))
 
-        # gantry_x = -50 - 15 = -65, gantry_y = -30 - 10 = -40, gantry_z = -5 - 3 = -8
-        gantry.move_to.assert_called_once_with(-65.0, -40.0, -8.0)
+        # gantry_x = 50 - 15 = 35, gantry_y = 30 - 10 = 20, gantry_z = 5 - 3 = 2
+        gantry.move_to.assert_called_once_with(35.0, 20.0, 2.0)
 
     def test_move_unknown_instrument_raises(self):
         board = Board(gantry=_mock_gantry())
@@ -126,13 +126,13 @@ class TestBoardMove:
 
     def test_move_accepts_labware_object(self):
         gantry = _mock_gantry()
-        instr = _mock_instrument("pipette", offset_x=-10.0, offset_y=5.0, depth=-2.0)
+        instr = _mock_instrument("pipette", offset_x=10.0, offset_y=5.0, depth=2.0)
         board = Board(gantry=gantry, instruments={"pipette": instr})
-        lw = _mock_labware(x=-150.0, y=-75.0, z=-10.0)
+        lw = _mock_labware(x=150.0, y=75.0, z=10.0)
 
         board.move("pipette", lw)
 
-        gantry.move_to.assert_called_once_with(-140.0, -80.0, -8.0)
+        gantry.move_to.assert_called_once_with(140.0, 70.0, 8.0)
 
 
 # ─── object_position() tests ─────────────────────────────────────────────────
@@ -140,34 +140,34 @@ class TestBoardMove:
 class TestBoardObjectPosition:
 
     def test_instrument_position_by_name(self):
-        gantry = _mock_gantry(x=-100.0, y=-50.0, z=-10.0)
-        pip = _mock_instrument("pipette", offset_x=-10.0, offset_y=5.0)
+        gantry = _mock_gantry(x=100.0, y=50.0, z=10.0)
+        pip = _mock_instrument("pipette", offset_x=10.0, offset_y=5.0)
         board = Board(gantry=gantry, instruments={"pipette": pip})
 
         pos = board.object_position("pipette")
 
-        assert pos == pytest.approx((-110.0, -45.0))
+        assert pos == pytest.approx((110.0, 55.0))
 
     def test_instrument_position_by_instance(self):
-        gantry = _mock_gantry(x=-100.0, y=-50.0, z=-10.0)
-        pip = _mock_instrument("pipette", offset_x=-10.0, offset_y=5.0)
+        gantry = _mock_gantry(x=100.0, y=50.0, z=10.0)
+        pip = _mock_instrument("pipette", offset_x=10.0, offset_y=5.0)
         board = Board(gantry=gantry, instruments={"pipette": pip})
 
         pos = board.object_position(pip)
 
-        assert pos == pytest.approx((-110.0, -45.0))
+        assert pos == pytest.approx((110.0, 55.0))
 
     def test_instrument_position_zero_offset(self):
-        gantry = _mock_gantry(x=-200.0, y=-80.0)
+        gantry = _mock_gantry(x=200.0, y=80.0)
         instr = _mock_instrument("router", offset_x=0.0, offset_y=0.0)
         board = Board(gantry=gantry, instruments={"router": instr})
 
         pos = board.object_position("router")
 
-        assert pos == pytest.approx((-200.0, -80.0))
+        assert pos == pytest.approx((200.0, 80.0))
 
     def test_instrument_position_reads_gantry_coordinates(self):
-        gantry = _mock_gantry(x=-50.0, y=-25.0)
+        gantry = _mock_gantry(x=50.0, y=25.0)
         instr = _mock_instrument("sensor")
         board = Board(gantry=gantry, instruments={"sensor": instr})
 
@@ -180,12 +180,12 @@ class TestBoardObjectPosition:
         board = Board(gantry=gantry)
 
         labware = MagicMock()
-        labware.x = -150.0
-        labware.y = -75.0
+        labware.x = 150.0
+        labware.y = 75.0
 
         pos = board.object_position(labware)
 
-        assert pos == pytest.approx((-150.0, -75.0))
+        assert pos == pytest.approx((150.0, 75.0))
         gantry.get_coordinates.assert_not_called()
 
     def test_unknown_instrument_name_raises(self):

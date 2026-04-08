@@ -113,6 +113,119 @@ def test_loaded_vial_has_location_and_volume():
         Path(path).unlink(missing_ok=True)
 
 
+def test_vial_height_uses_total_z_height() -> None:
+    yaml = """
+labware:
+  vial_1:
+    type: vial
+    name: standard_vial_rack
+    model_name: standard_1_5ml_vial
+    height_mm: 66.75
+    diameter_mm: 28.0
+    height: 30.0
+    location:
+      x: 30.0
+      y: 40.0
+    capacity_ul: 1500.0
+    working_volume_ul: 1200.0
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(yaml)
+        path = f.name
+    try:
+        result = load_deck_from_yaml(path, total_z_height=80.0)
+        vial = result["vial_1"]
+        assert vial.location.z == pytest.approx(50.0)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_well_plate_height_uses_total_z_height() -> None:
+    yaml = """
+labware:
+  plate_1:
+    type: well_plate
+    name: opentrons_96_well_20ml
+    model_name: opentrons_96_well_20ml
+    rows: 2
+    columns: 2
+    length_mm: 127.71
+    width_mm: 85.43
+    height_mm: 14.10
+    height: 15.0
+    calibration:
+      a1: { x: 10.0, y: 10.0 }
+      a2: { x: 19.0, y: 10.0 }
+    x_offset_mm: 9.0
+    y_offset_mm: 9.0
+    capacity_ul: 200.0
+    working_volume_ul: 150.0
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(yaml)
+        path = f.name
+    try:
+        result = load_deck_from_yaml(path, total_z_height=80.0)
+        plate = result["plate_1"]
+        assert plate.get_well_center("A1").z == pytest.approx(65.0)
+        assert plate.get_well_center("B2").z == pytest.approx(65.0)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_raw_z_works_without_total_z_height() -> None:
+    yaml = """
+labware:
+  vial_1:
+    type: vial
+    name: standard_vial_rack
+    model_name: standard_1_5ml_vial
+    height_mm: 66.75
+    diameter_mm: 28.0
+    location:
+      x: 30.0
+      y: 40.0
+      z: 20.0
+    capacity_ul: 1500.0
+    working_volume_ul: 1200.0
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(yaml)
+        path = f.name
+    try:
+        result = load_deck_from_yaml(path)
+        vial = result["vial_1"]
+        assert vial.location.z == pytest.approx(20.0)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_height_requires_total_z_height() -> None:
+    yaml = """
+labware:
+  vial_1:
+    type: vial
+    name: standard_vial_rack
+    model_name: standard_1_5ml_vial
+    height_mm: 66.75
+    diameter_mm: 28.0
+    height: 30.0
+    location:
+      x: 30.0
+      y: 40.0
+    capacity_ul: 1500.0
+    working_volume_ul: 1200.0
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(yaml)
+        path = f.name
+    try:
+        with pytest.raises(ValueError, match="total_z_height"):
+            load_deck_from_yaml(path)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
 # ----- Two-point calibration orientations -----
 
 def test_calibration_horizontal_increasing_columns():

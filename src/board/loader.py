@@ -9,7 +9,7 @@ import yaml
 from pydantic import ValidationError
 
 from instruments.base_instrument import BaseInstrument
-from instruments.registry import get_instrument_class, get_supported_types, validate_instrument
+from instruments.registry import get_instrument_class, validate_instrument
 
 from .board import Board
 from .errors import BoardLoaderError

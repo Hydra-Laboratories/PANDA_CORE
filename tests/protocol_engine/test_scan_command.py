@@ -29,10 +29,10 @@ def _make_2x2_plate() -> WellPlate:
         rows=2,
         columns=2,
         wells={
-            "A1": Coordinate3D(x=0.0, y=0.0, z=-5.0),
-            "A2": Coordinate3D(x=10.0, y=0.0, z=-5.0),
-            "B1": Coordinate3D(x=0.0, y=-8.0, z=-5.0),
-            "B2": Coordinate3D(x=10.0, y=-8.0, z=-5.0),
+            "A1": Coordinate3D(x=0.0, y=0.0, z=75.0),
+            "A2": Coordinate3D(x=10.0, y=0.0, z=75.0),
+            "B1": Coordinate3D(x=0.0, y=8.0, z=75.0),
+            "B2": Coordinate3D(x=10.0, y=8.0, z=75.0),
         },
         capacity_ul=200.0,
         working_volume_ul=150.0,
@@ -49,12 +49,12 @@ def _make_2x3_plate() -> WellPlate:
         rows=2,
         columns=3,
         wells={
-            "A1": Coordinate3D(x=0.0, y=0.0, z=-5.0),
-            "A2": Coordinate3D(x=10.0, y=0.0, z=-5.0),
-            "A3": Coordinate3D(x=20.0, y=0.0, z=-5.0),
-            "B1": Coordinate3D(x=0.0, y=-8.0, z=-5.0),
-            "B2": Coordinate3D(x=10.0, y=-8.0, z=-5.0),
-            "B3": Coordinate3D(x=20.0, y=-8.0, z=-5.0),
+            "A1": Coordinate3D(x=0.0, y=0.0, z=75.0),
+            "A2": Coordinate3D(x=10.0, y=0.0, z=75.0),
+            "A3": Coordinate3D(x=20.0, y=0.0, z=75.0),
+            "B1": Coordinate3D(x=0.0, y=8.0, z=75.0),
+            "B2": Coordinate3D(x=10.0, y=8.0, z=75.0),
+            "B3": Coordinate3D(x=20.0, y=8.0, z=75.0),
         },
         capacity_ul=200.0,
         working_volume_ul=150.0,
@@ -144,16 +144,16 @@ class TestScanCommand:
     def test_applies_measurement_height_offset(self):
         from protocol_engine.commands.scan import scan
 
-        plate = _make_2x2_plate()  # wells at z=-5.0
+        plate = _make_2x2_plate()  # wells at z=75.0
         sensor = _make_sensor(measurement_height=3.0)
         ctx = _mock_context(plate=plate, sensor=sensor)
 
         scan(ctx, plate="plate_1", instrument="uvvis", method="measure")
 
-        # target z = well.z + measurement_height = -5.0 + 3.0 = -2.0
+        # target z = well.z - measurement_height = 75.0 - 3.0 = 72.0
         move_calls = ctx.board.move.call_args_list
         zs = [c.args[1][2] for c in move_calls]
-        assert zs == [-2.0, -2.0, -2.0, -2.0]
+        assert zs == [72.0, 72.0, 72.0, 72.0]
 
     def test_returns_dict_of_results_per_well(self):
         from protocol_engine.commands.scan import scan

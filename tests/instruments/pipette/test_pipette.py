@@ -208,8 +208,8 @@ class TestPipetteLifecycle:
         mock_ser.readline.side_effect = [r.encode() for r in responses]
         return mock_ser
 
-    @patch("src.instruments.pipette.driver.serial.Serial")
-    @patch("src.instruments.pipette.driver.time.sleep")
+    @patch("instruments.pipette.driver.serial.Serial")
+    @patch("instruments.pipette.driver.time.sleep")
     def test_connect_opens_serial(self, mock_sleep, mock_serial_cls):
         mock_ser = self._make_mock_serial()
         mock_serial_cls.return_value = mock_ser
@@ -222,8 +222,8 @@ class TestPipetteLifecycle:
         )
         mock_sleep.assert_called_once()
 
-    @patch("src.instruments.pipette.driver.serial.Serial")
-    @patch("src.instruments.pipette.driver.time.sleep")
+    @patch("instruments.pipette.driver.serial.Serial")
+    @patch("instruments.pipette.driver.time.sleep")
     def test_connect_raises_on_serial_error(self, mock_sleep, mock_serial_cls):
         import serial as real_serial
         mock_serial_cls.side_effect = real_serial.SerialException("port busy")
@@ -232,8 +232,8 @@ class TestPipetteLifecycle:
         with pytest.raises(PipetteConnectionError, match="Cannot open serial"):
             pip.connect()
 
-    @patch("src.instruments.pipette.driver.serial.Serial")
-    @patch("src.instruments.pipette.driver.time.sleep")
+    @patch("instruments.pipette.driver.serial.Serial")
+    @patch("instruments.pipette.driver.time.sleep")
     def test_connect_raises_on_no_response(self, mock_sleep, mock_serial_cls):
         mock_ser = MagicMock()
         mock_ser.is_open = True
@@ -247,8 +247,8 @@ class TestPipetteLifecycle:
         with pytest.raises(PipetteConnectionError, match="did not respond"):
             pip.connect()
 
-    @patch("src.instruments.pipette.driver.serial.Serial")
-    @patch("src.instruments.pipette.driver.time.sleep")
+    @patch("instruments.pipette.driver.serial.Serial")
+    @patch("instruments.pipette.driver.time.sleep")
     def test_disconnect_closes_serial(self, mock_sleep, mock_serial_cls):
         mock_ser = self._make_mock_serial()
         mock_serial_cls.return_value = mock_ser
@@ -267,8 +267,8 @@ class TestPipetteLifecycle:
         pip = Pipette(pipette_model="p300_single_gen2", port="/dev/null")
         assert pip.health_check() is False
 
-    @patch("src.instruments.pipette.driver.serial.Serial")
-    @patch("src.instruments.pipette.driver.time.sleep")
+    @patch("instruments.pipette.driver.serial.Serial")
+    @patch("instruments.pipette.driver.time.sleep")
     def test_health_check_true_when_connected(self, mock_sleep, mock_serial_cls):
         # Two status calls: one for connect, one for health_check
         responses = [
@@ -299,8 +299,8 @@ class TestPipetteCommands:
         pip.connect()
         return pip, mock_ser
 
-    @patch("src.instruments.pipette.driver.serial.Serial")
-    @patch("src.instruments.pipette.driver.time.sleep")
+    @patch("instruments.pipette.driver.serial.Serial")
+    @patch("instruments.pipette.driver.time.sleep")
     def test_home(self, mock_sleep, mock_serial_cls):
         pip, mock_ser = self._make_connected_pipette(
             mock_serial_cls, mock_sleep,
@@ -310,8 +310,8 @@ class TestPipetteCommands:
         written = [c[0][0].decode() for c in mock_ser.write.call_args_list]
         assert any("10" in cmd for cmd in written)
 
-    @patch("src.instruments.pipette.driver.serial.Serial")
-    @patch("src.instruments.pipette.driver.time.sleep")
+    @patch("instruments.pipette.driver.serial.Serial")
+    @patch("instruments.pipette.driver.time.sleep")
     def test_prime(self, mock_sleep, mock_serial_cls):
         pip, mock_ser = self._make_connected_pipette(
             mock_serial_cls, mock_sleep,
@@ -321,8 +321,8 @@ class TestPipetteCommands:
         written = [c[0][0].decode() for c in mock_ser.write.call_args_list]
         assert any("11" in cmd for cmd in written)
 
-    @patch("src.instruments.pipette.driver.serial.Serial")
-    @patch("src.instruments.pipette.driver.time.sleep")
+    @patch("instruments.pipette.driver.serial.Serial")
+    @patch("instruments.pipette.driver.time.sleep")
     def test_aspirate_returns_result(self, mock_sleep, mock_serial_cls):
         pip, _ = self._make_connected_pipette(
             mock_serial_cls, mock_sleep,
@@ -334,8 +334,8 @@ class TestPipetteCommands:
         assert result.volume_ul == 100.0
         assert result.position_mm == pytest.approx(46.98)
 
-    @patch("src.instruments.pipette.driver.serial.Serial")
-    @patch("src.instruments.pipette.driver.time.sleep")
+    @patch("instruments.pipette.driver.serial.Serial")
+    @patch("instruments.pipette.driver.time.sleep")
     def test_dispense_returns_result(self, mock_sleep, mock_serial_cls):
         pip, _ = self._make_connected_pipette(
             mock_serial_cls, mock_sleep,
@@ -346,8 +346,8 @@ class TestPipetteCommands:
         assert result.success is True
         assert result.volume_ul == 100.0
 
-    @patch("src.instruments.pipette.driver.serial.Serial")
-    @patch("src.instruments.pipette.driver.time.sleep")
+    @patch("instruments.pipette.driver.serial.Serial")
+    @patch("instruments.pipette.driver.time.sleep")
     def test_mix_returns_result(self, mock_sleep, mock_serial_cls):
         pip, _ = self._make_connected_pipette(
             mock_serial_cls, mock_sleep,
@@ -359,8 +359,8 @@ class TestPipetteCommands:
         assert result.volume_ul == 50.0
         assert result.repetitions == 5
 
-    @patch("src.instruments.pipette.driver.serial.Serial")
-    @patch("src.instruments.pipette.driver.time.sleep")
+    @patch("instruments.pipette.driver.serial.Serial")
+    @patch("instruments.pipette.driver.time.sleep")
     def test_get_status(self, mock_sleep, mock_serial_cls):
         pip, _ = self._make_connected_pipette(
             mock_serial_cls, mock_sleep,
@@ -372,8 +372,8 @@ class TestPipetteCommands:
         assert status.position_mm == pytest.approx(36.0)
         assert status.is_primed is True
 
-    @patch("src.instruments.pipette.driver.serial.Serial")
-    @patch("src.instruments.pipette.driver.time.sleep")
+    @patch("instruments.pipette.driver.serial.Serial")
+    @patch("instruments.pipette.driver.time.sleep")
     def test_pick_up_tip_sets_flag(self, mock_sleep, mock_serial_cls):
         pip, _ = self._make_connected_pipette(
             mock_serial_cls, mock_sleep,
@@ -383,8 +383,8 @@ class TestPipetteCommands:
         status = pip.get_status()
         assert status.has_tip is True
 
-    @patch("src.instruments.pipette.driver.serial.Serial")
-    @patch("src.instruments.pipette.driver.time.sleep")
+    @patch("instruments.pipette.driver.serial.Serial")
+    @patch("instruments.pipette.driver.time.sleep")
     def test_drop_tip_clears_flag(self, mock_sleep, mock_serial_cls):
         pip, _ = self._make_connected_pipette(
             mock_serial_cls, mock_sleep,
@@ -395,8 +395,8 @@ class TestPipetteCommands:
         status = pip.get_status()
         assert status.has_tip is False
 
-    @patch("src.instruments.pipette.driver.serial.Serial")
-    @patch("src.instruments.pipette.driver.time.sleep")
+    @patch("instruments.pipette.driver.serial.Serial")
+    @patch("instruments.pipette.driver.time.sleep")
     def test_command_error_on_err_response(self, mock_sleep, mock_serial_cls):
         pip, _ = self._make_connected_pipette(
             mock_serial_cls, mock_sleep,
@@ -405,8 +405,8 @@ class TestPipetteCommands:
         with pytest.raises(PipetteCommandError, match="motor stall"):
             pip.home()
 
-    @patch("src.instruments.pipette.driver.serial.Serial")
-    @patch("src.instruments.pipette.driver.time.sleep")
+    @patch("instruments.pipette.driver.serial.Serial")
+    @patch("instruments.pipette.driver.time.sleep")
     def test_blowout(self, mock_sleep, mock_serial_cls):
         pip, mock_ser = self._make_connected_pipette(
             mock_serial_cls, mock_sleep,
@@ -416,8 +416,8 @@ class TestPipetteCommands:
         written = [c[0][0].decode() for c in mock_ser.write.call_args_list]
         assert any("46.0" in cmd for cmd in written)
 
-    @patch("src.instruments.pipette.driver.serial.Serial")
-    @patch("src.instruments.pipette.driver.time.sleep")
+    @patch("instruments.pipette.driver.serial.Serial")
+    @patch("instruments.pipette.driver.time.sleep")
     def test_drip_stop(self, mock_sleep, mock_serial_cls):
         pip, mock_ser = self._make_connected_pipette(
             mock_serial_cls, mock_sleep,
@@ -427,8 +427,8 @@ class TestPipetteCommands:
         written = [c[0][0].decode() for c in mock_ser.write.call_args_list]
         assert any("28" in cmd for cmd in written)
 
-    @patch("src.instruments.pipette.driver.serial.Serial")
-    @patch("src.instruments.pipette.driver.time.sleep")
+    @patch("instruments.pipette.driver.serial.Serial")
+    @patch("instruments.pipette.driver.time.sleep")
     def test_warm_up_homes_and_primes(self, mock_sleep, mock_serial_cls):
         pip, mock_ser = self._make_connected_pipette(
             mock_serial_cls, mock_sleep,

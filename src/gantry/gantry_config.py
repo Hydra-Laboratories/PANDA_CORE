@@ -12,13 +12,22 @@ class HomingStrategy(str, Enum):
 
     XY_HARD_LIMITS = "xy_hard_limits"
     STANDARD = "standard"
+    MANUAL_ORIGIN = "manual_origin"
+
+
+class YAxisMotion(str, Enum):
+    """Whether Y-axis motion moves the head or the bed (base plate)."""
+
+    HEAD = "head"
+    BED = "bed"
 
 
 @dataclass(frozen=True)
 class WorkingVolume:
     """Gantry working volume bounds in millimeters.
 
-    Coordinates use GRBL WPos (positive X/Y after homing).
+    Bounds are inclusive and may be either positive-space or negative-space,
+    depending on the gantry calibration in use.
     """
 
     x_min: float
@@ -52,5 +61,13 @@ class GantryConfig:
 
     serial_port: str
     homing_strategy: HomingStrategy
+    total_z_height: float
     working_volume: WorkingVolume
+    y_axis_motion: YAxisMotion = YAxisMotion.HEAD
     expected_grbl_settings: Optional[Dict[str, float]] = field(default=None)
+
+    def __post_init__(self) -> None:
+        if self.total_z_height <= 0:
+            raise ValueError(
+                f"total_z_height ({self.total_z_height}) must be > 0"
+            )

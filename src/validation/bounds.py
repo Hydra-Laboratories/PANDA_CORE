@@ -62,6 +62,7 @@ def validate_deck_positions(
 ) -> List[BoundsViolation]:
     """Check every labware position is within the gantry working volume.
 
+    Coordinates are validated in user-facing positive space.
     Returns a list of violations (empty if all pass).
     """
     violations: List[BoundsViolation] = []
@@ -86,7 +87,7 @@ def validate_gantry_positions(
 ) -> List[BoundsViolation]:
     """For each (instrument, deck_position), compute gantry position and check bounds.
 
-    Gantry formula (from board.py Board.move):
+    Gantry formula (from board.py Board.move), all in user-facing coordinates:
         gantry_x = position_x - instrument.offset_x
         gantry_y = position_y - instrument.offset_y
         gantry_z = position_z - instrument.depth

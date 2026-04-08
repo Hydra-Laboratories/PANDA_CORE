@@ -84,7 +84,7 @@ def scan(
             time.sleep(delay_s)
 
         well = plate_obj.get_well_center(well_id)
-        target = (well.x, well.y, well.z + instr.measurement_height)
+        target = (well.x, well.y, well.z - instr.measurement_height)
         context.board.move(instrument, target)
 
         # Inject gantry if the method accepts it (e.g. ASMI.indentation

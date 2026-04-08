@@ -20,7 +20,7 @@ def _mock_context(
     resolve_return: Coordinate3D | None = None,
     has_pipette: bool = True,
 ) -> ProtocolContext:
-    coord = resolve_return or Coordinate3D(x=-100.0, y=-50.0, z=-20.0)
+    coord = resolve_return or Coordinate3D(x=100.0, y=50.0, z=20.0)
 
     board = MagicMock()
     deck = MagicMock()
@@ -118,7 +118,7 @@ class TestAspirateCommand:
     def test_moves_pipette_to_resolved_coord(self):
         from protocol_engine.commands.pipette import aspirate
 
-        coord = Coordinate3D(x=-10.0, y=-20.0, z=-5.0)
+        coord = Coordinate3D(x=10.0, y=20.0, z=75.0)
         ctx = _mock_context(resolve_return=coord)
         aspirate(ctx, position="plate_1.A1", volume_ul=100.0)
         ctx.board.move.assert_called_once_with("pipette", coord)
@@ -365,8 +365,8 @@ def _mock_context_multi_resolve(has_pipette: bool = True) -> ProtocolContext:
     deck = MagicMock()
 
     coords = {
-        "plate_1.A1": Coordinate3D(x=-10.0, y=-20.0, z=-5.0),
-        "plate_1.B1": Coordinate3D(x=-10.0, y=-28.0, z=-5.0),
+        "plate_1.A1": Coordinate3D(x=10.0, y=20.0, z=75.0),
+        "plate_1.B1": Coordinate3D(x=10.0, y=28.0, z=75.0),
     }
     deck.resolve.side_effect = lambda pos: coords.get(pos, Coordinate3D(x=0.0, y=0.0, z=0.0))
 
@@ -409,8 +409,8 @@ class TestTransferCommand:
 
         transfer(ctx, source="plate_1.A1", destination="plate_1.B1", volume_ul=100.0)
 
-        source_coord = Coordinate3D(x=-10.0, y=-20.0, z=-5.0)
-        dest_coord = Coordinate3D(x=-10.0, y=-28.0, z=-5.0)
+        source_coord = Coordinate3D(x=10.0, y=20.0, z=75.0)
+        dest_coord = Coordinate3D(x=10.0, y=28.0, z=75.0)
         assert call_order == [
             ("move", source_coord),
             "aspirate",
@@ -462,12 +462,12 @@ def _make_2x3_plate() -> WellPlate:
         rows=2,
         columns=3,
         wells={
-            "A1": Coordinate3D(x=0.0, y=0.0, z=-5.0),
-            "A2": Coordinate3D(x=10.0, y=0.0, z=-5.0),
-            "A3": Coordinate3D(x=20.0, y=0.0, z=-5.0),
-            "B1": Coordinate3D(x=0.0, y=-8.0, z=-5.0),
-            "B2": Coordinate3D(x=10.0, y=-8.0, z=-5.0),
-            "B3": Coordinate3D(x=20.0, y=-8.0, z=-5.0),
+            "A1": Coordinate3D(x=0.0, y=0.0, z=75.0),
+            "A2": Coordinate3D(x=10.0, y=0.0, z=75.0),
+            "A3": Coordinate3D(x=20.0, y=0.0, z=75.0),
+            "B1": Coordinate3D(x=0.0, y=8.0, z=75.0),
+            "B2": Coordinate3D(x=10.0, y=8.0, z=75.0),
+            "B3": Coordinate3D(x=20.0, y=8.0, z=75.0),
         },
         capacity_ul=200.0,
         working_volume_ul=150.0,
@@ -578,9 +578,9 @@ class TestSerialTransferCommand:
             name="plate_1", model_name="t", length_mm=100.0,
             width_mm=80.0, height_mm=10.0, rows=1, columns=3,
             wells={
-                "A1": Coordinate3D(x=0.0, y=0.0, z=-5.0),
-                "A2": Coordinate3D(x=10.0, y=0.0, z=-5.0),
-                "A3": Coordinate3D(x=20.0, y=0.0, z=-5.0),
+                "A1": Coordinate3D(x=0.0, y=0.0, z=75.0),
+                "A2": Coordinate3D(x=10.0, y=0.0, z=75.0),
+                "A3": Coordinate3D(x=20.0, y=0.0, z=75.0),
             },
             capacity_ul=200.0, working_volume_ul=150.0,
         )

@@ -11,7 +11,7 @@ class _YamlPoint3D(BaseModel):
     model_config = ConfigDict(extra="forbid")
     x: float
     y: float
-    z: float
+    z: Optional[float] = None
 
 
 class _YamlCalibrationPoints(BaseModel):
@@ -35,6 +35,7 @@ class WellPlateYamlEntry(BaseModel):
     length_mm: Optional[float] = None
     width_mm: Optional[float] = None
     height_mm: Optional[float] = None
+    height: Optional[float] = Field(default=None, gt=0)
     # Backward compatibility: top-level A1 is accepted but deprecated.
     a1: Optional[_YamlPoint3D] = None
     calibration: _YamlCalibrationPoints
@@ -85,6 +86,7 @@ class VialYamlEntry(BaseModel):
     model_name: str = ""
     height_mm: float
     diameter_mm: float
+    height: Optional[float] = Field(default=None, gt=0)
     location: _YamlPoint3D
     capacity_ul: float
     working_volume_ul: float

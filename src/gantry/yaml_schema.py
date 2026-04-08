@@ -90,8 +90,15 @@ class CncYaml(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    homing_strategy: Literal["xy_hard_limits", "standard"]
-    y_axis_motion: Optional[Literal["head", "bed"]] = None
+    homing_strategy: Literal["xy_hard_limits", "standard", "manual_origin"]
+    total_z_height: float
+    y_axis_motion: Literal["head", "bed"] = "head"
+
+    @model_validator(mode="after")
+    def _validate_total_z_height_positive(self) -> "CncYaml":
+        if self.total_z_height <= 0:
+            raise ValueError("total_z_height must be > 0.")
+        return self
 
 
 class GantryYamlSchema(BaseModel):
@@ -103,3 +110,11 @@ class GantryYamlSchema(BaseModel):
     cnc: CncYaml
     working_volume: WorkingVolumeYaml
     grbl_settings: Optional[GrblSettingsYaml] = None
+
+    @model_validator(mode="after")
+    def _validate_total_height_covers_working_z(self) -> "GantryYamlSchema":
+        if self.cnc.total_z_height < self.working_volume.z_max:
+            raise ValueError(
+                "cnc.total_z_height must be >= working_volume.z_max."
+            )
+        return self

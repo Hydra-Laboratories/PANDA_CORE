@@ -3,6 +3,7 @@
 instruments:
   asmi:
     type: asmi
+    vendor: vernier
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
