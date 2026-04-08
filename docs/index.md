@@ -38,6 +38,6 @@ python setup/validate_setup.py \
 
 - [Getting Started](getting-started.md) for installation and first commands
 - [Configuration](configuration.md) for the four YAML surfaces
-- [Protocols](protocols.md) for how protocol execution is assembled and validated
-- [Data and Analysis](data-and-analysis.md) for persistence and analysis helpers
+- [Protocol](protocol.md) for how protocol execution is assembled and validated
+- [Data](data.md) for persistence and analysis helpers
 - [API Reference](reference/index.md) for generated module docs
