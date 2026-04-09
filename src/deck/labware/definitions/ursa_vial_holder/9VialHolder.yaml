@@ -3,6 +3,7 @@
 # Every key below maps directly to a field on the VialHolder pydantic class.
 # `location` is deliberately omitted; deck YAMLs supply it per-instance.
 
+type: vial_holder
 name: vial_holder_9x20ml
 model_name: 9VialHolder20mL_TightFit
 length_mm: 36.2

@@ -1,16 +1,45 @@
-# TipRack (deck.labware.tip_rack.TipRack) — class-attribute template.
+# TipRack (deck.labware.tip_rack.TipRack) — class-attribute template for
+# the Ursa 2-column × 15-row pipette tip rack.
 #
 # Every key below maps directly to a field on the TipRack pydantic class.
 # `location`, `length_mm`, `width_mm`, and `height_mm` are derived from the
 # `tips` dict by TipRack's model_validator if not provided.
-#
-# Placeholder: replace `rows`, `columns`, `z_pickup`, and `tips` with the
-# real layout for the physical rack before use.
 
-name: tip_rack
-model_name: tip_rack
-rows: 1
-columns: 1
-z_pickup: 1.0
+type: tip_rack
+name: ursa_tip_rack
+model_name: panda_2x15_tip_rack
+rows: 15
+columns: 2
+z_pickup: 191.0
+z_drop: 174.8
 tips:
-  A1: { x: 0.0, y: 0.0, z: 1.0 }
+  A1: { x: 111.9, y: 2.7 }
+  A2: { x: 120.4, y: 2.7 }
+  B1: { x: 111.9, y: 11.2 }
+  B2: { x: 120.4, y: 11.2 }
+  C1: { x: 111.9, y: 19.7 }
+  C2: { x: 120.4, y: 19.7 }
+  D1: { x: 111.9, y: 28.2 }
+  D2: { x: 120.4, y: 28.2 }
+  E1: { x: 111.9, y: 36.7 }
+  E2: { x: 120.4, y: 36.7 }
+  F1: { x: 111.9, y: 45.2 }
+  F2: { x: 120.4, y: 45.2 }
+  G1: { x: 111.9, y: 53.7 }
+  G2: { x: 120.4, y: 53.7 }
+  H1: { x: 111.9, y: 62.2 }
+  H2: { x: 120.4, y: 62.2 }
+  I1: { x: 111.9, y: 70.7 }
+  I2: { x: 120.4, y: 70.7 }
+  J1: { x: 111.9, y: 79.2 }
+  J2: { x: 120.4, y: 79.2 }
+  K1: { x: 111.9, y: 87.7 }
+  K2: { x: 120.4, y: 87.7 }
+  L1: { x: 111.9, y: 96.2 }
+  L2: { x: 120.4, y: 96.2 }
+  M1: { x: 111.9, y: 104.7 }
+  M2: { x: 120.4, y: 104.7 }
+  N1: { x: 111.9, y: 113.2 }
+  N2: { x: 120.4, y: 113.2 }
+  O1: { x: 111.9, y: 121.7 }
+  O2: { x: 120.4, y: 121.7 }

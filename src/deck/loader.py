@@ -11,6 +11,10 @@ from pydantic import BaseModel, ValidationError
 
 from .deck import Deck
 from .labware import Coordinate3D, Labware
+from .labware.definitions.registry import (
+    get_supported_definitions,
+    load_definition_config,
+)
 from .labware.holder import LabwareSlot
 from .labware.tip_disposal import TipDisposal
 from .labware.tip_rack import TipRack
@@ -110,10 +114,65 @@ def _resolve_user_z(
 def _entry_kwargs_for_model(entry: BaseModel, model_class: Type[BaseModel]) -> Dict[str, Any]:
     """
     Build constructor kwargs from entry by keeping only keys that exist on the target model.
+
+    ``exclude_none=True`` drops optional YAML fields that weren't set, so the
+    target class's defaults take effect instead of being overridden with
+    ``None`` (which would fail pydantic validation for required dimensions).
     """
     allowed = set(model_class.model_fields.keys())
-    raw = entry.model_dump()
+    raw = entry.model_dump(exclude_none=True)
     return {k: v for k, v in raw.items() if k in allowed}
+
+
+def _resolve_load_names(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Expand ``load_name:`` references against the labware definitions registry.
+
+    For each entry in ``raw["labware"]`` that has a ``load_name`` field, load
+    the corresponding definition config from ``labware/definitions/``, merge
+    the user's fields on top (user wins), drop the ``load_name`` key, and
+    default the labware ``name`` to the deck key if the user didn't override it.
+
+    Entries without ``load_name`` are passed through untouched, so existing
+    deck YAMLs keep working unchanged.
+    """
+    labware = raw.get("labware")
+    if not isinstance(labware, dict):
+        return raw
+
+    expanded: Dict[str, Dict[str, Any]] = {}
+    for deck_key, entry in labware.items():
+        if not isinstance(entry, dict) or "load_name" not in entry:
+            expanded[deck_key] = entry
+            continue
+
+        load_name = entry["load_name"]
+        try:
+            base = load_definition_config(load_name)
+        except (ValueError, FileNotFoundError) as exc:
+            raise DeckLoaderError(
+                f"❌ Unknown `load_name: '{load_name}'` in deck entry "
+                f"'{deck_key}'.\n"
+                f"How to fix: use one of {get_supported_definitions()}, or "
+                f"add a new folder + registry entry under "
+                f"`src/deck/labware/definitions/`."
+            ) from exc
+
+        # Shallow merge: user fields override config fields. Drop load_name.
+        merged: Dict[str, Any] = dict(base)
+        for key, value in entry.items():
+            if key == "load_name":
+                continue
+            merged[key] = value
+
+        # Default the labware `name` to the deck key unless the user set it.
+        if "name" not in entry:
+            merged["name"] = deck_key
+
+        expanded[deck_key] = merged
+
+    new_raw = dict(raw)
+    new_raw["labware"] = expanded
+    return new_raw
 
 
 def _slot_to_model(slot_entry: _YamlHolderSlot, *, default_z: float) -> LabwareSlot:
@@ -375,6 +434,7 @@ def _build_nested_well_plate(
 
 
 def _build_deck_from_raw(raw: dict[str, Any], *, total_z_height: float | None = None) -> Deck:
+    raw = _resolve_load_names(raw)
     schema = DeckYamlSchema.model_validate(raw)
     labware: Dict[str, Labware] = {}
     for name, entry in schema.labware.items():

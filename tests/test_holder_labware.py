@@ -248,6 +248,70 @@ labware:
         Path(path).unlink(missing_ok=True)
 
 
+def test_deck_yaml_load_name_expands_from_definitions_registry():
+    """A deck YAML may reference a definition via `load_name:` and supply only
+    the user-specific fields (typically just `location`)."""
+    yaml_str = """
+labware:
+  my_vials:
+    load_name: ursa_vial_holder
+    location:
+      x: 17.1
+      y: 132.9
+      z: 164.0
+  my_plate_holder:
+    load_name: ursa_wellplate_holder_conductive
+    location:
+      x: 50.0
+      y: 60.0
+      z: 12.0
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as handle:
+        handle.write(yaml_str)
+        path = handle.name
+
+    try:
+        deck = load_deck_from_yaml(path)
+
+        vials = deck["my_vials"]
+        assert isinstance(vials, VialHolder)
+        assert vials.name == "my_vials"  # defaulted to deck key
+        assert vials.length_mm == pytest.approx(36.2)
+        assert vials.width_mm == pytest.approx(300.2)
+        assert vials.height_mm == pytest.approx(35.1)
+        assert vials.labware_seat_height_from_bottom_mm == pytest.approx(18.0)
+        assert vials.slot_count == 9
+        assert vials.location == Coordinate3D(x=17.1, y=132.9, z=164.0)
+
+        plate_holder = deck["my_plate_holder"]
+        assert isinstance(plate_holder, WellPlateHolder)
+        assert plate_holder.name == "my_plate_holder"
+        assert plate_holder.length_mm == pytest.approx(100.0)
+        assert plate_holder.width_mm == pytest.approx(155.0)
+        assert plate_holder.height_mm == pytest.approx(14.8)
+        assert plate_holder.labware_seat_height_from_bottom_mm == pytest.approx(5.0)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_deck_yaml_unknown_load_name_raises_clear_error():
+    yaml_str = """
+labware:
+  broken:
+    load_name: no_such_definition
+    location: {x: 0.0, y: 0.0, z: 0.0}
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as handle:
+        handle.write(yaml_str)
+        path = handle.name
+
+    try:
+        with pytest.raises(Exception, match="no_such_definition"):
+            load_deck_from_yaml(path)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
 def test_holder_slots_participate_in_bounds_validation():
     gantry = _make_gantry()
     holder = VialHolder(

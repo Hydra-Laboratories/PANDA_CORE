@@ -4,6 +4,7 @@
 # Every key below maps directly to a field on the WellPlateHolder pydantic
 # class. `location` is deliberately omitted; deck YAMLs supply it per-instance.
 
+type: well_plate_holder
 name: tall_wellplate_holder
 model_name: tall_wellplate_holder
 length_mm: 127.5

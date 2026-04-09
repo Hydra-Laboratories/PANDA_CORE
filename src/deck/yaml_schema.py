@@ -189,7 +189,13 @@ class _YamlHolderSlot(BaseModel):
 
 
 class _BaseHolderYamlEntry(BaseModel):
-    """Common schema for non-liquid physical holder fixtures."""
+    """Common schema for non-liquid physical holder fixtures.
+
+    Bounding-box and seat-geometry fields are optional at the YAML layer:
+    when omitted, the corresponding Python class's defaults are used. This
+    lets simple deck YAMLs stay small while still allowing a definition
+    config (see ``labware/definitions/``) to fully specify a physical part.
+    """
 
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
 
@@ -198,6 +204,12 @@ class _BaseHolderYamlEntry(BaseModel):
     height: Optional[float] = Field(default=None, gt=0)
     location: _YamlPoint3D
     slots: Dict[str, _YamlHolderSlot] = Field(default_factory=dict)
+    # Holder geometry — fall through to the Python class defaults if unset.
+    length_mm: Optional[float] = Field(default=None, gt=0)
+    width_mm: Optional[float] = Field(default=None, gt=0)
+    height_mm: Optional[float] = Field(default=None, gt=0)
+    labware_support_height_mm: Optional[float] = Field(default=None, gt=0)
+    labware_seat_height_from_bottom_mm: Optional[float] = Field(default=None, gt=0)
 
 
 class TipRackYamlEntry(_BaseHolderYamlEntry):
