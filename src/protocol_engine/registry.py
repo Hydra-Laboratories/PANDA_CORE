@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import sys
 from typing import Any, Callable, Dict, Type
 
 from pydantic import BaseModel, ConfigDict, create_model
@@ -69,6 +70,7 @@ def _build_schema_from_signature(
     default values in the function signature.
     """
     sig = inspect.signature(func)
+    module_globals = getattr(sys.modules.get(func.__module__), "__dict__", {})
     field_definitions: Dict[str, Any] = {}
 
     skip_params = {"self", "context"}
@@ -77,9 +79,16 @@ def _build_schema_from_signature(
         if param_name in skip_params:
             continue
 
-        annotation = (
-            param.annotation if param.annotation != inspect.Parameter.empty else str
-        )
+        raw = param.annotation
+        if raw == inspect.Parameter.empty:
+            annotation: Any = str
+        elif isinstance(raw, str):
+            try:
+                annotation = eval(raw, module_globals)  # noqa: S307
+            except Exception:
+                annotation = raw
+        else:
+            annotation = raw
 
         if param.default != inspect.Parameter.empty:
             field_definitions[param_name] = (annotation, param.default)

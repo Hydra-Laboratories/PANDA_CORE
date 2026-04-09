@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "setuptools", "wheel"]
 emstat = ["hardpotato"]
 gamry = ["comtypes; sys_platform == 'win32'"]
 potentiostat = [
