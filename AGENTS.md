@@ -94,7 +94,11 @@ Deck configuration loading, runtime deck container, and labware geometry/positio
 - **`src/deck/deck.py`**: `Deck` class — runtime container holding labware loaded from deck config files. Provides dict-like access (`deck["plate_1"]`, `len(deck)`, `"plate_1" in deck`) and `deck.resolve("plate_1.A1")` for target-to-coordinate resolution. The raw labware dict is accessible via `deck.labware`.
 - **Labware models** (`src/deck/labware/`):
   - **`labware.py`**: `Coordinate3D`, `BoundingBoxGeometry`, and `Labware` base model. `Labware` provides high-level shared behavior (e.g., `get_location`, `get_initial_position`) plus shared `geometry` metadata. Current deck models populate `geometry` as a bounding box, even when they also retain convenience fields such as `length_mm` or `diameter_mm`. All models use strict schema (`extra='forbid'`).
-  - **`holder.py`**: Physical holder fixtures and slot metadata. `HolderLabware` is the bounding-box base for `TipHolder`, `TipDisposal`, `WellPlateHolder`, and `VialHolder`. Holders expose a reference `location` plus optional named `slots` for future nested-labware placement.
+  - **`holder.py`**: Shared holder infrastructure. Contains `HolderLabware` and `LabwareSlot`.
+  - **`tip_holder.py`**: `TipHolder(HolderLabware)` with the tip-holder bounding-box dimensions.
+  - **`tip_disposal.py`**: `TipDisposal(HolderLabware)` with the used-tip disposal bounding-box dimensions.
+  - **`well_plate_holder.py`**: `WellPlateHolder(HolderLabware)` with the `SlideHolder_Top` dimensions and seat-height metadata.
+  - **`vial_holder.py`**: `VialHolder(HolderLabware)` with the `9VialHolder20mL_TightFit` dimensions, seat-height metadata, and slot-count validation.
   - **`tip_rack.py`**: `TipRack(Labware)` for exact-position pipette pickup targets. Stores a mapping of tip IDs (e.g. `A1`, `B15`) to absolute pickup coordinates plus `z_pickup` and optional `z_drop`.
   - **`well_plate.py`**: `WellPlate(Labware)` for multi-well plates (e.g., SBS 96-well). Required fields include `name`, `model_name`, dimensions, layout (`rows`, `columns`), `wells`, and volume fields (`capacity_ul`, `working_volume_ul`). Also provides `get_well_center(well_id)`.
   - **`vial.py`**: `Vial(Labware)` for a single vial. Required fields include `name`, `model_name`, geometry (`height_mm`, `diameter_mm`), single `location`, and volume fields (`capacity_ul`, `working_volume_ul`), plus `get_vial_center()`.

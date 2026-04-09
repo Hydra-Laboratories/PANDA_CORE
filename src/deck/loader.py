@@ -11,10 +11,14 @@ from pydantic import BaseModel, ValidationError
 
 from .deck import Deck
 from .labware import Coordinate3D, Labware
-from .labware.holder import LabwareSlot, TipDisposal, TipHolder, VialHolder, WellPlateHolder
+from .labware.holder import LabwareSlot
+from .labware.tip_disposal import TipDisposal
+from .labware.tip_holder import TipHolder
 from .labware.tip_rack import TipRack
 from .labware.vial import Vial
+from .labware.vial_holder import VialHolder
 from .labware.well_plate import WellPlate
+from .labware.well_plate_holder import WellPlateHolder
 from .errors import DeckLoaderError
 from .yaml_schema import (
     DeckYamlSchema,
