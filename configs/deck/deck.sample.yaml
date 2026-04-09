@@ -4,11 +4,10 @@
 
 labware:
   plate_1:
-    type: well_plate
+    load_name: sbs_96_wellplate
     name: opentrons_96_well_20ml
     model_name: opentrons_96_well_20ml
-    rows: 8
-    columns: 12
+    # Opentrons 96-well 20 mL block is a hair off the ANSI SBS footprint.
     length_mm: 127.71
     width_mm: 85.43
     height_mm: 14.10
@@ -20,10 +19,6 @@ labware:
         x: 10.0
         y: 19.0
     height: 15.0
-    x_offset_mm: 9.0
-    y_offset_mm: 9.0
-    capacity_ul: 200.0
-    working_volume_ul: 150.0
 
   vial_1:
     type: vial

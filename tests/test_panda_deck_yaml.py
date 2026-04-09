@@ -13,7 +13,11 @@ def test_repository_panda_deck_yaml_loads_with_expected_reference_points():
 
     assert isinstance(deck["tip_rack_a"], TipRack)
     assert deck.resolve("tip_rack_a.A1").x == pytest.approx(111.9)
-    assert deck.resolve("tip_rack_a.B15").y == pytest.approx(121.7)
+    # O2 is the last tip (row O = 15th row, column 2) under the
+    # 2-column × 15-row ursa layout — physically the same tip that the
+    # old rows=2,cols=15 schema called B15.
+    assert deck.resolve("tip_rack_a.O2").y == pytest.approx(121.7)
+    assert deck.resolve("tip_rack_a.O2").x == pytest.approx(120.4)
 
     assert isinstance(deck["well_plate_holder"], WellPlateHolder)
     assert deck.resolve("well_plate_holder.plate.A1") == pytest.approx(

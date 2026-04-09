@@ -213,11 +213,11 @@ class _BaseHolderYamlEntry(BaseModel):
 
 
 class TipRackYamlEntry(_BaseHolderYamlEntry):
-    """Strict schema for one tip rack with explicit pickup positions.
+    """Strict schema for one tip rack.
 
-    Tip racks inherit the holder schema (``name``, ``model_name``,
-    ``location``, ``slots``, ``height``) but override ``location`` to be
-    optional — it is derived from the ``A1`` tip when omitted.
+    Tip pickup positions are derived from a two-point calibration + pitch
+    offsets, mirroring the well plate schema. ``location`` is optional and
+    derived from the A1 tip when omitted.
     """
 
     type: Literal["tip_rack"] = "tip_rack"
@@ -226,25 +226,35 @@ class TipRackYamlEntry(_BaseHolderYamlEntry):
     columns: int = Field(..., gt=0)
     z_pickup: float = Field(..., gt=0)
     z_drop: Optional[float] = Field(default=None, gt=0)
-    tips: Dict[str, _YamlPoint3D]
+    calibration: _YamlCalibrationPoints
+    x_offset_mm: float
+    y_offset_mm: float
     tip_present: Dict[str, bool] = Field(default_factory=dict)
     # Derived from the A1 tip if omitted.
     location: Optional[_YamlPoint3D] = None  # type: ignore[assignment]
 
+    @property
+    def a1_point(self) -> _YamlPoint3D:
+        """Return the A1 calibration point (required)."""
+        a1 = self.calibration.a1
+        if a1 is None:
+            raise ValueError("Tip rack calibration must define `a1`.")
+        return a1
+
     @model_validator(mode="after")
-    def _validate_tip_count(self) -> "TipRackYamlEntry":
-        if "A1" not in self.tips:
-            raise ValueError("Tip rack tips must include 'A1'.")
-        expected_tip_count = self.rows * self.columns
-        if len(self.tips) != expected_tip_count:
+    def _validate_tip_rack_calibration(self) -> "TipRackYamlEntry":
+        a1, a2 = self.a1_point, self.calibration.a2
+        if a1.x == a2.x and a1.y == a2.y:
+            raise ValueError("Calibration points A1 and A2 must not be identical.")
+        same_x = abs(a1.x - a2.x) < 1e-9
+        same_y = abs(a1.y - a2.y) < 1e-9
+        if not same_x and not same_y:
             raise ValueError(
-                f"Tip rack tips count must equal rows*columns ({expected_tip_count}), got {len(self.tips)}."
+                "Calibration A2 must be axis-aligned with A1 (same x or same y); "
+                "diagonal orientation is invalid."
             )
-        extra_keys = set(self.tip_present) - set(self.tips)
-        if extra_keys:
-            raise ValueError(
-                f"tip_present contains keys not in tips: {sorted(extra_keys)}"
-            )
+        if self.x_offset_mm == 0 or self.y_offset_mm == 0:
+            raise ValueError("x_offset_mm and y_offset_mm must be non-zero.")
         return self
 
 

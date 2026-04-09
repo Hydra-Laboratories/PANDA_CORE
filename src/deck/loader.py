@@ -201,13 +201,12 @@ def _build_tip_rack(
     total_z_height: float | None,
 ) -> TipRack:
     del total_z_height
-    tips = {
-        tip_id: _point_to_coord(
-            point, z_value=point.z if point.z is not None else entry.z_pickup
-        )
-        for tip_id, point in entry.tips.items()
-    }
-    # Derive anchor location from A1 if the YAML omitted it.
+    # Derive every tip pickup position from the two-point calibration and
+    # pitch offsets, mirroring how well plates derive their wells.
+    tips = _derive_wells_from_calibration(entry, resolved_z=entry.z_pickup)
+
+    # Anchor location: use the explicit entry.location if given, otherwise
+    # default to the A1 tip so the holder's bounding-box/geometry still works.
     if entry.location is not None:
         loc = _point_to_coord(
             entry.location,
@@ -215,6 +214,7 @@ def _build_tip_rack(
         )
     else:
         loc = tips["A1"]
+
     return TipRack(
         name=entry.name,
         model_name=entry.model_name,
