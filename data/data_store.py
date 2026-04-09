@@ -72,6 +72,24 @@ CREATE TABLE IF NOT EXISTS asmi_measurements (
     timestamp       TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS potentiostat_measurements (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    experiment_id     INTEGER NOT NULL REFERENCES experiments(id),
+    technique         TEXT    NOT NULL,
+    time_s            TEXT    NOT NULL,
+    voltage_v         TEXT    NOT NULL,
+    current_a         TEXT,
+    sample_period_s   REAL,
+    duration_s        REAL,
+    step_potential_v  REAL,
+    scan_rate_v_s     REAL,
+    step_size_v       REAL,
+    cycles            INTEGER,
+    vendor            TEXT,
+    metadata_json     TEXT,
+    timestamp         TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS labware (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     campaign_id       INTEGER NOT NULL REFERENCES campaigns(id),
@@ -214,6 +232,31 @@ class DataStore:
                 data_points=int(measurement.metadata["data_points"]),
             )
 
+        if measurement.measurement_type in {
+            MeasurementType.POTENTIOSTAT_OCP,
+            MeasurementType.POTENTIOSTAT_CA,
+            MeasurementType.POTENTIOSTAT_CV,
+        }:
+            return self._log_potentiostat(
+                experiment_id=experiment_id,
+                technique=str(measurement.metadata["technique"]),
+                time_s=tuple(measurement.payload["time_s"]),
+                voltage_v=tuple(measurement.payload["voltage_v"]),
+                current_a=(
+                    tuple(measurement.payload["current_a"])
+                    if "current_a" in measurement.payload
+                    else None
+                ),
+                sample_period_s=measurement.metadata.get("sample_period_s"),
+                duration_s=measurement.metadata.get("duration_s"),
+                step_potential_v=measurement.metadata.get("step_potential_v"),
+                scan_rate_v_s=measurement.metadata.get("scan_rate_v_s"),
+                step_size_v=measurement.metadata.get("step_size_v"),
+                cycles=measurement.metadata.get("cycles"),
+                vendor=measurement.metadata.get("vendor"),
+                metadata_json=json.dumps(dict(measurement.metadata)),
+            )
+
         raise TypeError(
             "Unsupported instrument measurement type: "
             f"{measurement.measurement_type}"
@@ -292,6 +335,46 @@ class DataStore:
             "INSERT INTO camera_measurements (experiment_id, image_path) "
             "VALUES (?, ?)",
             (experiment_id, image_path),
+        )
+        self._conn.commit()
+        return cursor.lastrowid
+
+    def _log_potentiostat(
+        self,
+        experiment_id: int,
+        technique: str,
+        time_s: tuple[float, ...],
+        voltage_v: tuple[float, ...],
+        current_a: tuple[float, ...] | None,
+        sample_period_s: float | None,
+        duration_s: float | None,
+        step_potential_v: float | None,
+        scan_rate_v_s: float | None,
+        step_size_v: float | None,
+        cycles: int | None,
+        vendor: str | None,
+        metadata_json: str,
+    ) -> int:
+        cursor = self._conn.execute(
+            "INSERT INTO potentiostat_measurements "
+            "(experiment_id, technique, time_s, voltage_v, current_a, sample_period_s, "
+            "duration_s, step_potential_v, scan_rate_v_s, step_size_v, cycles, vendor, metadata_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                experiment_id,
+                technique,
+                json.dumps(list(time_s)),
+                json.dumps(list(voltage_v)),
+                json.dumps(list(current_a)) if current_a is not None else None,
+                sample_period_s,
+                duration_s,
+                step_potential_v,
+                scan_rate_v_s,
+                step_size_v,
+                cycles,
+                vendor,
+                metadata_json,
+            ),
         )
         self._conn.commit()
         return cursor.lastrowid

@@ -1,0 +1,12 @@
+# Sample board configuration for a Gamry potentiostat.
+# Gamry support requires Windows and the `comtypes` package.
+
+instruments:
+  potentiostat:
+    type: potentiostat
+    vendor: gamry
+    gamry_pump_timeout_s: 120.0
+    offset_x: 0.0
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 3.0

@@ -63,6 +63,18 @@ Driver for Opentrons OT-2 and Flex pipettes. Communicates with the pipette motor
 - **`models.py`**: `PipetteConfig` (frozen, per-model hardware description), `PipetteStatus`, `AspirateResult`, `MixResult` (all frozen dataclasses). `PIPETTE_MODELS` registry dict. `PipetteFamily` enum (OT2/FLEX).
 - **`exceptions.py`**: `PipetteError` hierarchy (`PipetteConnectionError`, `PipetteCommandError`, `PipetteTimeoutError`, `PipetteConfigError`).
 
+#### Potentiostat (`src/instruments/potentiostat`)
+Driver for electrochemistry measurements with a unified CubOS API over two vendors: Gamry potentiostats and PalmSens EmStat devices.
+
+- **`driver.py`**: `Potentiostat(BaseInstrument)` — unified vendor-selecting driver.
+ - **Constructor**: `Potentiostat(vendor, ..., offline=False, emstat_model="emstat4_lr", emstat_data_directory=".", gamry_pump_timeout_s=120.0)`
+ - **Lifecycle**: `connect()`, `disconnect()`, `health_check()`, `get_status()`
+ - **Commands**: `measure_ocp() -> OCPResult`, `run_chronoamperometry() -> ChronoAmperometryResult`, `run_cyclic_voltammetry() -> CyclicVoltammetryResult`, `measure()` (OCP alias)
+- **`mock.py`**: `MockPotentiostat` — offline mock with `command_history`.
+- **`models.py`**: `OCPResult`, `ChronoAmperometryResult`, `CyclicVoltammetryResult`, `PotentiostatStatus`.
+- **`exceptions.py`**: `PotentiostatError` hierarchy (`PotentiostatConfigError`, `PotentiostatConnectionError`, `PotentiostatMeasurementError`, `PotentiostatTimeoutError`, `PotentiostatPlatformError`).
+- **Board YAML**: Use `type: potentiostat` with `vendor: emstat` or `vendor: gamry`. Vendor-specific fields pass through the existing board schema.
+
 ### Protocol Engine (`src/protocol_engine`)
 A modular system for executing experiment sequences defined in code or YAML.
 
@@ -72,6 +84,7 @@ A modular system for executing experiment sequences defined in code or YAML.
 - **`registry.py`**: `CommandRegistry` singleton and `@protocol_command()` decorator for registering commands.
 - **`setup.py`**: `setup_protocol(gantry_path, deck_path, board_path, protocol_path)` — loads all configs, validates bounds, and returns `(Protocol, ProtocolContext)` ready to run. Uses an offline `Gantry` by default for offline validation.
 - **`commands/`**: Protocol command implementations (`move.py`, `pipette.py`, `scan.py`).
+ - The generic `measure` command can call potentiostat methods such as `measure_ocp`, `run_chronoamperometry`, and `run_cyclic_voltammetry` at a resolved deck position.
 
 ### Gantry Config (`src/gantry`)
 Gantry YAML loader and domain model for CNC gantry working volume and homing strategy.
@@ -131,6 +144,7 @@ SQLite-backed persistence layer for self-driving lab campaigns. All state lives 
         - `record_dispense(campaign_id, labware_key, well_id, source_name, volume_ul)` — increments `current_volume_ul` and appends to `contents` JSON.
         - `get_contents(campaign_id, labware_key, well_id) -> list | None` — returns parsed contents list.
     - **Schema tables**: `campaigns`, `experiments`, `uvvis_measurements`, `filmetrics_measurements`, `camera_measurements`, `labware`
+ - **Potentiostat table**: `potentiostat_measurements` stores OCP/CA/CV traces with a `technique` discriminator and JSON arrays for time/current/voltage traces.
 
 #### Protocol Integration
 - **`ProtocolContext.data_store`**: Optional `DataStore` instance. When set (along with `campaign_id`), `scan` and `transfer` commands automatically persist measurements and labware state.

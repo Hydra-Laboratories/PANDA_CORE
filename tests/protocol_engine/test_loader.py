@@ -29,6 +29,17 @@ protocol:
       position: plate_1.C9
 """
 
+VALID_POTENTIOSTAT_MEASURE = """
+protocol:
+  - measure:
+      instrument: potentiostat
+      position: plate_1.A1
+      method: measure_ocp
+      method_kwargs:
+        duration_s: 5.0
+        sample_period_s: 0.5
+"""
+
 
 def _write_yaml(content: str) -> str:
     """Write YAML content to a temp file and return its path."""
@@ -83,6 +94,17 @@ def test_loaded_protocol_has_source_path():
     try:
         protocol = load_protocol_from_yaml(path)
         assert protocol.source_path == Path(path)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_loads_potentiostat_measure_protocol():
+    path = _write_yaml(VALID_POTENTIOSTAT_MEASURE)
+    try:
+        protocol = load_protocol_from_yaml(path)
+        assert protocol.steps[0].command_name == "measure"
+        assert protocol.steps[0].args["instrument"] == "potentiostat"
+        assert protocol.steps[0].args["method"] == "measure_ocp"
     finally:
         Path(path).unlink(missing_ok=True)
 

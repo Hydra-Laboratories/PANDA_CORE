@@ -20,6 +20,13 @@ instruments:
     vendors:
       - opentrons
 
+  potentiostat:
+    module: instruments.potentiostat.driver
+    class_name: Potentiostat
+    vendors:
+      - gamry
+      - emstat
+
   uv_curing:
     module: instruments.uv_curing.driver
     class_name: UVCuring

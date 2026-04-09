@@ -10,6 +10,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest"]
+emstat = ["hardpotato"]
+gamry = ["comtypes; sys_platform == 'win32'"]
+potentiostat = [
+    "hardpotato",
+    "comtypes; sys_platform == 'win32'",
+]
 docs = [
     "mkdocs>=1.6",
     "mkdocs-gen-files>=0.5",

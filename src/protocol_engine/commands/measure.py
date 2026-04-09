@@ -2,13 +2,27 @@
 
 from __future__ import annotations
 
+import inspect
+import json
+import logging
+import sqlite3
 from typing import Any, Dict, TYPE_CHECKING
 
 from ..errors import ProtocolExecutionError
+from ..measurements import normalize_measurement
 from ..registry import protocol_command
 
 if TYPE_CHECKING:
     from ..protocol import ProtocolContext
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_position(position: str) -> tuple[str, str | None]:
+    parts = position.split(".", 1)
+    if len(parts) == 2:
+        return (parts[0], parts[1])
+    return (parts[0], None)
 
 
 @protocol_command("measure")
@@ -17,7 +31,7 @@ def measure(
     instrument: str,
     position: str,
     method: str = "measure",
-    method_kwargs: Dict[str, Any] = {},
+    method_kwargs: Dict[str, Any] | None = None,
 ) -> Any:
     """Measure at a deck position using *instrument*.
 
@@ -36,6 +50,9 @@ def measure(
     Returns:
         Whatever the instrument method returns.
     """
+    if method_kwargs is None:
+        method_kwargs = {}
+
     if instrument not in context.board.instruments:
         raise ProtocolExecutionError(
             f"Unknown instrument '{instrument}'. "
@@ -49,8 +66,45 @@ def measure(
         )
 
     coord = context.deck.resolve(position)
-    target = (coord.x, coord.y, coord.z + instr.measurement_height)
+    target = (coord.x, coord.y, coord.z - instr.measurement_height)
     context.board.move(instrument, target)
 
-    context.logger.info("measure: %s.%s(%s) at %s", instrument, method, method_kwargs, position)
-    return getattr(instr, method)(**method_kwargs)
+    callable_method = getattr(instr, method)
+    kwargs: Dict[str, Any] = dict(method_kwargs)
+    sig = inspect.signature(callable_method)
+    if "gantry" in sig.parameters:
+        kwargs["gantry"] = context.board.gantry
+
+    context.logger.info("measure: %s.%s(%s) at %s", instrument, method, kwargs, position)
+    result = callable_method(**kwargs)
+
+    if context.data_store is not None and context.campaign_id is not None:
+        try:
+            labware_key, well_id = _parse_position(position)
+            contents = context.data_store.get_contents(
+                context.campaign_id,
+                labware_key,
+                well_id,
+            )
+            contents_json = json.dumps(contents) if contents else "[]"
+            exp_id = context.data_store.create_experiment(
+                campaign_id=context.campaign_id,
+                labware_name=context.deck[labware_key].name,
+                well_id=well_id,
+                contents_json=contents_json,
+            )
+            measurement = normalize_measurement(
+                instrument_name=instrument,
+                method_name=method,
+                raw_result=result,
+            )
+            context.data_store.log_measurement(exp_id, measurement)
+        except sqlite3.Error as exc:
+            logger.error(
+                "Database error logging measurement for %s — data was NOT saved. "
+                "Check disk space and database integrity. Error: %s",
+                position,
+                exc,
+            )
+
+    return result

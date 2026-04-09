@@ -170,3 +170,6 @@ architecture.md
 test_scripts/
 src/gantry/gantry_driver/mill_port.txt
 .omx/
+.claude/
+.cursor/
+PANDA-BEAR/

@@ -7,6 +7,7 @@ Each subdirectory contains a self-contained instrument driver that implements `B
 | `asmi/` | **Vernier** | GoDirect Force Sensor | Force measurement via USB (GoDirect SDK) |
 | `filmetrics/` | **KLA / Filmetrics** | F-Series (via FilmetricsTool.exe) | Thin-film thickness measurement via spectral reflectance |
 | `pipette/` | **Opentrons** | OT-2 / Flex pipettes | Pipette control via Arduino serial (Pawduino firmware) |
+| `potentiostat/` | **Gamry / PalmSens** | Gamry potentiostats / EmStat Pico | Electrochemistry support for OCP, chronoamperometry, and cyclic voltammetry |
 | `uv_curing/` | **Excelitas** | OmniCure S1500 PRO | UV curing system via RS-232 serial |
 | `uvvis_ccs/` | **Thorlabs** | CCS100 / CCS175 / CCS200 | Compact CCD spectrometer for UV-Vis spectroscopy (3648-pixel) |
 

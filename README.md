@@ -69,6 +69,29 @@ instruments:
     depth: 0.0
 ```
 
+Potentiostat support follows the same board pattern and selects the backend
+through the existing `vendor` field:
+
+```yaml
+instruments:
+  potentiostat:
+    type: potentiostat
+    vendor: emstat
+    emstat_model: emstat4_lr
+    emstat_data_directory: data/potentiostat
+    offset_x: 0.0
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 3.0
+```
+
+Supported potentiostat vendors:
+
+| Vendor | Notes |
+|--------|-------|
+| `emstat` | Uses the `hardpotato` Python package |
+| `gamry` | Windows-only COM integration via `comtypes` |
+
 ### 4. Protocol (`configs/protocol/*.yaml`)
 
 Defines the experiment as a sequence of commands. Positions can reference
@@ -85,6 +108,42 @@ protocol:
 Available protocol commands include `home`, `move`, `scan`, `measure`,
 `pause`, and the pipette command set.
 
+The generic `measure` command can also drive electrochemistry techniques on the
+new potentiostat instrument:
+
+```yaml
+protocol:
+  - measure:
+      instrument: potentiostat
+      position: plate_1.A1
+      method: measure_ocp
+      method_kwargs:
+        duration_s: 15.0
+        sample_period_s: 0.5
+
+  - measure:
+      instrument: potentiostat
+      position: plate_1.A1
+      method: run_chronoamperometry
+      method_kwargs:
+        step_potential_v: -0.8
+        duration_s: 5.0
+        sample_period_s: 0.1
+
+  - measure:
+      instrument: potentiostat
+      position: plate_1.A1
+      method: run_cyclic_voltammetry
+      method_kwargs:
+        initial_potential_v: 0.0
+        vertex_potential_1_v: 0.5
+        vertex_potential_2_v: -0.5
+        final_potential_v: 0.0
+        scan_rate_v_s: 0.1
+        step_size_v: 0.01
+        cycles: 1
+```
+
 ## Setup and Execution
 
 Install dependencies:
@@ -93,6 +152,14 @@ Install dependencies:
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
+```
+
+Optional vendor extras:
+
+```bash
+pip install -e ".[dev,emstat]"
+pip install -e ".[dev,gamry]"
+pip install -e ".[dev,potentiostat]"
 ```
 
 Interactive jog test:
@@ -140,7 +207,9 @@ protocol.run(context)
 
 Campaign state can be stored in SQLite through `data.DataStore`. Measurement
 commands can log into a `ProtocolContext` when `data_store` and `campaign_id`
-are provided.
+are provided. Potentiostat OCP, chronoamperometry, and cyclic voltammetry
+results are stored in the `potentiostat_measurements` table with a
+technique discriminator.
 
 ## Development
 

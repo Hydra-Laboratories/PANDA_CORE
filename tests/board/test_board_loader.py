@@ -10,6 +10,7 @@ from board.yaml_schema import BoardYamlSchema, InstrumentYamlEntry
 from instruments.asmi.driver import ASMI
 from instruments.filmetrics.driver import Filmetrics
 from instruments.pipette.driver import Pipette
+from instruments.potentiostat.driver import Potentiostat
 from instruments.uvvis_ccs.driver import UVVisCCS
 from board import Board
 
@@ -134,6 +135,36 @@ class TestLoadBoardMultipleInstruments:
         instr = board.instruments["film"]
         assert isinstance(instr, Filmetrics)
         assert instr.measurement_height == 1.5
+
+    def test_loads_potentiostat_with_gamry_vendor(self, tmp_path):
+        yaml_path = _write_yaml(tmp_path, """\
+            instruments:
+              pstat:
+                type: potentiostat
+                vendor: gamry
+                measurement_height: 2.5
+        """)
+        board = load_board_from_yaml(yaml_path, _mock_gantry(), mock_mode=True)
+
+        instr = board.instruments["pstat"]
+        assert isinstance(instr, Potentiostat)
+        assert instr.vendor == "gamry"
+        assert instr.measurement_height == 2.5
+
+    def test_loads_potentiostat_with_emstat_vendor(self, tmp_path):
+        yaml_path = _write_yaml(tmp_path, """\
+            instruments:
+              pstat:
+                type: potentiostat
+                vendor: emstat
+                measurement_height: 1.0
+        """)
+        board = load_board_from_yaml(yaml_path, _mock_gantry(), mock_mode=True)
+
+        instr = board.instruments["pstat"]
+        assert isinstance(instr, Potentiostat)
+        assert instr.vendor == "emstat"
+        assert instr.measurement_height == 1.0
 
 
 class TestLoadBoardMeasurementHeight:

@@ -8,6 +8,11 @@ import pytest
 
 from data.data_store import DataStore
 from instruments.filmetrics.models import MeasurementResult
+from instruments.potentiostat.models import (
+    ChronoAmperometryResult,
+    CyclicVoltammetryResult,
+    OCPResult,
+)
 from instruments.uvvis_ccs.models import UVVisSpectrum
 from protocol_engine.measurements import InstrumentMeasurement, MeasurementType
 
@@ -34,6 +39,40 @@ def _make_filmetrics_result() -> MeasurementResult:
     return MeasurementResult(thickness_nm=150.5, goodness_of_fit=0.95)
 
 
+def _make_ocp_result() -> OCPResult:
+    return OCPResult(
+        time_s=(0.0, 0.5, 1.0),
+        voltage_v=(0.11, 0.12, 0.13),
+        sample_period_s=0.5,
+        duration_s=1.0,
+        vendor="emstat",
+    )
+
+
+def _make_ca_result() -> ChronoAmperometryResult:
+    return ChronoAmperometryResult(
+        time_s=(0.0, 0.5, 1.0),
+        current_a=(1e-6, 8e-7, 6e-7),
+        voltage_v=(-0.8, -0.8, -0.8),
+        sample_period_s=0.5,
+        duration_s=1.0,
+        step_potential_v=-0.8,
+        vendor="gamry",
+    )
+
+
+def _make_cv_result() -> CyclicVoltammetryResult:
+    return CyclicVoltammetryResult(
+        time_s=(0.0, 0.5, 1.0),
+        voltage_v=(0.0, 0.5, 0.0),
+        current_a=(1e-6, 2e-6, 1e-6),
+        scan_rate_v_s=0.1,
+        step_size_v=0.05,
+        cycles=1,
+        vendor="emstat",
+    )
+
+
 # ─── Schema creation ─────────────────────────────────────────────────────────
 
 
@@ -48,7 +87,8 @@ class TestSchemaCreation:
         expected = {
             "campaigns", "experiments",
             "uvvis_measurements", "filmetrics_measurements",
-            "camera_measurements", "asmi_measurements", "labware",
+            "camera_measurements", "asmi_measurements",
+            "potentiostat_measurements", "labware",
         }
         assert expected.issubset(tables)
         store.close()
@@ -388,6 +428,115 @@ class TestASMIInstrumentMeasurementLogging:
         assert json.loads(row[0]) == [0.0, 0.1, 0.2]
         assert json.loads(row[1]) == [0.01, 0.02, 0.03]
         assert json.loads(row[2]) == [0.005, 0.015, 0.025]
+        store.close()
+
+
+class TestPotentiostatMeasurementLogging:
+
+    def test_ocp_instrument_measurement_round_trip(self):
+        store = _make_store()
+        cid = store.create_campaign(description="potentiostat test")
+        eid = store.create_experiment(cid, "plate_1", "A1", "[]")
+
+        result = _make_ocp_result()
+        measurement = InstrumentMeasurement(
+            measurement_type=MeasurementType.POTENTIOSTAT_OCP,
+            payload={
+                "time_s": list(result.time_s),
+                "voltage_v": list(result.voltage_v),
+            },
+            metadata={
+                "technique": result.technique,
+                "sample_period_s": result.sample_period_s,
+                "duration_s": result.duration_s,
+                "vendor": result.vendor,
+            },
+        )
+        mid = store.log_measurement(eid, measurement)
+
+        row = store._conn.execute(
+            "SELECT technique, time_s, voltage_v, current_a, sample_period_s, duration_s, vendor "
+            "FROM potentiostat_measurements WHERE id = ?",
+            (mid,),
+        ).fetchone()
+
+        assert row[0] == "ocp"
+        assert json.loads(row[1]) == [0.0, 0.5, 1.0]
+        assert json.loads(row[2]) == [0.11, 0.12, 0.13]
+        assert row[3] is None
+        assert row[4] == pytest.approx(0.5)
+        assert row[5] == pytest.approx(1.0)
+        assert row[6] == "emstat"
+        store.close()
+
+    def test_ca_instrument_measurement_round_trip(self):
+        store = _make_store()
+        cid = store.create_campaign(description="potentiostat test")
+        eid = store.create_experiment(cid, "plate_1", "A1", "[]")
+
+        result = _make_ca_result()
+        measurement = InstrumentMeasurement(
+            measurement_type=MeasurementType.POTENTIOSTAT_CA,
+            payload={
+                "time_s": list(result.time_s),
+                "voltage_v": list(result.voltage_v),
+                "current_a": list(result.current_a),
+            },
+            metadata={
+                "technique": result.technique,
+                "sample_period_s": result.sample_period_s,
+                "duration_s": result.duration_s,
+                "step_potential_v": result.step_potential_v,
+                "vendor": result.vendor,
+            },
+        )
+        mid = store.log_measurement(eid, measurement)
+
+        row = store._conn.execute(
+            "SELECT technique, current_a, step_potential_v, vendor "
+            "FROM potentiostat_measurements WHERE id = ?",
+            (mid,),
+        ).fetchone()
+
+        assert row[0] == "ca"
+        assert json.loads(row[1]) == [1e-6, 8e-7, 6e-7]
+        assert row[2] == pytest.approx(-0.8)
+        assert row[3] == "gamry"
+        store.close()
+
+    def test_cv_instrument_measurement_round_trip(self):
+        store = _make_store()
+        cid = store.create_campaign(description="potentiostat test")
+        eid = store.create_experiment(cid, "plate_1", "A1", "[]")
+
+        result = _make_cv_result()
+        measurement = InstrumentMeasurement(
+            measurement_type=MeasurementType.POTENTIOSTAT_CV,
+            payload={
+                "time_s": list(result.time_s),
+                "voltage_v": list(result.voltage_v),
+                "current_a": list(result.current_a),
+            },
+            metadata={
+                "technique": result.technique,
+                "scan_rate_v_s": result.scan_rate_v_s,
+                "step_size_v": result.step_size_v,
+                "cycles": result.cycles,
+                "vendor": result.vendor,
+            },
+        )
+        mid = store.log_measurement(eid, measurement)
+
+        row = store._conn.execute(
+            "SELECT technique, scan_rate_v_s, step_size_v, cycles "
+            "FROM potentiostat_measurements WHERE id = ?",
+            (mid,),
+        ).fetchone()
+
+        assert row[0] == "cv"
+        assert row[1] == pytest.approx(0.1)
+        assert row[2] == pytest.approx(0.05)
+        assert row[3] == 1
         store.close()
 
 
