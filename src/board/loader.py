@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 from pathlib import Path
 from typing import Dict, TYPE_CHECKING
 
@@ -94,13 +93,7 @@ def load_board_from_yaml(
         if mock_mode:
             kwargs["offline"] = True
         cls = get_instrument_class(type_key)
-        init_signature = inspect.signature(cls.__init__)
-        accepts_var_kwargs = any(
-            parameter.kind == inspect.Parameter.VAR_KEYWORD
-            for parameter in init_signature.parameters.values()
-        )
-        if "vendor" in init_signature.parameters or accepts_var_kwargs:
-            kwargs["vendor"] = vendor
+        kwargs["vendor"] = vendor
         instruments[name] = cls(**kwargs)
 
     return Board(gantry=gantry, instruments=instruments)

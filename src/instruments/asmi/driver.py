@@ -43,6 +43,7 @@ class ASMI(BaseInstrument):
         idle_timeout: float = 10.0,
         well_top_z: float | None = None,
         safe_z: float | None = None,
+        **kwargs,
     ):
         super().__init__(
             name=name, offset_x=offset_x, offset_y=offset_y,
