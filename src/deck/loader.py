@@ -1,20 +1,32 @@
-"""Load deck YAML into a Deck containing Labware (WellPlate or Vial)."""
+"""Load deck YAML into a Deck containing configured labware fixtures."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Type, Union
+from typing import Any, Dict, Type
 
 import yaml
 from pydantic import BaseModel, ValidationError
 
 from .deck import Deck
-from .labware import Coordinate3D
+from .labware import Coordinate3D, Labware
+from .labware.holder import LabwareSlot, TipDisposal, TipHolder, VialHolder, WellPlateHolder
 from .labware.vial import Vial
 from .labware.well_plate import WellPlate
 from .errors import DeckLoaderError
-from .yaml_schema import DeckYamlSchema, VialYamlEntry, WellPlateYamlEntry, _YamlPoint3D
+from .yaml_schema import (
+    DeckYamlSchema,
+    TipDisposalYamlEntry,
+    TipHolderYamlEntry,
+    VialHolderYamlEntry,
+    VialYamlEntry,
+    WellPlateHolderYamlEntry,
+    WellPlateYamlEntry,
+    _BaseHolderYamlEntry,
+    _YamlHolderSlot,
+    _YamlPoint3D,
+)
 
 
 def _format_loader_exception(path: Path, error: Exception) -> str:
@@ -93,6 +105,27 @@ def _entry_kwargs_for_model(entry: BaseModel, model_class: Type[BaseModel]) -> D
     allowed = set(model_class.model_fields.keys())
     raw = entry.model_dump()
     return {k: v for k, v in raw.items() if k in allowed}
+
+
+def _slot_to_model(slot_entry: _YamlHolderSlot, *, default_z: float) -> LabwareSlot:
+    """Convert a YAML holder slot definition into a LabwareSlot."""
+    resolved_z = slot_entry.location.z if slot_entry.location.z is not None else default_z
+    return LabwareSlot(
+        location=_point_to_coord(slot_entry.location, z_value=resolved_z),
+        supported_labware_types=slot_entry.supported_labware_types,
+        description=slot_entry.description,
+    )
+
+
+def _build_holder_slots(
+    slots: Dict[str, _YamlHolderSlot],
+    *,
+    default_z: float,
+) -> Dict[str, LabwareSlot]:
+    return {
+        slot_name: _slot_to_model(slot_entry, default_z=default_z)
+        for slot_name, slot_entry in slots.items()
+    }
 
 
 def _row_labels(rows: int) -> list[str]:
@@ -217,6 +250,24 @@ def _build_vial(
     return Vial(**kwargs)
 
 
+def _build_holder(
+    entry: _BaseHolderYamlEntry,
+    total_z_height: float | None,
+    *,
+    model_class: Type[Labware],
+) -> Labware:
+    resolved_z = _resolve_user_z(
+        entry.location.z,
+        height=entry.height,
+        total_z_height=total_z_height,
+        context=f"{entry.type} '{entry.name}'",
+    )
+    kwargs = _entry_kwargs_for_model(entry, model_class)
+    kwargs["location"] = _point_to_coord(entry.location, z_value=resolved_z)
+    kwargs["slots"] = _build_holder_slots(entry.slots, default_z=resolved_z)
+    return model_class(**kwargs)
+
+
 def load_deck_from_yaml(
     path: str | Path,
     total_z_height: float | None = None,
@@ -230,12 +281,38 @@ def load_deck_from_yaml(
     if raw is None:
         raw = {}
     schema = DeckYamlSchema.model_validate(raw)
-    labware: Dict[str, Union[WellPlate, Vial]] = {}
+    labware: Dict[str, Labware] = {}
     for name, entry in schema.labware.items():
         if isinstance(entry, WellPlateYamlEntry):
             labware[name] = _build_well_plate(entry, total_z_height=total_z_height)
-        else:
+        elif isinstance(entry, VialYamlEntry):
             labware[name] = _build_vial(entry, total_z_height=total_z_height)
+        elif isinstance(entry, TipHolderYamlEntry):
+            labware[name] = _build_holder(
+                entry,
+                total_z_height=total_z_height,
+                model_class=TipHolder,
+            )
+        elif isinstance(entry, TipDisposalYamlEntry):
+            labware[name] = _build_holder(
+                entry,
+                total_z_height=total_z_height,
+                model_class=TipDisposal,
+            )
+        elif isinstance(entry, WellPlateHolderYamlEntry):
+            labware[name] = _build_holder(
+                entry,
+                total_z_height=total_z_height,
+                model_class=WellPlateHolder,
+            )
+        elif isinstance(entry, VialHolderYamlEntry):
+            labware[name] = _build_holder(
+                entry,
+                total_z_height=total_z_height,
+                model_class=VialHolder,
+            )
+        else:
+            raise TypeError(f"Unsupported deck labware entry type: {type(entry).__name__}")
     return Deck(labware)
 
 

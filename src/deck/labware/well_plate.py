@@ -102,6 +102,9 @@ class WellPlate(Labware):
         # By construction, 'A1' must exist in `wells`.
         return self.get_well_center("A1")
 
+    def iter_positions(self) -> dict[str, Coordinate3D]:
+        return dict(self.wells)
+
 
 def generate_wells_from_offsets(
     *,

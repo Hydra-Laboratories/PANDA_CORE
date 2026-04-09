@@ -100,8 +100,64 @@ class VialYamlEntry(BaseModel):
         return self
 
 
+class _YamlHolderSlot(BaseModel):
+    """Strict schema for an addressable holder slot."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    location: _YamlPoint3D
+    supported_labware_types: tuple[str, ...] = ()
+    description: Optional[str] = None
+
+
+class _BaseHolderYamlEntry(BaseModel):
+    """Common schema for non-liquid physical holder fixtures."""
+
+    model_config = ConfigDict(extra="forbid", protected_namespaces=())
+
+    name: str
+    model_name: str
+    height: Optional[float] = Field(default=None, gt=0)
+    location: _YamlPoint3D
+    slots: Dict[str, _YamlHolderSlot] = Field(default_factory=dict)
+
+
+class TipHolderYamlEntry(_BaseHolderYamlEntry):
+    type: Literal["tip_holder"] = "tip_holder"
+    model_name: str = "tip_holder"
+
+
+class TipDisposalYamlEntry(_BaseHolderYamlEntry):
+    type: Literal["tip_disposal"] = "tip_disposal"
+    model_name: str = "tip_disposal"
+
+
+class WellPlateHolderYamlEntry(_BaseHolderYamlEntry):
+    type: Literal["well_plate_holder"] = "well_plate_holder"
+    model_name: str = "SlideHolder_Top"
+
+
+class VialHolderYamlEntry(_BaseHolderYamlEntry):
+    type: Literal["vial_holder"] = "vial_holder"
+    model_name: str = "9VialHolder20mL_TightFit"
+    slot_count: int = Field(default=9, gt=0)
+
+    @model_validator(mode="after")
+    def _validate_slot_capacity(self) -> "VialHolderYamlEntry":
+        if len(self.slots) > self.slot_count:
+            raise ValueError("slots count must be <= slot_count.")
+        return self
+
+
 LabwareYamlEntry = Annotated[
-    Union[WellPlateYamlEntry, VialYamlEntry],
+    Union[
+        WellPlateYamlEntry,
+        VialYamlEntry,
+        TipHolderYamlEntry,
+        TipDisposalYamlEntry,
+        WellPlateHolderYamlEntry,
+        VialHolderYamlEntry,
+    ],
     Field(discriminator="type"),
 ]
 

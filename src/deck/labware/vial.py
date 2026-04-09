@@ -55,3 +55,6 @@ class Vial(Labware):
         Initial position for a single vial is its center location.
         """
         return self.location
+
+    def iter_positions(self) -> dict[str, Coordinate3D]:
+        return {"location": self.location}

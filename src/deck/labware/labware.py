@@ -50,3 +50,12 @@ class Labware(BaseModel):
         raise NotImplementedError(
             "Subclasses of Labware must implement get_initial_position()."
         )
+
+    def iter_positions(self) -> dict[str, Coordinate3D]:
+        """
+        Return every named deck position exposed by this labware.
+
+        This is used by generic validators that need to reason about all
+        addressable points without hard-coding concrete labware types.
+        """
+        raise NotImplementedError("Subclasses of Labware must implement iter_positions().")

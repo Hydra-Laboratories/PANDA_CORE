@@ -38,6 +38,9 @@ Included examples:
 
 Defines physical labware on the deck. Well plates use two-point calibration
 (`calibration.a1` + `calibration.a2`); vials use a single fixed location.
+Holder fixtures are also supported for collision-aware deck modeling and future
+nesting workflows: `tip_holder`, `tip_disposal`, `well_plate_holder`, and
+`vial_holder`.
 
 ```yaml
 labware:
@@ -52,6 +55,16 @@ labware:
       a2: { x: 109.0, y: 100.0, z: 15.0 }
     x_offset_mm: 9.0
     y_offset_mm: 9.0
+
+  vial_holder:
+    type: vial_holder
+    name: reagent_vials
+    location: { x: 180.0, y: 60.0 }
+    height: 20.0
+    slots:
+      vial_1:
+        location: { x: 180.0, y: 60.0 }
+        supported_labware_types: [vial]
 ```
 
 ### 3. Board (`configs/board/*.yaml`)
