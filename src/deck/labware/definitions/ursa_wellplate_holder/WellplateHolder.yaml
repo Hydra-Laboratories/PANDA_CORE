@@ -1,0 +1,13 @@
+# WellPlateHolder (deck.labware.well_plate_holder.WellPlateHolder) —
+# class-attribute template for the tall wellplate holder.
+#
+# Every key below maps directly to a field on the WellPlateHolder pydantic
+# class. `location` is deliberately omitted; deck YAMLs supply it per-instance.
+
+name: tall_wellplate_holder
+model_name: tall_wellplate_holder
+length_mm: 127.5
+width_mm: 176.4
+height_mm: 25.0
+labware_support_height_mm: 25.0
+labware_seat_height_from_bottom_mm: 21.0

@@ -100,32 +100,6 @@ class VialYamlEntry(BaseModel):
         return self
 
 
-class TipRackYamlEntry(BaseModel):
-    """Strict schema for one tip rack with explicit pickup positions."""
-
-    model_config = ConfigDict(extra="forbid", protected_namespaces=())
-
-    type: Literal["tip_rack"] = "tip_rack"
-    name: str
-    model_name: str = ""
-    rows: int = Field(..., gt=0, le=26)
-    columns: int = Field(..., gt=0)
-    z_pickup: float = Field(..., gt=0)
-    z_drop: Optional[float] = Field(default=None, gt=0)
-    tips: Dict[str, _YamlPoint3D]
-
-    @model_validator(mode="after")
-    def _validate_tip_count(self) -> "TipRackYamlEntry":
-        if "A1" not in self.tips:
-            raise ValueError("Tip rack tips must include 'A1'.")
-        expected_tip_count = self.rows * self.columns
-        if len(self.tips) != expected_tip_count:
-            raise ValueError(
-                f"Tip rack tips count must equal rows*columns ({expected_tip_count}), got {len(self.tips)}."
-            )
-        return self
-
-
 class NestedVialYamlEntry(BaseModel):
     """Schema for a vial positioned inside a holder."""
 
@@ -226,9 +200,40 @@ class _BaseHolderYamlEntry(BaseModel):
     slots: Dict[str, _YamlHolderSlot] = Field(default_factory=dict)
 
 
-class TipHolderYamlEntry(_BaseHolderYamlEntry):
-    type: Literal["tip_holder"] = "tip_holder"
-    model_name: str = "tip_holder"
+class TipRackYamlEntry(_BaseHolderYamlEntry):
+    """Strict schema for one tip rack with explicit pickup positions.
+
+    Tip racks inherit the holder schema (``name``, ``model_name``,
+    ``location``, ``slots``, ``height``) but override ``location`` to be
+    optional — it is derived from the ``A1`` tip when omitted.
+    """
+
+    type: Literal["tip_rack"] = "tip_rack"
+    model_name: str = "tip_rack"
+    rows: int = Field(..., gt=0, le=26)
+    columns: int = Field(..., gt=0)
+    z_pickup: float = Field(..., gt=0)
+    z_drop: Optional[float] = Field(default=None, gt=0)
+    tips: Dict[str, _YamlPoint3D]
+    tip_present: Dict[str, bool] = Field(default_factory=dict)
+    # Derived from the A1 tip if omitted.
+    location: Optional[_YamlPoint3D] = None  # type: ignore[assignment]
+
+    @model_validator(mode="after")
+    def _validate_tip_count(self) -> "TipRackYamlEntry":
+        if "A1" not in self.tips:
+            raise ValueError("Tip rack tips must include 'A1'.")
+        expected_tip_count = self.rows * self.columns
+        if len(self.tips) != expected_tip_count:
+            raise ValueError(
+                f"Tip rack tips count must equal rows*columns ({expected_tip_count}), got {len(self.tips)}."
+            )
+        extra_keys = set(self.tip_present) - set(self.tips)
+        if extra_keys:
+            raise ValueError(
+                f"tip_present contains keys not in tips: {sorted(extra_keys)}"
+            )
+        return self
 
 
 class TipDisposalYamlEntry(_BaseHolderYamlEntry):
@@ -268,7 +273,6 @@ LabwareYamlEntry = Annotated[
         WellPlateYamlEntry,
         VialYamlEntry,
         TipRackYamlEntry,
-        TipHolderYamlEntry,
         TipDisposalYamlEntry,
         WellPlateHolderYamlEntry,
         VialHolderYamlEntry,

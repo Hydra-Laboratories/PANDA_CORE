@@ -10,7 +10,6 @@ from deck import (
     Deck,
     LabwareSlot,
     TipDisposal,
-    TipHolder,
     Vial,
     VialHolder,
     WellPlate,
@@ -35,24 +34,6 @@ def _make_gantry() -> GantryConfig:
             z_max=100.0,
         ),
     )
-
-
-def test_tip_holder_uses_fixed_dimensions_and_anchor_location():
-    holder = TipHolder(
-        name="tips",
-        location=Coordinate3D(x=10.0, y=20.0, z=30.0),
-    )
-
-    assert holder.length_mm == pytest.approx(138.0)
-    assert holder.width_mm == pytest.approx(66.0)
-    assert holder.height_mm == pytest.approx(22.0)
-    assert holder.geometry == BoundingBoxGeometry(
-        length_mm=138.0,
-        width_mm=66.0,
-        height_mm=22.0,
-    )
-    assert holder.get_initial_position() == Coordinate3D(x=10.0, y=20.0, z=30.0)
-    assert holder.get_location() == Coordinate3D(x=10.0, y=20.0, z=30.0)
 
 
 def test_holder_seat_offset_metadata_is_encoded():
@@ -138,13 +119,6 @@ def test_tip_disposal_resolves_from_deck():
 def test_load_holder_labware_from_yaml():
     yaml_str = """
 labware:
-  tips:
-    type: tip_holder
-    name: tips
-    location:
-      x: 10.0
-      y: 20.0
-      z: 30.0
   waste:
     type: tip_disposal
     name: waste
@@ -187,7 +161,6 @@ labware:
 
     try:
         deck = load_deck_from_yaml(path, total_z_height=90.0)
-        assert isinstance(deck["tips"], TipHolder)
         assert isinstance(deck["waste"], TipDisposal)
         assert isinstance(deck["slide_holder"], WellPlateHolder)
         assert isinstance(deck["vial_holder"], VialHolder)

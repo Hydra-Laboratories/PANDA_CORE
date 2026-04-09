@@ -1,0 +1,16 @@
+# TipRack (deck.labware.tip_rack.TipRack) — class-attribute template.
+#
+# Every key below maps directly to a field on the TipRack pydantic class.
+# `location`, `length_mm`, `width_mm`, and `height_mm` are derived from the
+# `tips` dict by TipRack's model_validator if not provided.
+#
+# Placeholder: replace `rows`, `columns`, `z_pickup`, and `tips` with the
+# real layout for the physical rack before use.
+
+name: tip_rack
+model_name: tip_rack
+rows: 1
+columns: 1
+z_pickup: 1.0
+tips:
+  A1: { x: 0.0, y: 0.0, z: 1.0 }

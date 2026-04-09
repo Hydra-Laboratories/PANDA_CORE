@@ -13,7 +13,6 @@ from .deck import Deck
 from .labware import Coordinate3D, Labware
 from .labware.holder import LabwareSlot
 from .labware.tip_disposal import TipDisposal
-from .labware.tip_holder import TipHolder
 from .labware.tip_rack import TipRack
 from .labware.vial import Vial
 from .labware.vial_holder import VialHolder
@@ -25,7 +24,6 @@ from .yaml_schema import (
     NestedVialYamlEntry,
     NestedWellPlateYamlEntry,
     TipDisposalYamlEntry,
-    TipHolderYamlEntry,
     TipRackYamlEntry,
     VialHolderYamlEntry,
     VialYamlEntry,
@@ -144,12 +142,32 @@ def _build_tip_rack(
     total_z_height: float | None,
 ) -> TipRack:
     del total_z_height
-    kwargs = _entry_kwargs_for_model(entry, TipRack)
-    kwargs["tips"] = {
-        tip_id: _point_to_coord(point, z_value=point.z if point.z is not None else entry.z_pickup)
+    tips = {
+        tip_id: _point_to_coord(
+            point, z_value=point.z if point.z is not None else entry.z_pickup
+        )
         for tip_id, point in entry.tips.items()
     }
-    return TipRack(**kwargs)
+    # Derive anchor location from A1 if the YAML omitted it.
+    if entry.location is not None:
+        loc = _point_to_coord(
+            entry.location,
+            z_value=entry.location.z if entry.location.z is not None else entry.z_pickup,
+        )
+    else:
+        loc = tips["A1"]
+    return TipRack(
+        name=entry.name,
+        model_name=entry.model_name,
+        location=loc,
+        rows=entry.rows,
+        columns=entry.columns,
+        z_pickup=entry.z_pickup,
+        z_drop=entry.z_drop,
+        tips=tips,
+        tip_present=dict(entry.tip_present),
+        slots=_build_holder_slots(entry.slots, default_z=loc.z),
+    )
 
 
 def _row_labels(rows: int) -> list[str]:
@@ -366,12 +384,6 @@ def _build_deck_from_raw(raw: dict[str, Any], *, total_z_height: float | None = 
             labware[name] = _build_vial(entry, total_z_height=total_z_height)
         elif isinstance(entry, TipRackYamlEntry):
             labware[name] = _build_tip_rack(entry, total_z_height=total_z_height)
-        elif isinstance(entry, TipHolderYamlEntry):
-            labware[name] = _build_holder(
-                entry,
-                total_z_height=total_z_height,
-                model_class=TipHolder,
-            )
         elif isinstance(entry, TipDisposalYamlEntry):
             labware[name] = _build_holder(
                 entry,

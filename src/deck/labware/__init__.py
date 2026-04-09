@@ -4,7 +4,6 @@ from .holder import (
     LabwareSlot,
 )
 from .tip_disposal import TipDisposal
-from .tip_holder import TipHolder
 from .tip_rack import TipRack
 from .vial_holder import VialHolder
 from .well_plate import WellPlate, generate_wells_from_offsets
@@ -18,7 +17,6 @@ __all__ = [
     "Labware",
     "LabwareSlot",
     "TipDisposal",
-    "TipHolder",
     "TipRack",
     "VialHolder",
     "WellPlate",

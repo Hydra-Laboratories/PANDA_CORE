@@ -1,0 +1,14 @@
+# WellPlateHolder (deck.labware.well_plate_holder.WellPlateHolder) —
+# class-attribute template for the conductive variant (originally the
+# SlideHolder_Top geometry shipped as the cubos class default).
+#
+# Every key below maps directly to a field on the WellPlateHolder pydantic
+# class. `location` is deliberately omitted; deck YAMLs supply it per-instance.
+
+name: wellplate_holder_conductive
+model_name: SlideHolder_Top
+length_mm: 100.0
+width_mm: 155.0
+height_mm: 14.8
+labware_support_height_mm: 10.0
+labware_seat_height_from_bottom_mm: 5.0
