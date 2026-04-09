@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
-from .labware import Labware, Coordinate3D
+from .labware import BoundingBoxGeometry, Coordinate3D, Labware
 
 
 class WellPlate(Labware):
@@ -79,6 +79,11 @@ class WellPlate(Labware):
             raise ValueError(
                 f"WellPlate wells count must equal rows*columns ({expected_well_count}), got {len(self.wells)}."
             )
+        self.geometry = BoundingBoxGeometry(
+            length_mm=self.length_mm,
+            width_mm=self.width_mm,
+            height_mm=self.height_mm,
+        )
         return self
 
     def get_location(self, location_id: str | None = None) -> Coordinate3D:

@@ -40,7 +40,11 @@ Defines physical labware on the deck. Well plates use two-point calibration
 (`calibration.a1` + `calibration.a2`); vials use a single fixed location.
 Holder fixtures are also supported for collision-aware deck modeling and future
 nesting workflows: `tip_holder`, `tip_disposal`, `well_plate_holder`, and
-`vial_holder`.
+`vial_holder`. Exact-position `tip_rack` entries are also supported for pipette
+pickup targets. Holders can define nested contained labware so holder seat
+height contributes directly to experiment Z generation. At runtime, all labware
+now expose shared base-level `geometry` metadata; for current deck models this
+is represented as a bounding box.
 
 ```yaml
 labware:
@@ -61,11 +65,19 @@ labware:
     name: reagent_vials
     location: { x: 180.0, y: 60.0 }
     height: 20.0
-    slots:
+    vials:
       vial_1:
         location: { x: 180.0, y: 60.0 }
-        supported_labware_types: [vial]
+        model_name: 20ml_vial
+        height_mm: 57.0
+        diameter_mm: 28.0
+        capacity_ul: 20000.0
+        working_volume_ul: 18000.0
 ```
+
+Included examples:
+
+- `configs/deck/panda_deck.yaml` — YAML deck config derived from `panda.json`, with two 2x15 tip racks, a nested well plate holder, and a nested vial holder. Contained vial / plate Z positions are generated from holder seat heights.
 
 ### 3. Board (`configs/board/*.yaml`)
 

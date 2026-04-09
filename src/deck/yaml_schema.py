@@ -100,6 +100,110 @@ class VialYamlEntry(BaseModel):
         return self
 
 
+class TipRackYamlEntry(BaseModel):
+    """Strict schema for one tip rack with explicit pickup positions."""
+
+    model_config = ConfigDict(extra="forbid", protected_namespaces=())
+
+    type: Literal["tip_rack"] = "tip_rack"
+    name: str
+    model_name: str = ""
+    rows: int = Field(..., gt=0, le=26)
+    columns: int = Field(..., gt=0)
+    z_pickup: float = Field(..., gt=0)
+    z_drop: Optional[float] = Field(default=None, gt=0)
+    tips: Dict[str, _YamlPoint3D]
+
+    @model_validator(mode="after")
+    def _validate_tip_count(self) -> "TipRackYamlEntry":
+        if "A1" not in self.tips:
+            raise ValueError("Tip rack tips must include 'A1'.")
+        expected_tip_count = self.rows * self.columns
+        if len(self.tips) != expected_tip_count:
+            raise ValueError(
+                f"Tip rack tips count must equal rows*columns ({expected_tip_count}), got {len(self.tips)}."
+            )
+        return self
+
+
+class NestedVialYamlEntry(BaseModel):
+    """Schema for a vial positioned inside a holder."""
+
+    model_config = ConfigDict(extra="forbid", protected_namespaces=())
+
+    name: Optional[str] = None
+    model_name: str = ""
+    height_mm: float
+    diameter_mm: float
+    location: _YamlPoint3D
+    capacity_ul: float
+    working_volume_ul: float
+
+    @model_validator(mode="after")
+    def _validate_nested_vial(self) -> "NestedVialYamlEntry":
+        if self.location.z is not None:
+            raise ValueError("Nested vial location.z is derived from holder seat height and must be omitted.")
+        if self.capacity_ul <= 0 or self.working_volume_ul <= 0:
+            raise ValueError("capacity_ul and working_volume_ul must be positive.")
+        if self.working_volume_ul > self.capacity_ul:
+            raise ValueError("working_volume_ul must be <= capacity_ul.")
+        return self
+
+
+class NestedWellPlateYamlEntry(BaseModel):
+    """Schema for a well plate positioned inside a holder."""
+
+    model_config = ConfigDict(extra="forbid", protected_namespaces=())
+
+    name: Optional[str] = None
+    model_name: str = ""
+    rows: int = Field(..., gt=0)
+    columns: int = Field(..., gt=0)
+    length_mm: Optional[float] = None
+    width_mm: Optional[float] = None
+    height_mm: Optional[float] = None
+    calibration: _YamlCalibrationPoints
+    x_offset_mm: float
+    y_offset_mm: float
+    capacity_ul: Optional[float] = None
+    working_volume_ul: Optional[float] = None
+
+    @property
+    def a1_point(self) -> _YamlPoint3D:
+        a1 = self.calibration.a1
+        if a1 is None:
+            raise ValueError("Nested well plate calibration must define `a1`.")
+        return a1
+
+    @model_validator(mode="after")
+    def _validate_nested_well_plate(self) -> "NestedWellPlateYamlEntry":
+        a1 = self.a1_point
+        a2 = self.calibration.a2
+        if a1.z is not None or a2.z is not None:
+            raise ValueError("Nested well plate calibration z is derived from holder seat height and must be omitted.")
+        if a1.x == a2.x and a1.y == a2.y:
+            raise ValueError("Calibration points A1 and A2 must not be identical.")
+        same_x = abs(a1.x - a2.x) < 1e-9
+        same_y = abs(a1.y - a2.y) < 1e-9
+        if not same_x and not same_y:
+            raise ValueError(
+                "Calibration A2 must be axis-aligned with A1 (same x or same y); diagonal orientation is invalid."
+            )
+        if self.x_offset_mm == 0 or self.y_offset_mm == 0:
+            raise ValueError("x_offset_mm and y_offset_mm must be non-zero.")
+        if self.capacity_ul is not None and self.capacity_ul <= 0:
+            raise ValueError("capacity_ul must be positive when specified.")
+        if self.working_volume_ul is not None and self.working_volume_ul <= 0:
+            raise ValueError("working_volume_ul must be positive when specified.")
+        if (
+            self.capacity_ul is not None
+            and self.working_volume_ul is not None
+            and self.working_volume_ul > self.capacity_ul
+        ):
+            raise ValueError("working_volume_ul must be <= capacity_ul.")
+        return self
+
+
 class _YamlHolderSlot(BaseModel):
     """Strict schema for an addressable holder slot."""
 
@@ -135,17 +239,27 @@ class TipDisposalYamlEntry(_BaseHolderYamlEntry):
 class WellPlateHolderYamlEntry(_BaseHolderYamlEntry):
     type: Literal["well_plate_holder"] = "well_plate_holder"
     model_name: str = "SlideHolder_Top"
+    well_plate: Optional[NestedWellPlateYamlEntry] = None
+
+    @model_validator(mode="after")
+    def _validate_single_nested_plate(self) -> "WellPlateHolderYamlEntry":
+        if self.well_plate is None:
+            return self
+        return self
 
 
 class VialHolderYamlEntry(_BaseHolderYamlEntry):
     type: Literal["vial_holder"] = "vial_holder"
     model_name: str = "9VialHolder20mL_TightFit"
     slot_count: int = Field(default=9, gt=0)
+    vials: Dict[str, NestedVialYamlEntry] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate_slot_capacity(self) -> "VialHolderYamlEntry":
         if len(self.slots) > self.slot_count:
             raise ValueError("slots count must be <= slot_count.")
+        if len(self.vials) > self.slot_count:
+            raise ValueError("vials count must be <= slot_count.")
         return self
 
 
@@ -153,6 +267,7 @@ LabwareYamlEntry = Annotated[
     Union[
         WellPlateYamlEntry,
         VialYamlEntry,
+        TipRackYamlEntry,
         TipHolderYamlEntry,
         TipDisposalYamlEntry,
         WellPlateHolderYamlEntry,

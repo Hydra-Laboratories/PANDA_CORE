@@ -1,12 +1,14 @@
 from .deck import Deck
 from .errors import DeckLoaderError
 from .labware import (
+    BoundingBoxGeometry,
     Coordinate3D,
     HolderLabware,
     Labware,
     LabwareSlot,
     TipDisposal,
     TipHolder,
+    TipRack,
     VialHolder,
     WellPlate,
     WellPlateHolder,
@@ -18,6 +20,7 @@ from .yaml_schema import (
     DeckYamlSchema,
     TipDisposalYamlEntry,
     TipHolderYamlEntry,
+    TipRackYamlEntry,
     VialHolderYamlEntry,
     VialYamlEntry,
     WellPlateHolderYamlEntry,
@@ -26,12 +29,14 @@ from .yaml_schema import (
 
 __all__ = [
     "Deck",
+    "BoundingBoxGeometry",
     "Coordinate3D",
     "HolderLabware",
     "Labware",
     "LabwareSlot",
     "TipDisposal",
     "TipHolder",
+    "TipRack",
     "VialHolder",
     "WellPlate",
     "WellPlateHolder",
@@ -41,6 +46,7 @@ __all__ = [
     "DeckYamlSchema",
     "TipDisposalYamlEntry",
     "TipHolderYamlEntry",
+    "TipRackYamlEntry",
     "VialHolderYamlEntry",
     "WellPlateYamlEntry",
     "WellPlateHolderYamlEntry",

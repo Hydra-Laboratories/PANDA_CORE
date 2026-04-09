@@ -3,6 +3,7 @@ import pytest
 from pydantic import ValidationError
 
 from deck import (
+    BoundingBoxGeometry,
     WellPlate,
     Vial,
     Coordinate3D,
@@ -189,8 +190,34 @@ def test_vial_dimensions_and_location_lookup():
     assert vial.name == "standard_vial"
     assert vial.height_mm == pytest.approx(66.75)
     assert vial.diameter_mm == pytest.approx(28.00)
+    assert vial.geometry == BoundingBoxGeometry(
+        length_mm=28.0,
+        width_mm=28.0,
+        height_mm=66.75,
+    )
     assert vial.get_vial_center() == Coordinate3D(x=30.0, y=40.0, z=20.0)
     assert vial.get_initial_position() == Coordinate3D(x=30.0, y=40.0, z=20.0)
+
+
+def test_well_plate_exposes_shared_bounding_box_geometry():
+    plate = WellPlate(
+        name="SBS_96",
+        model_name="test_model",
+        length_mm=127.71,
+        width_mm=85.43,
+        height_mm=14.10,
+        rows=1,
+        columns=1,
+        wells={"A1": Coordinate3D(x=10.0, y=10.0, z=15.0)},
+        capacity_ul=200.0,
+        working_volume_ul=150.0,
+    )
+
+    assert plate.geometry == BoundingBoxGeometry(
+        length_mm=127.71,
+        width_mm=85.43,
+        height_mm=14.10,
+    )
 
 
 def test_vial_requires_positive_diameter():

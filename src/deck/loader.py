@@ -12,13 +12,17 @@ from pydantic import BaseModel, ValidationError
 from .deck import Deck
 from .labware import Coordinate3D, Labware
 from .labware.holder import LabwareSlot, TipDisposal, TipHolder, VialHolder, WellPlateHolder
+from .labware.tip_rack import TipRack
 from .labware.vial import Vial
 from .labware.well_plate import WellPlate
 from .errors import DeckLoaderError
 from .yaml_schema import (
     DeckYamlSchema,
+    NestedVialYamlEntry,
+    NestedWellPlateYamlEntry,
     TipDisposalYamlEntry,
     TipHolderYamlEntry,
+    TipRackYamlEntry,
     VialHolderYamlEntry,
     VialYamlEntry,
     WellPlateHolderYamlEntry,
@@ -82,6 +86,7 @@ def _resolve_user_z(
     height: float | None,
     total_z_height: float | None,
     context: str,
+    default_z: float | None = None,
 ) -> float:
     """Resolve a user-space Z using explicit z or total_z_height - height."""
     if height is not None:
@@ -92,6 +97,8 @@ def _resolve_user_z(
         return total_z_height - height
 
     if explicit_z is None:
+        if default_z is not None:
+            return default_z
         raise ValueError(
             f"{context}: z is required when labware `height` is not provided."
         )
@@ -128,6 +135,19 @@ def _build_holder_slots(
     }
 
 
+def _build_tip_rack(
+    entry: TipRackYamlEntry,
+    total_z_height: float | None,
+) -> TipRack:
+    del total_z_height
+    kwargs = _entry_kwargs_for_model(entry, TipRack)
+    kwargs["tips"] = {
+        tip_id: _point_to_coord(point, z_value=point.z if point.z is not None else entry.z_pickup)
+        for tip_id, point in entry.tips.items()
+    }
+    return TipRack(**kwargs)
+
+
 def _row_labels(rows: int) -> list[str]:
     if rows <= 0:
         raise ValueError("rows must be positive for row label generation.")
@@ -155,7 +175,7 @@ class _PlateOrientation:
     row_delta_y: float
 
 
-def _resolve_plate_orientation(entry: WellPlateYamlEntry) -> _PlateOrientation:
+def _resolve_plate_orientation(entry: Any) -> _PlateOrientation:
     """Determine column/row axis mapping from the two-point calibration.
 
     Returns a ``_PlateOrientation`` whose deltas are used to compute each
@@ -198,7 +218,7 @@ def _resolve_plate_orientation(entry: WellPlateYamlEntry) -> _PlateOrientation:
 
 
 def _derive_wells_from_calibration(
-    entry: WellPlateYamlEntry,
+    entry: Any,
     resolved_z: float,
 ) -> Dict[str, Coordinate3D]:
     """Build well ID -> Coordinate3D from calibration A1/A2 and offsets."""
@@ -265,21 +285,74 @@ def _build_holder(
     kwargs = _entry_kwargs_for_model(entry, model_class)
     kwargs["location"] = _point_to_coord(entry.location, z_value=resolved_z)
     kwargs["slots"] = _build_holder_slots(entry.slots, default_z=resolved_z)
-    return model_class(**kwargs)
+    holder = model_class(**kwargs)
+
+    seat_height = getattr(holder, "labware_seat_height_from_bottom_mm", None)
+    contained_labware: Dict[str, Labware] = {}
+    if seat_height is not None:
+        contained_z = holder.location.z + seat_height
+        if isinstance(entry, VialHolderYamlEntry):
+            contained_labware = {
+                vial_key: _build_nested_vial(
+                    vial_key,
+                    vial_entry,
+                    resolved_z=contained_z,
+                )
+                for vial_key, vial_entry in entry.vials.items()
+            }
+        elif isinstance(entry, WellPlateHolderYamlEntry) and entry.well_plate is not None:
+            contained_labware["plate"] = _build_nested_well_plate(
+                "plate",
+                entry.well_plate,
+                resolved_z=contained_z,
+            )
+
+    holder.contained_labware = contained_labware
+    return holder
 
 
-def load_deck_from_yaml(
-    path: str | Path,
-    total_z_height: float | None = None,
-) -> Deck:
-    """
-    Load a deck YAML file and return a Deck containing all labware.
-    """
-    path = Path(path)
-    with path.open() as f:
-        raw = yaml.safe_load(f)
-    if raw is None:
-        raw = {}
+def _build_nested_vial(
+    vial_key: str,
+    entry: NestedVialYamlEntry,
+    *,
+    resolved_z: float,
+) -> Vial:
+    return Vial(
+        name=entry.name or vial_key,
+        model_name=entry.model_name,
+        height_mm=entry.height_mm,
+        diameter_mm=entry.diameter_mm,
+        location=Coordinate3D(
+            x=entry.location.x,
+            y=entry.location.y,
+            z=resolved_z,
+        ),
+        capacity_ul=entry.capacity_ul,
+        working_volume_ul=entry.working_volume_ul,
+    )
+
+
+def _build_nested_well_plate(
+    plate_key: str,
+    entry: NestedWellPlateYamlEntry,
+    *,
+    resolved_z: float,
+) -> WellPlate:
+    return WellPlate(
+        name=entry.name or plate_key,
+        model_name=entry.model_name,
+        length_mm=entry.length_mm,
+        width_mm=entry.width_mm,
+        height_mm=entry.height_mm,
+        rows=entry.rows,
+        columns=entry.columns,
+        wells=_derive_wells_from_calibration(entry, resolved_z=resolved_z),
+        capacity_ul=entry.capacity_ul,
+        working_volume_ul=entry.working_volume_ul,
+    )
+
+
+def _build_deck_from_raw(raw: dict[str, Any], *, total_z_height: float | None = None) -> Deck:
     schema = DeckYamlSchema.model_validate(raw)
     labware: Dict[str, Labware] = {}
     for name, entry in schema.labware.items():
@@ -287,6 +360,8 @@ def load_deck_from_yaml(
             labware[name] = _build_well_plate(entry, total_z_height=total_z_height)
         elif isinstance(entry, VialYamlEntry):
             labware[name] = _build_vial(entry, total_z_height=total_z_height)
+        elif isinstance(entry, TipRackYamlEntry):
+            labware[name] = _build_tip_rack(entry, total_z_height=total_z_height)
         elif isinstance(entry, TipHolderYamlEntry):
             labware[name] = _build_holder(
                 entry,
@@ -314,6 +389,21 @@ def load_deck_from_yaml(
         else:
             raise TypeError(f"Unsupported deck labware entry type: {type(entry).__name__}")
     return Deck(labware)
+
+
+def load_deck_from_yaml(
+    path: str | Path,
+    total_z_height: float | None = None,
+) -> Deck:
+    """
+    Load a deck YAML file and return a Deck containing all labware.
+    """
+    resolved_path = Path(path)
+    with resolved_path.open() as handle:
+        raw = yaml.safe_load(handle)
+    if raw is None:
+        raw = {}
+    return _build_deck_from_raw(raw, total_z_height=total_z_height)
 
 
 def load_deck_from_yaml_safe(
