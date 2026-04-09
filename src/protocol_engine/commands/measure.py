@@ -6,7 +6,7 @@ import inspect
 import json
 import logging
 import sqlite3
-from typing import Any, Dict, TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
 from ..errors import ProtocolExecutionError
 from ..measurements import normalize_measurement
@@ -31,7 +31,7 @@ def measure(
     instrument: str,
     position: str,
     method: str = "measure",
-    method_kwargs: Dict[str, Any] | None = None,
+    method_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Any:
     """Measure at a deck position using *instrument*.
 
