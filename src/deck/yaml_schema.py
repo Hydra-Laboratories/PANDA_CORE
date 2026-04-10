@@ -263,6 +263,17 @@ class TipDisposalYamlEntry(_BaseHolderYamlEntry):
     model_name: str = "tip_disposal"
 
 
+class WallYamlEntry(BaseModel):
+    """Rectangular obstacle defined by two opposite corners."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["wall"] = "wall"
+    name: str
+    corner_1: _YamlPoint3D
+    corner_2: _YamlPoint3D
+
+
 class WellPlateHolderYamlEntry(_BaseHolderYamlEntry):
     type: Literal["well_plate_holder"] = "well_plate_holder"
     model_name: str = "SlideHolder_Top"
@@ -296,6 +307,7 @@ LabwareYamlEntry = Annotated[
         VialYamlEntry,
         TipRackYamlEntry,
         TipDisposalYamlEntry,
+        WallYamlEntry,
         WellPlateHolderYamlEntry,
         VialHolderYamlEntry,
     ],

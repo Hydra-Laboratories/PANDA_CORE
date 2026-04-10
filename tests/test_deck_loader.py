@@ -7,7 +7,7 @@ import pytest
 
 from pydantic import ValidationError
 
-from deck import WellPlate, Vial, Coordinate3D, Deck, TipRack
+from deck import WellPlate, Vial, Coordinate3D, Deck, TipRack, Wall
 from deck.loader import (
     DeckLoaderError,
     _PlateOrientation,
@@ -1002,5 +1002,120 @@ class TestTipRackDimensionForwarding:
             assert rack.width_mm == pytest.approx(1.0)
             # height auto-derives to 1.0 when z_drop is not provided
             assert rack.height_mm == pytest.approx(1.0)
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+
+# ----- Wall labware -----
+
+VALID_WALL = """
+labware:
+  front_wall:
+    type: wall
+    name: front_wall
+    corner_1: { x: 96.0, y: 155.0, z: 0.0 }
+    corner_2: { x: 226.0, y: 160.0, z: 40.0 }
+"""
+
+
+class TestWallLabware:
+
+    def test_wall_loads_with_correct_corners(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(VALID_WALL)
+            path = f.name
+        try:
+            deck = load_deck_from_yaml(path)
+            wall = deck["front_wall"]
+            assert isinstance(wall, Wall)
+            assert wall.corner_1.x == pytest.approx(96.0)
+            assert wall.corner_1.y == pytest.approx(155.0)
+            assert wall.corner_1.z == pytest.approx(0.0)
+            assert wall.corner_2.x == pytest.approx(226.0)
+            assert wall.corner_2.y == pytest.approx(160.0)
+            assert wall.corner_2.z == pytest.approx(40.0)
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_wall_derives_dimensions_from_corners(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(VALID_WALL)
+            path = f.name
+        try:
+            deck = load_deck_from_yaml(path)
+            wall = deck["front_wall"]
+            assert wall.length_mm == pytest.approx(130.0)
+            assert wall.width_mm == pytest.approx(5.0)
+            assert wall.height_mm == pytest.approx(40.0)
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_wall_bounding_box_properties(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(VALID_WALL)
+            path = f.name
+        try:
+            deck = load_deck_from_yaml(path)
+            wall = deck["front_wall"]
+            assert wall.x_min == pytest.approx(96.0)
+            assert wall.x_max == pytest.approx(226.0)
+            assert wall.y_min == pytest.approx(155.0)
+            assert wall.y_max == pytest.approx(160.0)
+            assert wall.z_min == pytest.approx(0.0)
+            assert wall.z_max == pytest.approx(40.0)
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_wall_iter_positions_returns_corners(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(VALID_WALL)
+            path = f.name
+        try:
+            deck = load_deck_from_yaml(path)
+            wall = deck["front_wall"]
+            positions = wall.iter_positions()
+            assert "min" in positions
+            assert "max" in positions
+            assert positions["min"].x == pytest.approx(96.0)
+            assert positions["max"].x == pytest.approx(226.0)
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_wall_inverted_corners_fails(self):
+        yaml_str = """
+labware:
+  bad_wall:
+    type: wall
+    name: bad_wall
+    corner_1: { x: 200.0, y: 50.0, z: 0.0 }
+    corner_2: { x: 100.0, y: 55.0, z: 40.0 }
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_str)
+            path = f.name
+        try:
+            with pytest.raises(Exception, match="corner_1.x must be < corner_2.x"):
+                load_deck_from_yaml(path)
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_wall_rejects_extra_fields(self):
+        yaml_str = """
+labware:
+  bad_wall:
+    type: wall
+    name: bad_wall
+    corner_1: { x: 10.0, y: 20.0, z: 0.0 }
+    corner_2: { x: 110.0, y: 25.0, z: 40.0 }
+    slots:
+      s1:
+        location: { x: 15.0, y: 25.0, z: 5.0 }
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_str)
+            path = f.name
+        try:
+            with pytest.raises(Exception):
+                load_deck_from_yaml(path)
         finally:
             Path(path).unlink(missing_ok=True)

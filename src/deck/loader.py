@@ -18,6 +18,7 @@ from .labware.definitions.registry import (
 from .labware.holder import LabwareSlot
 from .labware.tip_disposal import TipDisposal
 from .labware.tip_rack import TipRack
+from .labware.wall import Wall
 from .labware.vial import Vial
 from .labware.vial_holder import VialHolder
 from .labware.well_plate import WellPlate
@@ -30,6 +31,7 @@ from .yaml_schema import (
     TipDisposalYamlEntry,
     TipRackYamlEntry,
     VialHolderYamlEntry,
+    WallYamlEntry,
     VialYamlEntry,
     WellPlateHolderYamlEntry,
     WellPlateYamlEntry,
@@ -445,6 +447,20 @@ def _build_deck_from_raw(raw: dict[str, Any], *, total_z_height: float | None = 
                 entry,
                 total_z_height=total_z_height,
                 model_class=TipDisposal,
+            )
+        elif isinstance(entry, WallYamlEntry):
+            labware[name] = Wall(
+                name=entry.name,
+                corner_1=Coordinate3D(
+                    x=entry.corner_1.x,
+                    y=entry.corner_1.y,
+                    z=entry.corner_1.z if entry.corner_1.z is not None else 0.0,
+                ),
+                corner_2=Coordinate3D(
+                    x=entry.corner_2.x,
+                    y=entry.corner_2.y,
+                    z=entry.corner_2.z if entry.corner_2.z is not None else 0.0,
+                ),
             )
         elif isinstance(entry, WellPlateHolderYamlEntry):
             labware[name] = _build_holder(
