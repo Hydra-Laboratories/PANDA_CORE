@@ -84,6 +84,21 @@ deck YAMLs keep working unmodified.
 See each `definitions/<name>/README.md` for physical dimensions,
 assembly notes, and 3D-printable STEP/STL files where applicable.
 
+## Z Coordinates
+
+Labware positions can define Z in either of two ways:
+
+- Provide explicit `z` values on calibration or location points.
+- Provide `height` on the labware entry and load the deck with the gantry `total_z_height`; CubOS computes Z as `total_z_height - height`.
+
+If `height` is used, `total_z_height` must be available from the gantry config. If `height` is not used, explicit Z coordinates are required.
+
+## Well Plate Calibration
+
+For well plates, `calibration.a1` is the A1 well center and `calibration.a2` must be one adjacent column step from A1. A2 must share either the same X or the same Y as A1, and its delta must match either `x_offset_mm` or `y_offset_mm` depending on the plate orientation. Diagonal calibration is rejected.
+
+Top-level `a1` is still accepted for backward compatibility, but new deck files should use `calibration.a1`.
+
 ## Labware Types
 
 - **`well_plate`** — multi-well microplate defined by rows, columns, and

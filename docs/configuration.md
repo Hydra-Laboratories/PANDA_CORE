@@ -17,7 +17,9 @@ configs/
 Gantry YAML defines:
 
 - serial port
-- homing strategy
+- CNC homing strategy
+- total Z reference height
+- Y-axis motion mode
 - working volume
 - optional GRBL settings expectations
 
@@ -27,6 +29,8 @@ Representative example:
 serial_port: /dev/cu.usbserial-140
 cnc:
   homing_strategy: xy_hard_limits
+  total_z_height: 90.0
+  y_axis_motion: head
 
 working_volume:
   x_min: 0.0
@@ -89,6 +93,7 @@ Representative example:
 instruments:
   uvvis:
     type: uvvis_ccs
+    vendor: thorlabs
     serial_number: "M00801544"
     dll_path: "TLCCS_64.dll"
     default_integration_time_s: 0.24
@@ -117,6 +122,7 @@ protocol:
       position: plate_1.A1
   - measure:
       instrument: uvvis
+      position: plate_1.A1
 ```
 
 Use this file when:

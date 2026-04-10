@@ -55,10 +55,9 @@ Use this file when:
 |---------|-------------|
 | `move` | Move an instrument to a deck position |
 | `scan` | Iterate all wells on a plate, calling an instrument method per well |
-| `measure` | Single measurement with an instrument |
+| `measure` | Move to one deck position, then call an instrument method |
 | `pick_up_tip` | Pipette: pick up a tip |
 | `aspirate` | Pipette: draw liquid |
-| `dispense` | Pipette: deliver liquid |
 | `transfer` | Pipette: combined move + aspirate + move + dispense |
 | `serial_transfer` | Pipette: sequential transfers across positions |
 | `mix` | Pipette: aspirate/dispense repeatedly |
@@ -67,6 +66,28 @@ Use this file when:
 | `home` | Home the gantry |
 | `pause` | Pause execution for N seconds |
 | `breakpoint` | Debug pause with user prompt |
+
+`dispense` exists as an internal helper used by `transfer`, but it is not currently registered as a YAML protocol command.
+
+## Position Values
+
+The `move` command accepts:
+
+- a named position from the top-level `positions` mapping
+- raw `[x, y, z]` coordinates
+- a deck target string such as `plate_1.A1` or `vial_1`
+
+The `measure` command requires both `instrument` and `position`. It resolves the deck target, applies the instrument's `measurement_height`, moves there, and then calls the selected method. The default method is `measure`.
+
+Example:
+
+```yaml
+protocol:
+  - measure:
+      instrument: uvvis
+      position: plate_1.A1
+      method: measure
+```
 
 ## Where Commands Live
 
