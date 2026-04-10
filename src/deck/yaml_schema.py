@@ -263,15 +263,15 @@ class TipDisposalYamlEntry(_BaseHolderYamlEntry):
     model_name: str = "tip_disposal"
 
 
-class WallYamlEntry(_BaseHolderYamlEntry):
-    """Rectangular obstacle. Dimensions are required (not optional)."""
+class WallYamlEntry(BaseModel):
+    """Rectangular obstacle defined by two opposite corners."""
+
+    model_config = ConfigDict(extra="forbid")
 
     type: Literal["wall"] = "wall"
-    model_name: str = "wall"
-    length_mm: float = Field(..., gt=0)
-    width_mm: float = Field(..., gt=0)
-    height_mm: float = Field(..., gt=0)
-    slots: Dict[str, _YamlHolderSlot] = Field(default_factory=dict, max_length=0)
+    name: str
+    corner_min: _YamlPoint3D
+    corner_max: _YamlPoint3D
 
 
 class WellPlateHolderYamlEntry(_BaseHolderYamlEntry):

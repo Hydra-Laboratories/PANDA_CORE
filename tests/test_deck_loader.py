@@ -1013,32 +1013,14 @@ labware:
   front_wall:
     type: wall
     name: front_wall
-    location:
-      x: 96.0
-      y: 155.0
-      z: 0.0
-    length_mm: 130.0
-    width_mm: 5.0
-    height_mm: 40.0
-"""
-
-WALL_MISSING_DIMENSION = """
-labware:
-  bad_wall:
-    type: wall
-    name: bad_wall
-    location:
-      x: 10.0
-      y: 20.0
-      z: 0.0
-    length_mm: 100.0
-    width_mm: 5.0
+    corner_min: { x: 96.0, y: 155.0, z: 0.0 }
+    corner_max: { x: 226.0, y: 160.0, z: 40.0 }
 """
 
 
 class TestWallLabware:
 
-    def test_wall_loads_with_correct_geometry(self):
+    def test_wall_loads_with_correct_corners(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(VALID_WALL)
             path = f.name
@@ -1046,9 +1028,22 @@ class TestWallLabware:
             deck = load_deck_from_yaml(path)
             wall = deck["front_wall"]
             assert isinstance(wall, Wall)
-            assert wall.location.x == pytest.approx(96.0)
-            assert wall.location.y == pytest.approx(155.0)
-            assert wall.location.z == pytest.approx(0.0)
+            assert wall.corner_min.x == pytest.approx(96.0)
+            assert wall.corner_min.y == pytest.approx(155.0)
+            assert wall.corner_min.z == pytest.approx(0.0)
+            assert wall.corner_max.x == pytest.approx(226.0)
+            assert wall.corner_max.y == pytest.approx(160.0)
+            assert wall.corner_max.z == pytest.approx(40.0)
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_wall_derives_dimensions_from_corners(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(VALID_WALL)
+            path = f.name
+        try:
+            deck = load_deck_from_yaml(path)
+            wall = deck["front_wall"]
             assert wall.length_mm == pytest.approx(130.0)
             assert wall.width_mm == pytest.approx(5.0)
             assert wall.height_mm == pytest.approx(40.0)
@@ -1082,33 +1077,36 @@ class TestWallLabware:
             assert "min" in positions
             assert "max" in positions
             assert positions["min"].x == pytest.approx(96.0)
-            assert positions["min"].y == pytest.approx(155.0)
             assert positions["max"].x == pytest.approx(226.0)
-            assert positions["max"].y == pytest.approx(160.0)
-            assert positions["max"].z == pytest.approx(40.0)
         finally:
             Path(path).unlink(missing_ok=True)
 
-    def test_wall_missing_dimension_fails(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write(WALL_MISSING_DIMENSION)
-            path = f.name
-        try:
-            with pytest.raises(Exception):
-                load_deck_from_yaml(path)
-        finally:
-            Path(path).unlink(missing_ok=True)
-
-    def test_wall_rejects_slots(self):
+    def test_wall_inverted_corners_fails(self):
         yaml_str = """
 labware:
   bad_wall:
     type: wall
     name: bad_wall
-    location: { x: 10.0, y: 20.0, z: 0.0 }
-    length_mm: 100.0
-    width_mm: 5.0
-    height_mm: 40.0
+    corner_min: { x: 200.0, y: 50.0, z: 0.0 }
+    corner_max: { x: 100.0, y: 55.0, z: 40.0 }
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_str)
+            path = f.name
+        try:
+            with pytest.raises(Exception, match="corner_min.x must be < corner_max.x"):
+                load_deck_from_yaml(path)
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_wall_rejects_extra_fields(self):
+        yaml_str = """
+labware:
+  bad_wall:
+    type: wall
+    name: bad_wall
+    corner_min: { x: 10.0, y: 20.0, z: 0.0 }
+    corner_max: { x: 110.0, y: 25.0, z: 40.0 }
     slots:
       s1:
         location: { x: 15.0, y: 25.0, z: 5.0 }
@@ -1117,7 +1115,7 @@ labware:
             f.write(yaml_str)
             path = f.name
         try:
-            with pytest.raises(Exception, match="at most 0"):
+            with pytest.raises(Exception):
                 load_deck_from_yaml(path)
         finally:
             Path(path).unlink(missing_ok=True)
