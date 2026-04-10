@@ -1013,8 +1013,8 @@ labware:
   front_wall:
     type: wall
     name: front_wall
-    corner_min: { x: 96.0, y: 155.0, z: 0.0 }
-    corner_max: { x: 226.0, y: 160.0, z: 40.0 }
+    corner_1: { x: 96.0, y: 155.0, z: 0.0 }
+    corner_2: { x: 226.0, y: 160.0, z: 40.0 }
 """
 
 
@@ -1028,12 +1028,12 @@ class TestWallLabware:
             deck = load_deck_from_yaml(path)
             wall = deck["front_wall"]
             assert isinstance(wall, Wall)
-            assert wall.corner_min.x == pytest.approx(96.0)
-            assert wall.corner_min.y == pytest.approx(155.0)
-            assert wall.corner_min.z == pytest.approx(0.0)
-            assert wall.corner_max.x == pytest.approx(226.0)
-            assert wall.corner_max.y == pytest.approx(160.0)
-            assert wall.corner_max.z == pytest.approx(40.0)
+            assert wall.corner_1.x == pytest.approx(96.0)
+            assert wall.corner_1.y == pytest.approx(155.0)
+            assert wall.corner_1.z == pytest.approx(0.0)
+            assert wall.corner_2.x == pytest.approx(226.0)
+            assert wall.corner_2.y == pytest.approx(160.0)
+            assert wall.corner_2.z == pytest.approx(40.0)
         finally:
             Path(path).unlink(missing_ok=True)
 
@@ -1087,14 +1087,14 @@ labware:
   bad_wall:
     type: wall
     name: bad_wall
-    corner_min: { x: 200.0, y: 50.0, z: 0.0 }
-    corner_max: { x: 100.0, y: 55.0, z: 40.0 }
+    corner_1: { x: 200.0, y: 50.0, z: 0.0 }
+    corner_2: { x: 100.0, y: 55.0, z: 40.0 }
 """
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_str)
             path = f.name
         try:
-            with pytest.raises(Exception, match="corner_min.x must be < corner_max.x"):
+            with pytest.raises(Exception, match="corner_1.x must be < corner_2.x"):
                 load_deck_from_yaml(path)
         finally:
             Path(path).unlink(missing_ok=True)
@@ -1105,8 +1105,8 @@ labware:
   bad_wall:
     type: wall
     name: bad_wall
-    corner_min: { x: 10.0, y: 20.0, z: 0.0 }
-    corner_max: { x: 110.0, y: 25.0, z: 40.0 }
+    corner_1: { x: 10.0, y: 20.0, z: 0.0 }
+    corner_2: { x: 110.0, y: 25.0, z: 40.0 }
     slots:
       s1:
         location: { x: 15.0, y: 25.0, z: 5.0 }

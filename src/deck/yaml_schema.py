@@ -270,8 +270,8 @@ class WallYamlEntry(BaseModel):
 
     type: Literal["wall"] = "wall"
     name: str
-    corner_min: _YamlPoint3D
-    corner_max: _YamlPoint3D
+    corner_1: _YamlPoint3D
+    corner_2: _YamlPoint3D
 
 
 class WellPlateHolderYamlEntry(_BaseHolderYamlEntry):

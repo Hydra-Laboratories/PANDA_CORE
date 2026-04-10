@@ -451,15 +451,15 @@ def _build_deck_from_raw(raw: dict[str, Any], *, total_z_height: float | None = 
         elif isinstance(entry, WallYamlEntry):
             labware[name] = Wall(
                 name=entry.name,
-                corner_min=Coordinate3D(
-                    x=entry.corner_min.x,
-                    y=entry.corner_min.y,
-                    z=entry.corner_min.z if entry.corner_min.z is not None else 0.0,
+                corner_1=Coordinate3D(
+                    x=entry.corner_1.x,
+                    y=entry.corner_1.y,
+                    z=entry.corner_1.z if entry.corner_1.z is not None else 0.0,
                 ),
-                corner_max=Coordinate3D(
-                    x=entry.corner_max.x,
-                    y=entry.corner_max.y,
-                    z=entry.corner_max.z if entry.corner_max.z is not None else 0.0,
+                corner_2=Coordinate3D(
+                    x=entry.corner_2.x,
+                    y=entry.corner_2.y,
+                    z=entry.corner_2.z if entry.corner_2.z is not None else 0.0,
                 ),
             )
         elif isinstance(entry, WellPlateHolderYamlEntry):
