@@ -271,6 +271,7 @@ class WallYamlEntry(_BaseHolderYamlEntry):
     length_mm: float = Field(..., gt=0)
     width_mm: float = Field(..., gt=0)
     height_mm: float = Field(..., gt=0)
+    slots: Dict[str, _YamlHolderSlot] = Field(default_factory=dict, max_length=0)
 
 
 class WellPlateHolderYamlEntry(_BaseHolderYamlEntry):
