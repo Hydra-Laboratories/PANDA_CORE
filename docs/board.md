@@ -10,6 +10,7 @@ Representative example:
 instruments:
   asmi:
     type: asmi
+    vendor: vernier
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
@@ -24,9 +25,24 @@ Use this file when:
 - offsets or reach depths change
 - instrument-specific connection settings change
 
+## Schema
+
+The top-level YAML key is `instruments`. Each instrument entry requires:
+
+- `type` - instrument type key from the registry
+- `vendor` - allowed vendor for that type
+
+Common optional fields are:
+
+- `offset_x` and `offset_y` - XY offset from the gantry head reference point
+- `depth` - Z offset from the gantry head reference point
+- `measurement_height` - instrument-specific height offset used by measurement commands
+
+Driver-specific fields, such as serial ports, DLL paths, pipette models, or sensor channels, are passed through to the instrument driver constructor. Unknown top-level keys are rejected.
+
 ## Supported Instruments
 
-All instruments have real drivers and mock variants for offline testing.
+The board loader validates each `type` and `vendor` against the instrument registry, then instantiates the matching driver. Offline validation can pass `mock_mode=True`, which creates the configured drivers with `offline=True`.
 
 | Instrument | Type Key | Vendor | Description |
 |------------|----------|--------|-------------|
