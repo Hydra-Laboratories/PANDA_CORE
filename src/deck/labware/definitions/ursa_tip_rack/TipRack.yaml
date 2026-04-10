@@ -1,0 +1,19 @@
+# TipRack (deck.labware.tip_rack.TipRack) — Ursa 2-column × 15-row tip rack.
+#
+# Matches the WellPlate calibration pattern: a two-point anchor (`a1`, `a2`)
+# plus per-column / per-row offsets, with the full 30-tip grid derived by
+# the loader. Override `calibration.a1` and `calibration.a2` in your deck
+# YAML to re-anchor the rack on a specific deck position.
+
+type: tip_rack
+name: ursa_tip_rack
+model_name: panda_2x15_tip_rack
+rows: 15
+columns: 2
+z_pickup: 191.0
+z_drop: 174.8
+calibration:
+  a1: { x: 111.9, y: 2.7 }
+  a2: { x: 120.4, y: 2.7 }   # same y as a1 → next column (a1.x + x_offset_mm)
+x_offset_mm: 8.5
+y_offset_mm: 8.5

@@ -1,0 +1,28 @@
+# WellPlate (deck.labware.well_plate.WellPlate) — generic SBS ANSI-standard
+# 96-well microplate template.
+#
+# Follows the ANSI SLAS 1-2004 (footprint) and SLAS 4-2004 (well positions)
+# standards: 127.76 × 85.47 mm outer footprint, 8 rows × 12 columns on a
+# 9 mm grid, A1 anchored 14.38 mm x / 11.24 mm y from the plate corner.
+#
+# The `calibration` values below are placeholders anchored at plate origin;
+# override `calibration.a1` and `calibration.a2` in your deck YAML with
+# real deck coordinates before use. `capacity_ul` and `working_volume_ul`
+# default to a typical 200 µL / 150 µL shallow well — override for deep
+# wells, V-bottoms, or other vendor-specific variants.
+
+type: well_plate
+name: sbs_96_wellplate
+model_name: sbs_96_wellplate
+rows: 8
+columns: 12
+length_mm: 127.76
+width_mm: 85.47
+height_mm: 14.35
+calibration:
+  a1: { x: 14.38, y: 11.24 }   # SBS A1 offset from plate corner
+  a2: { x: 23.38, y: 11.24 }   # next column (a1.x + x_offset_mm)
+x_offset_mm: 9.0
+y_offset_mm: 9.0
+capacity_ul: 200.0
+working_volume_ul: 150.0

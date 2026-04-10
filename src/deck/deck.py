@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Dict, Iterator, Union
+from typing import Dict, Iterator
 
 from .labware.labware import Coordinate3D, Labware
-from .labware.vial import Vial
-from .labware.well_plate import WellPlate
 
 
 class Deck:
@@ -18,11 +16,11 @@ class Deck:
     deck coordinates.
     """
 
-    def __init__(self, labware: Dict[str, Union[WellPlate, Vial]]) -> None:
+    def __init__(self, labware: Dict[str, Labware]) -> None:
         self._labware = dict(labware)
 
     @property
-    def labware(self) -> Dict[str, Union[WellPlate, Vial]]:
+    def labware(self) -> Dict[str, Labware]:
         return self._labware
 
     def resolve(self, target: str) -> Coordinate3D:
@@ -39,13 +37,13 @@ class Deck:
             return self._get_labware(labware_key).get_location(location_id)
         return self._get_labware(target).get_initial_position()
 
-    def _get_labware(self, key: str) -> Union[WellPlate, Vial]:
+    def _get_labware(self, key: str) -> Labware:
         try:
             return self._labware[key]
         except KeyError:
             raise KeyError(f"No labware '{key}' on deck.") from None
 
-    def __getitem__(self, key: str) -> Union[WellPlate, Vial]:
+    def __getitem__(self, key: str) -> Labware:
         return self._get_labware(key)
 
     def __contains__(self, key: object) -> bool:

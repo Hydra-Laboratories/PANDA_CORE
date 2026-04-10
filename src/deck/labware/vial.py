@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
-from .labware import Labware, Coordinate3D
+from .labware import BoundingBoxGeometry, Coordinate3D, Labware
 
 
 class Vial(Labware):
@@ -34,6 +34,11 @@ class Vial(Labware):
     def _validate_working_le_capacity(self) -> "Vial":
         if self.working_volume_ul > self.capacity_ul:
             raise ValueError("working_volume_ul must be <= capacity_ul.")
+        self.geometry = BoundingBoxGeometry(
+            length_mm=self.diameter_mm,
+            width_mm=self.diameter_mm,
+            height_mm=self.height_mm,
+        )
         return self
 
     @field_validator("diameter_mm")
@@ -55,3 +60,6 @@ class Vial(Labware):
         Initial position for a single vial is its center location.
         """
         return self.location
+
+    def iter_positions(self) -> dict[str, Coordinate3D]:
+        return {"location": self.location}

@@ -1,7 +1,7 @@
 [project]
 name = "cubos"
 version = "0.1.0"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "pyserial",
     "pyyaml",
@@ -9,7 +9,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = [
+    "pytest",
+    # Needed by tests/instruments/test_registry_packaging.py, which shells
+    # out to setuptools.build_meta. Python 3.12+ no longer bundles setuptools.
+    "setuptools",
+]
 docs = [
     "mkdocs>=1.6",
     "mkdocs-gen-files>=0.5",

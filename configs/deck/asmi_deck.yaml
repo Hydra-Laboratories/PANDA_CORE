@@ -4,11 +4,9 @@
 
 labware:
   plate:
-    type: well_plate
+    load_name: sbs_96_wellplate
     name: asmi_96_well
     model_name: asmi_96_well
-    rows: 8
-    columns: 12
     calibration:
       a1:
         x: -49.7
@@ -18,5 +16,6 @@ labware:
         x: -58.7
         y: -236.8
         z: -50.0 # z_initial (z_safe)
+    # Override: ASMI deck orientation walks columns in -x direction.
     x_offset_mm: -9.0
-    y_offset_mm: 9.0
+    # y_offset_mm inherits the 9.0 default from sbs_96_wellplate.

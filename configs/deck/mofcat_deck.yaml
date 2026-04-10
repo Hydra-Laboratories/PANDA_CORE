@@ -2,13 +2,10 @@
 
 labware:
   plate_1:
-    type: well_plate
+    load_name: sbs_96_wellplate
     name: corning_96_well_360ul
     model_name: corning_3590_96well
-    rows: 8
-    columns: 12
-    length_mm: 127.76
-    width_mm: 85.47
+    # Corning 3590 is 14.22 mm tall (standard SBS template assumes 14.35 mm).
     height_mm: 14.22
     calibration:
       a1:
@@ -18,8 +15,6 @@ labware:
         x: 17.88
         y: 51.23
     height: 20.0
-    x_offset_mm: 9.0
-    y_offset_mm: 9.0
+    # Override the 200/150 µL template defaults for this 360 µL round-bottom plate.
     capacity_ul: 360.0
     working_volume_ul: 200.0
-
