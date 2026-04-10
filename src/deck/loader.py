@@ -215,18 +215,14 @@ def _build_tip_rack(
     else:
         loc = tips["A1"]
 
-    return TipRack(
-        name=entry.name,
-        model_name=entry.model_name,
+    kwargs = _entry_kwargs_for_model(entry, TipRack)
+    kwargs.update(
         location=loc,
-        rows=entry.rows,
-        columns=entry.columns,
-        z_pickup=entry.z_pickup,
-        z_drop=entry.z_drop,
         tips=tips,
         tip_present=dict(entry.tip_present),
         slots=_build_holder_slots(entry.slots, default_z=loc.z),
     )
+    return TipRack(**kwargs)
 
 
 def _row_labels(rows: int) -> list[str]:
