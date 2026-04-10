@@ -52,6 +52,26 @@ Driver for the Thorlabs CCS-series compact spectrometers (CCS100/CCS175/CCS200).
 - **`models.py`**: `UVVisSpectrum` frozen dataclass (`wavelengths`, `intensities`, `integration_time_s`, `is_valid`, `num_pixels`). `NUM_PIXELS = 3648`.
 - **`exceptions.py`**: `UVVisCCSError` hierarchy (`UVVisCCSConnectionError`, `UVVisCCSMeasurementError`, `UVVisCCSTimeoutError`).
 
+#### ASMI Force Sensor (`src/instruments/asmi`)
+Driver for the Vernier GoDirect force sensor used for ASMI indentation/force measurements over USB.
+
+- **`driver.py`**: `ASMI(BaseInstrument)` — real GoDirect driver with `offline=True` support for dry runs.
+    - **Constructor**: `ASMI(..., default_force=0.0, force_threshold=-100, z_target=-17.0, step_size=0.01, force_limit=15.0, baseline_samples=10, ...)`
+    - **Lifecycle**: `connect()`, `disconnect()`, `health_check()`
+    - **Commands**: `measure(n_samples=1)`, `get_status()`, `get_force_reading()`, `get_baseline_force(samples)`, `indentation(gantry, ...)`
+- **`models.py`**: `MeasurementResult` and `ASMIStatus` frozen dataclasses.
+- **`exceptions.py`**: `ASMIError` hierarchy.
+
+#### UV Curing (`src/instruments/uv_curing`)
+Driver for the Excelitas OmniCure S1500 PRO UV curing system over RS-232 serial.
+
+- **`driver.py`**: `UVCuring(BaseInstrument)` — real serial driver with `offline=True` support for dry runs.
+    - **Constructor**: `UVCuring(port="/dev/ttyACM0", baud_rate=19200, default_intensity=100.0, default_exposure_time=1.0, name=None, ...)`
+    - **Lifecycle**: `connect()`, `disconnect()`, `health_check()`
+    - **Commands**: `cure(intensity=None, exposure_time=None)`, `measure(**kwargs)` as a protocol-compatible alias, `get_status()`
+- **`models.py`**: `CureResult` and `UVCuringStatus` frozen dataclasses.
+- **`exceptions.py`**: `UVCuringError` hierarchy.
+
 #### Pipette (`src/instruments/pipette`)
 Driver for Opentrons OT-2 and Flex pipettes. Communicates with the pipette motor via Arduino serial (Pawduino firmware). Supports 10 pipette models; the P300 single-channel has real calibrated values from the BEAR-DEN workcell.
 
@@ -71,7 +91,15 @@ A modular system for executing experiment sequences defined in code or YAML.
 - **`loader.py`**: `load_protocol_from_yaml(path)` and `_safe` variant.
 - **`registry.py`**: `CommandRegistry` singleton and `@protocol_command()` decorator for registering commands.
 - **`setup.py`**: `setup_protocol(gantry_path, deck_path, board_path, protocol_path)` — loads all configs, validates bounds, and returns `(Protocol, ProtocolContext)` ready to run. Uses an offline `Gantry` by default for offline validation.
-- **`commands/`**: Protocol command implementations (`move.py`, `pipette.py`, `scan.py`).
+- **`commands/`**: Protocol command implementations:
+  - `home`: home the gantry and zero coordinates.
+  - `move`: move an instrument to a named position, raw `[x, y, z]`, or deck target.
+  - `scan`: iterate all wells on a plate, call an instrument method per well, and persist measurements when a `DataStore` is configured.
+  - `measure`: move to one deck position and call an instrument method once.
+  - `pause`: sleep for a fixed number of seconds.
+  - `breakpoint`: pause until the user presses Enter.
+  - Pipette commands: `aspirate`, `pick_up_tip`, `transfer`, `serial_transfer`, `mix`, `blowout`, `drop_tip`.
+  - `dispense` exists as an internal helper only; use `transfer` in YAML so labware state is logged correctly.
 
 ### Gantry Config (`src/gantry`)
 Gantry YAML loader and domain model for CNC gantry working volume and homing strategy.
@@ -168,6 +196,22 @@ First-run scripts for verifying hardware after unboxing.
     - **Dependencies**: `src/gantry`, `src/deck`, `src/board`, `src/protocol_engine`, `src/validation`
 - **`keyboard_input.py`**: Helper module that reads single keypresses (including arrow keys) without requiring Enter. Uses `tty`/`termios` (Unix only).
 
+### Calibration (`calibration/`)
+- **`home_gantry.py`**: CNC homing wrapper that loads `configs/gantry/cubos_xl.yaml`, connects to the gantry, and runs the configured homing sequence.
+    - **Usage**: `python calibration/home_gantry.py`
+
+### Development Commands
+- **Install for development**:
+  ```bash
+  python -m venv .venv
+  source .venv/bin/activate
+  pip install -e ".[dev]"
+  ```
+- **Install docs extras**: `pip install -e ".[docs,dev]"`
+- **Run tests**: `pytest tests/`
+- **Build/serve docs**: use MkDocs commands from the docs environment, e.g. `mkdocs build` or `mkdocs serve`.
+
 ## Environment
-- **Python**: 3.x
-- **Dependencies**: `pyserial`, `opencv-python`, `pydantic`, `pyyaml`.
+- **Python**: 3.9+
+- **Dependencies**: `pyserial`, `pydantic`, `pyyaml`.
+- **Optional/dev dependencies**: `pytest`; docs extras install MkDocs and mkdocstrings.
