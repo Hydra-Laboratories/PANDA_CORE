@@ -7,7 +7,7 @@ import pytest
 
 from pydantic import ValidationError
 
-from deck import WellPlate, Vial, Coordinate3D, Deck
+from deck import WellPlate, Vial, Coordinate3D, Deck, TipRack
 from deck.loader import (
     DeckLoaderError,
     _PlateOrientation,
@@ -925,3 +925,82 @@ class TestResolvePlateOrientation:
         assert isinstance(orient, _PlateOrientation)
         with pytest.raises(AttributeError):
             orient.col_delta_x = 99.0
+
+
+# ----- TipRack dimension forwarding -----
+
+TIPRACK_WITH_EXPLICIT_DIMS = """
+labware:
+  rack:
+    type: tip_rack
+    name: test_rack
+    rows: 1
+    columns: 2
+    length_mm: 130.0
+    width_mm: 5.0
+    height_mm: 40.0
+    z_pickup: 30.0
+    calibration:
+      a1:
+        x: 10.0
+        y: 50.0
+      a2:
+        x: 110.0
+        y: 50.0
+    x_offset_mm: 100.0
+    y_offset_mm: 1.0
+"""
+
+TIPRACK_WITHOUT_EXPLICIT_DIMS = """
+labware:
+  rack:
+    type: tip_rack
+    name: test_rack
+    rows: 1
+    columns: 2
+    z_pickup: 30.0
+    calibration:
+      a1:
+        x: 10.0
+        y: 50.0
+      a2:
+        x: 110.0
+        y: 50.0
+    x_offset_mm: 100.0
+    y_offset_mm: 1.0
+"""
+
+
+class TestTipRackDimensionForwarding:
+
+    def test_explicit_dimensions_preserved(self):
+        """YAML-specified length/width/height must not be overridden by auto-derivation."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(TIPRACK_WITH_EXPLICIT_DIMS)
+            path = f.name
+        try:
+            deck = load_deck_from_yaml(path)
+            rack = deck["rack"]
+            assert isinstance(rack, TipRack)
+            assert rack.length_mm == pytest.approx(130.0)
+            assert rack.width_mm == pytest.approx(5.0)
+            assert rack.height_mm == pytest.approx(40.0)
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_omitted_dimensions_auto_derived(self):
+        """When dimensions are omitted, TipRack should auto-derive from tip positions."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(TIPRACK_WITHOUT_EXPLICIT_DIMS)
+            path = f.name
+        try:
+            deck = load_deck_from_yaml(path)
+            rack = deck["rack"]
+            assert isinstance(rack, TipRack)
+            # Auto-derived: length from tip spread (110-10=100), width clamped to 1.0
+            assert rack.length_mm == pytest.approx(100.0)
+            assert rack.width_mm == pytest.approx(1.0)
+            # height auto-derives to 1.0 when z_drop is not provided
+            assert rack.height_mm == pytest.approx(1.0)
+        finally:
+            Path(path).unlink(missing_ok=True)
