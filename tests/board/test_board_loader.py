@@ -49,10 +49,37 @@ class TestInstrumentYamlEntry:
         assert entry.offset_y == 0.0
         assert entry.depth == 0.0
         assert entry.measurement_height == 0.0
+        assert entry.collision_geometry is None
 
     def test_missing_vendor_raises(self):
         with pytest.raises(Exception):
             InstrumentYamlEntry(type="uvvis_ccs")
+
+    def test_accepts_collision_geometry(self):
+        entry = InstrumentYamlEntry.model_validate({
+            "type": "uvvis_ccs",
+            "vendor": "thorlabs",
+            "collision_geometry": {
+                "kind": "box",
+                "size": {"x": 10.0, "y": 20.0, "z": 30.0},
+                "origin_offset": {"x": -5.0, "y": -10.0, "z": 0.0},
+            },
+        })
+
+        assert entry.collision_geometry is not None
+        assert entry.collision_geometry.size.x == 10.0
+        assert entry.collision_geometry.origin_offset.y == -10.0
+
+    def test_rejects_invalid_collision_geometry_size(self):
+        with pytest.raises(Exception, match="positive"):
+            InstrumentYamlEntry.model_validate({
+                "type": "uvvis_ccs",
+                "vendor": "thorlabs",
+                "collision_geometry": {
+                    "kind": "box",
+                    "size": {"x": 0.0, "y": 20.0, "z": 30.0},
+                },
+            })
 
 
 class TestBoardYamlSchema:
@@ -158,6 +185,28 @@ class TestLoadBoardMeasurementHeight:
         """)
         board = load_board_from_yaml(yaml_path, _mock_gantry())
         assert board.instruments["sensor"].measurement_height == 0.0
+
+
+class TestLoadBoardCollisionGeometry:
+
+    def test_collision_geometry_attaches_to_instrument(self, tmp_path):
+        yaml_path = _write_yaml(tmp_path, """\
+            instruments:
+              sensor:
+                type: uvvis_ccs
+                vendor: thorlabs
+                collision_geometry:
+                  kind: box
+                  size: {x: 10.0, y: 20.0, z: 30.0}
+                  origin_offset: {x: -5.0, y: -10.0, z: 1.0}
+        """)
+
+        board = load_board_from_yaml(yaml_path, _mock_gantry())
+
+        geometry = board.instruments["sensor"].collision_geometry
+        assert geometry["kind"] == "box"
+        assert geometry["size"]["x"] == 10.0
+        assert geometry["origin_offset"]["z"] == 1.0
 
 
 class TestLoadBoardGantry:

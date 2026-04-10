@@ -15,7 +15,12 @@ from gantry.loader import load_gantry_from_yaml_safe
 from protocol_engine.loader import load_protocol_from_yaml_safe
 from protocol_engine.protocol import Protocol, ProtocolContext
 from validation.bounds import validate_deck_positions, validate_gantry_positions
-from validation.errors import SetupValidationError
+from validation.collision import (
+    CollisionSettings,
+    CollisionValidationMode,
+    validate_collision_safety,
+)
+from validation.errors import CollisionValidationError, SetupValidationError
 
 
 def setup_protocol(
@@ -25,6 +30,9 @@ def setup_protocol(
     protocol_path: str | Path,
     gantry=None,
     mock_mode: bool = False,
+    collision_validation: bool = False,
+    collision_mode: str = "strict",
+    collision_clearance_mm: float = 2.0,
 ) -> Tuple[Protocol, ProtocolContext]:
     """Load all configs, validate bounds, and return a ready-to-run protocol.
 
@@ -45,6 +53,10 @@ def setup_protocol(
         gantry: Optional Gantry instance. If None, an offline Gantry is used
             for validation.
         mock_mode: If True, instantiate real driver classes in offline mode.
+        collision_validation: If True, run opt-in static collision validation.
+        collision_mode: 'strict' blocks setup on missing geometry; 'report_only'
+            records missing geometry as warnings.
+        collision_clearance_mm: Required Z clearance for static envelope checks.
 
     Returns:
         Tuple of (Protocol, ProtocolContext) ready for ``protocol.run(context)``.
@@ -76,6 +88,20 @@ def setup_protocol(
         raise SetupValidationError(violations)
 
     context = ProtocolContext(board=board, deck=deck, positions=protocol.positions, gantry=gantry_config)
+    if collision_validation:
+        settings = CollisionSettings(
+            mode=CollisionValidationMode(collision_mode),
+            clearance_mm=collision_clearance_mm,
+        )
+        collision_report = validate_collision_safety(
+            protocol,
+            context,
+            gantry_config,
+            settings=settings,
+        )
+        context.collision_report = collision_report
+        if collision_report.errors:
+            raise CollisionValidationError(collision_report.issues)
     return protocol, context
 
 
@@ -86,6 +112,9 @@ def run_protocol(
     protocol_path: str | Path,
     gantry=None,
     mock_mode: bool = False,
+    collision_validation: bool = False,
+    collision_mode: str = "strict",
+    collision_clearance_mm: float = 2.0,
 ) -> List[Any]:
     """Load configs, validate, and execute the protocol in one call.
 
@@ -98,6 +127,9 @@ def run_protocol(
     protocol, context = setup_protocol(
         gantry_path, deck_path, board_path, protocol_path,
         gantry=gantry, mock_mode=mock_mode,
+        collision_validation=collision_validation,
+        collision_mode=collision_mode,
+        collision_clearance_mm=collision_clearance_mm,
     )
     context.board.connect_instruments()
     try:

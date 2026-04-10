@@ -16,7 +16,7 @@ from protocol_engine.errors import ProtocolLoaderError
 from protocol_engine.protocol import Protocol, ProtocolContext
 from protocol_engine.registry import CommandRegistry
 from protocol_engine.setup import run_protocol, setup_protocol
-from validation.errors import SetupValidationError
+from validation.errors import CollisionValidationError, SetupValidationError
 
 
 @pytest.fixture(autouse=True)
@@ -72,6 +72,37 @@ instruments:
     offset_y: 0.0
     depth: 0.0
     measurement_height: 0.0
+"""
+
+SMALL_DECK_YAML = """\
+labware:
+  vial_1:
+    type: vial
+    name: test_vial
+    model_name: standard_vial
+    height_mm: 10.0
+    diameter_mm: 10.0
+    location:
+      x: 30.0
+      y: 40.0
+      z: 20.0
+    capacity_ul: 1500.0
+    working_volume_ul: 1200.0
+"""
+
+BOARD_WITH_COLLISION_YAML = """\
+instruments:
+  pipette:
+    type: pipette
+    vendor: opentrons
+    offset_x: 5.0
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 0.0
+    collision_geometry:
+      kind: box
+      size: {x: 4.0, y: 4.0, z: 4.0}
+      origin_offset: {x: -2.0, y: -2.0, z: -12.0}
 """
 
 PROTOCOL_YAML = """\
@@ -298,6 +329,60 @@ instruments:
             from instruments.pipette.driver import Pipette
             assert isinstance(context.board.instruments["pipette"], Pipette)
             assert context.board.instruments["pipette"]._offline is True
+
+    def test_collision_validation_is_opt_in(self):
+        with _TempYamlFiles() as f:
+            protocol, context = setup_protocol(
+                f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
+            )
+
+            assert isinstance(protocol, Protocol)
+            assert not hasattr(context, "collision_report")
+
+    def test_collision_validation_strict_fails_missing_geometry(self):
+        with _TempYamlFiles(deck=SMALL_DECK_YAML) as f:
+            with pytest.raises(CollisionValidationError) as exc_info:
+                setup_protocol(
+                    f.gantry_path,
+                    f.deck_path,
+                    f.board_path,
+                    f.protocol_path,
+                    collision_validation=True,
+                )
+
+            assert any(
+                issue.code == "missing_instrument_geometry"
+                for issue in exc_info.value.issues
+            )
+
+    def test_collision_validation_report_only_allows_missing_geometry(self):
+        with _TempYamlFiles(deck=SMALL_DECK_YAML) as f:
+            _, context = setup_protocol(
+                f.gantry_path,
+                f.deck_path,
+                f.board_path,
+                f.protocol_path,
+                collision_validation=True,
+                collision_mode="report_only",
+            )
+
+            assert context.collision_report.ok
+            assert any(
+                issue.code == "missing_instrument_geometry"
+                for issue in context.collision_report.warnings
+            )
+
+    def test_collision_validation_strict_passes_with_complete_geometry(self):
+        with _TempYamlFiles(deck=SMALL_DECK_YAML, board=BOARD_WITH_COLLISION_YAML) as f:
+            _, context = setup_protocol(
+                f.gantry_path,
+                f.deck_path,
+                f.board_path,
+                f.protocol_path,
+                collision_validation=True,
+            )
+
+            assert context.collision_report.ok
 
 
 class TestRunProtocolLifecycle:

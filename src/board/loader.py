@@ -89,11 +89,13 @@ def load_board_from_yaml(
         kwargs = entry.model_dump()
         type_key = kwargs.pop("type")
         vendor = kwargs.pop("vendor")
+        collision_geometry = kwargs.pop("collision_geometry", None)
         validate_instrument(type_key, vendor)
         if mock_mode:
             kwargs["offline"] = True
         cls = get_instrument_class(type_key)
         instruments[name] = cls(**kwargs)
+        instruments[name].collision_geometry = collision_geometry
 
     return Board(gantry=gantry, instruments=instruments)
 

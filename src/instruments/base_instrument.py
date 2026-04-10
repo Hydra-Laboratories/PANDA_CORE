@@ -30,6 +30,7 @@ class BaseInstrument(ABC):
         self.offset_y = offset_y
         self.depth = depth
         self.measurement_height = measurement_height
+        self.collision_geometry: Any = None
         self._offline = offline
         self.logger = logging.getLogger(f"{__name__}.{self.name}")
 
