@@ -263,6 +263,16 @@ class TipDisposalYamlEntry(_BaseHolderYamlEntry):
     model_name: str = "tip_disposal"
 
 
+class WallYamlEntry(_BaseHolderYamlEntry):
+    """Rectangular obstacle. Dimensions are required (not optional)."""
+
+    type: Literal["wall"] = "wall"
+    model_name: str = "wall"
+    length_mm: float = Field(..., gt=0)
+    width_mm: float = Field(..., gt=0)
+    height_mm: float = Field(..., gt=0)
+
+
 class WellPlateHolderYamlEntry(_BaseHolderYamlEntry):
     type: Literal["well_plate_holder"] = "well_plate_holder"
     model_name: str = "SlideHolder_Top"
@@ -296,6 +306,7 @@ LabwareYamlEntry = Annotated[
         VialYamlEntry,
         TipRackYamlEntry,
         TipDisposalYamlEntry,
+        WallYamlEntry,
         WellPlateHolderYamlEntry,
         VialHolderYamlEntry,
     ],

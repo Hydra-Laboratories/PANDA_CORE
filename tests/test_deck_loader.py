@@ -7,7 +7,7 @@ import pytest
 
 from pydantic import ValidationError
 
-from deck import WellPlate, Vial, Coordinate3D, Deck, TipRack
+from deck import WellPlate, Vial, Coordinate3D, Deck, TipRack, Wall
 from deck.loader import (
     DeckLoaderError,
     _PlateOrientation,
@@ -1002,5 +1002,65 @@ class TestTipRackDimensionForwarding:
             assert rack.width_mm == pytest.approx(1.0)
             # height auto-derives to 1.0 when z_drop is not provided
             assert rack.height_mm == pytest.approx(1.0)
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+
+# ----- Wall labware -----
+
+VALID_WALL = """
+labware:
+  front_wall:
+    type: wall
+    name: front_wall
+    location:
+      x: 96.0
+      y: 155.0
+      z: 0.0
+    length_mm: 130.0
+    width_mm: 5.0
+    height_mm: 40.0
+"""
+
+WALL_MISSING_DIMENSION = """
+labware:
+  bad_wall:
+    type: wall
+    name: bad_wall
+    location:
+      x: 10.0
+      y: 20.0
+      z: 0.0
+    length_mm: 100.0
+    width_mm: 5.0
+"""
+
+
+class TestWallLabware:
+
+    def test_wall_loads_with_correct_geometry(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(VALID_WALL)
+            path = f.name
+        try:
+            deck = load_deck_from_yaml(path)
+            wall = deck["front_wall"]
+            assert isinstance(wall, Wall)
+            assert wall.location.x == pytest.approx(96.0)
+            assert wall.location.y == pytest.approx(155.0)
+            assert wall.location.z == pytest.approx(0.0)
+            assert wall.length_mm == pytest.approx(130.0)
+            assert wall.width_mm == pytest.approx(5.0)
+            assert wall.height_mm == pytest.approx(40.0)
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_wall_missing_dimension_fails(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(WALL_MISSING_DIMENSION)
+            path = f.name
+        try:
+            with pytest.raises(Exception):
+                load_deck_from_yaml(path)
         finally:
             Path(path).unlink(missing_ok=True)
