@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any, TYPE_CHECKING
 
+from gantry.motion_planning import resolve_gantry_target
 from instruments.base_instrument import BaseInstrument
 
 if TYPE_CHECKING:
@@ -48,14 +49,12 @@ class Board:
         """
         instr = self._resolve_instrument(instrument)
         x, y, z = self._resolve_position(position)
-        gantry_x = x - instr.offset_x
-        gantry_y = y - instr.offset_y
-        gantry_z = z - instr.depth
+        gantry_target = resolve_gantry_target(x, y, z, instr)
         self.logger.info(
             "Moving %s to (%.3f, %.3f, %.3f) → gantry (%.3f, %.3f, %.3f)",
-            instr.name, x, y, z, gantry_x, gantry_y, gantry_z,
+            instr.name, x, y, z, gantry_target.x, gantry_target.y, gantry_target.z,
         )
-        self.gantry.move_to(gantry_x, gantry_y, gantry_z)
+        self.gantry.move_to(gantry_target.x, gantry_target.y, gantry_target.z)
 
     def object_position(
         self, obj: str | BaseInstrument | Any,

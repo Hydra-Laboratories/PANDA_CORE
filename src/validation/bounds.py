@@ -7,6 +7,7 @@ from typing import List, Tuple
 from board.board import Board
 from deck.deck import Deck
 from gantry.gantry_config import GantryConfig, WorkingVolume
+from gantry.motion_planning import resolve_gantry_target
 
 from .errors import BoundsViolation
 
@@ -84,9 +85,10 @@ def validate_gantry_positions(
     volume = gantry.working_volume
     for instr_name, instrument in board.instruments.items():
         for lw_key, pos_id, x, y, z in _get_all_positions(deck):
-            gx = x - instrument.offset_x
-            gy = y - instrument.offset_y
-            gz = z - instrument.depth
+            gantry_target = resolve_gantry_target(x, y, z, instrument)
+            gx = gantry_target.x
+            gy = gantry_target.y
+            gz = gantry_target.z
             for axis, bound_name, bound_value in _check_point(volume, gx, gy, gz):
                 violations.append(BoundsViolation(
                     labware_key=lw_key,

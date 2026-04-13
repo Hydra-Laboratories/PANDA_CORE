@@ -24,6 +24,7 @@ docs = [
 [tool.setuptools.packages.find]
 where = ["src", "."]
 include = ["board", "board.*", "data", "data.*", "deck", "deck.*",
+           "digital_twin", "digital_twin.*",
            "gantry", "gantry.*", "instruments", "instruments.*",
            "protocol_engine", "protocol_engine.*", "validation", "validation.*"]
 
