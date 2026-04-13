@@ -12,6 +12,9 @@
 # type/vendor when a real potentiostat driver lands.
 
 instruments:
+  # Pipette is mounted low (long plunger). depth=0 means its tip is at the
+  # gantry Z reference; when gantry descends, the pipette tip reaches into
+  # wells and vials.
   liquid_handler:
     type: pipette
     vendor: opentrons
@@ -22,6 +25,11 @@ instruments:
     depth: 0.0
     measurement_height: 0.0
 
+  # Potentiostat mounted at the same Z level as the pipette. Both operate
+  # above elevated labware (vials on tall seats, well plate on a stand,
+  # tips stick up from an elevated rack), so the lowest pipette Z is the
+  # top of each labware's interior — the potentiostat at the same Z
+  # clears the short holder/stand bases sitting below.
   potentiostat:
     type: uvvis_ccs          # placeholder — no potentiostat type in cubos yet
     vendor: thorlabs
