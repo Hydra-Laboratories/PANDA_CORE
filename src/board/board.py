@@ -65,14 +65,19 @@ class Board:
         """Safely move *instrument* to a labware *position*, applying the
         instrument's Z offsets.
 
-        Two-step sequence:
-          1. Travel to (x, y, labware_z + safe_approach_height) — keeps the
-             instrument above labware during XY motion.
-          2. Lower to (x, y, labware_z + measurement_height) — the final
-             action position (touch / dip / probe clearance).
+        Up to three-step sequence:
+          1. **Retract.** If the instrument tip is currently below
+             ``labware_z + safe_approach_height``, lift to that Z at the
+             *current* XY first. Prevents dragging through labware when
+             transitioning from a previous low-Z action (e.g. scan loop
+             going well-to-well).
+          2. **Travel.** Move to (x, y, labware_z + safe_approach_height).
+          3. **Lower.** Drop to (x, y, labware_z + measurement_height)
+             if that differs from the approach height.
 
-        If safe_approach_height equals measurement_height (the default for
-        non-contact instruments), the second step is skipped.
+        For non-contact instruments where ``safe_approach_height ==
+        measurement_height``, steps 1 and 3 are skipped — only the XY
+        travel executes.
 
         Args:
             instrument: Name or instance.
@@ -84,7 +89,19 @@ class Board:
         x, y, z = self._resolve_position(position)
         approach_z = z + instr.safe_approach_height
         action_z = z + instr.measurement_height
+
+        # Step 1: retract at current XY if currently below approach Z.
+        current = self.gantry.get_coordinates()
+        current_tip_x = current["x"] + instr.offset_x
+        current_tip_y = current["y"] + instr.offset_y
+        current_tip_z = current["z"] + instr.depth
+        if current_tip_z < approach_z - 1e-9:
+            self.move(instr, (current_tip_x, current_tip_y, approach_z))
+
+        # Step 2: travel XY at approach Z.
         self.move(instr, (x, y, approach_z))
+
+        # Step 3: lower to action Z (skipped for non-contact instruments).
         if abs(approach_z - action_z) > 1e-9:
             self.move(instr, (x, y, action_z))
 

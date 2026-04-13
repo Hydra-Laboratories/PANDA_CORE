@@ -263,34 +263,61 @@ class TestBoardDisconnectInstruments:
 
 class TestBoardMoveToLabware:
 
-    def test_non_contact_instrument_single_move(self):
-        """When safe_approach_height == measurement_height, only one move."""
-        gantry = _mock_gantry()
+    def test_non_contact_high_start_single_move(self):
+        """Non-contact, gantry already above approach Z: only XY travel."""
+        gantry = _mock_gantry(z=100.0)  # high start
         instr = _mock_instrument(measurement_height=3.0, safe_approach_height=3.0)
         board = Board(gantry=gantry, instruments={"sensor": instr})
         board.move_to_labware("sensor", _mock_labware(x=100, y=50, z=20))
 
         assert gantry.move_to.call_count == 1
-        args = gantry.move_to.call_args.args
-        # instrument tip at (100, 50, 20+3=23); gantry has depth=0 so same
-        assert args == (100.0, 50.0, 23.0)
+        # tip target: (100, 50, 20+3=23). gantry depth=0 so same.
+        assert gantry.move_to.call_args.args == (100.0, 50.0, 23.0)
 
-    def test_contact_instrument_approach_then_action(self):
-        """Contact instrument: approach at safe_approach_height, then lower."""
-        gantry = _mock_gantry()
-        # pipette: dips 5mm below labware reference, travels 20mm above
+    def test_contact_high_start_approach_then_action(self):
+        """Contact instrument starting high: travel at approach, then lower."""
+        gantry = _mock_gantry(z=100.0)
         instr = _mock_instrument(measurement_height=-5.0, safe_approach_height=20.0)
         board = Board(gantry=gantry, instruments={"pipette": instr})
         board.move_to_labware("pipette", _mock_labware(x=100, y=50, z=30))
 
         assert gantry.move_to.call_count == 2
-        # Step 1: approach at z=30+20=50
+        # Step 1: travel at approach z=30+20=50
         assert gantry.move_to.call_args_list[0].args == (100.0, 50.0, 50.0)
-        # Step 2: lower to action z=30+(-5)=25
+        # Step 2: lower to action z=30-5=25
         assert gantry.move_to.call_args_list[1].args == (100.0, 50.0, 25.0)
 
+    def test_contact_low_start_retract_then_travel_then_action(self):
+        """Contact instrument starting at a previous action Z (low): must
+        retract at current XY before traveling to new XY.
+        Simulates the scan well-to-well transition."""
+        # Gantry currently at (50, 40, 25) — a previous action Z.
+        gantry = _mock_gantry(x=50.0, y=40.0, z=25.0)
+        instr = _mock_instrument(measurement_height=-5.0, safe_approach_height=20.0)
+        board = Board(gantry=gantry, instruments={"pipette": instr})
+        board.move_to_labware("pipette", _mock_labware(x=100, y=50, z=30))
+
+        # Expect 3 moves: retract at (50,40) -> approach at (100,50) -> action at (100,50)
+        assert gantry.move_to.call_count == 3
+        calls = gantry.move_to.call_args_list
+        assert calls[0].args == (50.0, 40.0, 50.0)   # retract at current XY
+        assert calls[1].args == (100.0, 50.0, 50.0)  # travel XY at approach
+        assert calls[2].args == (100.0, 50.0, 25.0)  # lower to action
+
+    def test_non_contact_low_start_retracts_then_travels(self):
+        """Even a non-contact instrument retracts if it starts below approach Z."""
+        gantry = _mock_gantry(x=50.0, y=40.0, z=0.0)
+        instr = _mock_instrument(measurement_height=3.0, safe_approach_height=3.0)
+        board = Board(gantry=gantry, instruments={"sensor": instr})
+        board.move_to_labware("sensor", _mock_labware(x=100, y=50, z=20))
+
+        # Retract at (50,40) to z=23, then travel to (100,50,23). No lower (approach == action).
+        assert gantry.move_to.call_count == 2
+        assert gantry.move_to.call_args_list[0].args == (50.0, 40.0, 23.0)
+        assert gantry.move_to.call_args_list[1].args == (100.0, 50.0, 23.0)
+
     def test_applies_instrument_xy_offsets(self):
-        gantry = _mock_gantry()
+        gantry = _mock_gantry(z=100.0)
         instr = _mock_instrument(
             offset_x=10.0, offset_y=-5.0,
             measurement_height=0.0, safe_approach_height=15.0,
@@ -298,20 +325,37 @@ class TestBoardMoveToLabware:
         board = Board(gantry=gantry, instruments={"probe": instr})
         board.move_to_labware("probe", _mock_labware(x=100, y=50, z=30))
 
-        # Gantry X = labware.x - offset_x; same for Y.
         args_approach = gantry.move_to.call_args_list[0].args
         args_action = gantry.move_to.call_args_list[1].args
+        # Gantry X = labware.x - offset_x; Y likewise.
         assert args_approach[0] == 90.0 and args_approach[1] == 55.0
         assert args_action[0] == 90.0 and args_action[1] == 55.0
-        # Z: approach = 30+15=45, action = 30+0=30
         assert args_approach[2] == 45.0
         assert args_action[2] == 30.0
 
     def test_accepts_tuple_position(self):
-        gantry = _mock_gantry()
+        gantry = _mock_gantry(z=100.0)
         instr = _mock_instrument(measurement_height=2.0, safe_approach_height=2.0)
         board = Board(gantry=gantry, instruments={"probe": instr})
         board.move_to_labware("probe", (50.0, 40.0, 10.0))
 
         assert gantry.move_to.call_count == 1
         assert gantry.move_to.call_args.args == (50.0, 40.0, 12.0)
+
+    def test_scan_well_transition_pattern(self):
+        """End-to-end: simulate scan's well-to-well flow.
+        After measuring at well 1 at action z, calling move_to_labware
+        for well 2 should: retract at W1.xy -> travel to W2.xy -> lower."""
+        # Pretend we just finished action at well 1 (100, 50, 25).
+        gantry = _mock_gantry(x=100.0, y=50.0, z=25.0)
+        instr = _mock_instrument(measurement_height=-5.0, safe_approach_height=20.0)
+        board = Board(gantry=gantry, instruments={"pipette": instr})
+        # Move to well 2 at (110, 50, 30).
+        board.move_to_labware("pipette", _mock_labware(x=110, y=50, z=30))
+
+        calls = gantry.move_to.call_args_list
+        assert [c.args for c in calls] == [
+            (100.0, 50.0, 50.0),   # retract at W1.xy to W2's approach z
+            (110.0, 50.0, 50.0),   # travel XY at approach z
+            (110.0, 50.0, 25.0),   # lower to action z
+        ]
