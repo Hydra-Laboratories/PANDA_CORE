@@ -87,8 +87,8 @@ def scan(
         target = (well.x, well.y, well.z - instr.measurement_height)
         context.board.move(instrument, target)
 
-        # Inject gantry if the method accepts it (e.g. ASMI.indentation
-        # needs the gantry for Z stepping), then merge with method_kwargs.
+        # Inject the raw gantry interface for methods that manage their own
+        # motion loop (for example ASMI indentation stepwise Z control).
         sig = inspect.signature(callable_method)
         kwargs: Dict[str, Any] = dict(method_kwargs)
         if "gantry" in sig.parameters:

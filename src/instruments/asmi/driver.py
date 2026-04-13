@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import statistics
 import time
-from typing import Optional
+from typing import Optional, Protocol
 
 from instruments.base_instrument import BaseInstrument
 from instruments.asmi.exceptions import (
@@ -13,6 +13,21 @@ from instruments.asmi.models import ASMIStatus, MeasurementResult
 
 _DEFAULT_FORCE_THRESHOLD = -100
 _DEFAULT_SENSOR_CHANNELS = [1]
+
+
+class ASMIIndentationGantry(Protocol):
+    """Raw gantry operations required by ASMI indentation.
+
+    ASMI performs its own stepwise Z control and idle polling, so it
+    intentionally depends on the lower-level gantry surface rather than
+    the higher-level board abstraction.
+    """
+
+    def move_to(self, x: float, y: float, z: float) -> None: ...
+
+    def get_coordinates(self) -> dict[str, float]: ...
+
+    def get_status(self) -> str: ...
 
 
 class ASMI(BaseInstrument):
@@ -41,8 +56,8 @@ class ASMI(BaseInstrument):
         force_limit: float = 15.0,
         baseline_samples: int = 10,
         idle_timeout: float = 10.0,
+        indentation_start_z: float | None = None,
         well_top_z: float | None = None,
-        safe_z: float | None = None,
     ):
         super().__init__(
             name=name, offset_x=offset_x, offset_y=offset_y,
@@ -57,8 +72,9 @@ class ASMI(BaseInstrument):
         self._force_limit = force_limit
         self._baseline_samples = baseline_samples
         self._idle_timeout = idle_timeout
-        self._well_top_z = well_top_z
-        self._safe_z = safe_z
+        self._indentation_start_z = (
+            indentation_start_z if indentation_start_z is not None else well_top_z
+        )
         self._godirect = None
         self._device = None
         self._sensor = None
@@ -199,24 +215,31 @@ class ASMI(BaseInstrument):
 
     # ── Indentation measurement ───────────────────────────────────────────
 
-    def _wait_for_idle(self, gantry) -> bool:
+    def _wait_for_idle(self, raw_gantry: ASMIIndentationGantry) -> bool:
         start = time.time()
         while time.time() - start < self._idle_timeout:
-            if "Idle" in gantry.get_status():
+            if "Idle" in raw_gantry.get_status():
                 return True
             time.sleep(0.02)
         return False
 
-    def _move_z(self, gantry, x, y, z):
-        gantry.move_to(x, y, z)
-        self._wait_for_idle(gantry)
+    def _move_raw_gantry_z(
+        self,
+        raw_gantry: ASMIIndentationGantry,
+        x: float,
+        y: float,
+        z: float,
+    ) -> None:
+        raw_gantry.move_to(x, y, z)
+        self._wait_for_idle(raw_gantry)
 
     def indentation(
         self,
-        gantry,
+        gantry: ASMIIndentationGantry,
         z_limit: float | None = None,
         step_size: float | None = None,
         force_limit: float | None = None,
+        indentation_start_z: float | None = None,
         measurement_height: float | None = None,
         baseline_samples: int | None = None,
     ) -> dict:
@@ -230,11 +253,13 @@ class ASMI(BaseInstrument):
         4. Stops on force_limit or z_limit
 
         Args:
-            gantry:             Gantry instance for Z movement.
+            gantry:             Raw gantry interface for stepwise Z movement.
             z_limit:            Z position to step down to (overrides instance default).
             step_size:          Z increment per step in mm (overrides instance default).
             force_limit:        Stop when corrected force exceeds this in N (overrides instance default).
-            measurement_height: Z to descend to before starting (overrides instance default).
+            indentation_start_z:
+                                Z to descend to before starting (overrides instance default).
+            measurement_height: Backward-compatible alias for indentation_start_z.
             baseline_samples:   Number of baseline force readings (overrides instance default).
 
         Returns:
@@ -245,18 +270,33 @@ class ASMI(BaseInstrument):
         _z_target = z_limit if z_limit is not None else self._z_target
         _step_size = step_size if step_size is not None else self._step_size
         _force_limit = force_limit if force_limit is not None else self._force_limit
-        _well_top_z = measurement_height if measurement_height is not None else (
-            self._well_top_z if self._well_top_z is not None else self.measurement_height
+        _indentation_start_z = (
+            indentation_start_z
+            if indentation_start_z is not None
+            else measurement_height
         )
-        _baseline_samples = baseline_samples if baseline_samples is not None else self._baseline_samples
+        if _indentation_start_z is None:
+            _indentation_start_z = (
+                self._indentation_start_z
+                if self._indentation_start_z is not None
+                else self.measurement_height
+            )
+        _baseline_samples = (
+            baseline_samples if baseline_samples is not None else self._baseline_samples
+        )
 
         if self._offline:
-            return self._offline_indentation(gantry, _z_target, _step_size, _well_top_z)
+            return self._offline_indentation(
+                gantry,
+                _z_target,
+                _step_size,
+                _indentation_start_z,
+            )
 
         coords = gantry.get_coordinates()
         cur_x, cur_y = coords["x"], coords["y"]
 
-        self._move_z(gantry, cur_x, cur_y, _well_top_z)
+        self._move_raw_gantry_z(gantry, cur_x, cur_y, _indentation_start_z)
 
         baseline_avg, baseline_std = self.get_baseline_force(
             samples=_baseline_samples
@@ -275,7 +315,7 @@ class ASMI(BaseInstrument):
                 self.logger.info("Reached z_target %.3f mm", _z_target)
                 break
             next_z = current_z - _step_size
-            self._move_z(gantry, cur_x, cur_y, next_z)
+            self._move_raw_gantry_z(gantry, cur_x, cur_y, next_z)
 
             coords = gantry.get_coordinates()
             force = self.get_force_reading()
@@ -309,14 +349,20 @@ class ASMI(BaseInstrument):
             "data_points": len(measurements),
         }
 
-    def _offline_indentation(self, gantry, z_limit, step_size, measurement_height) -> dict:
+    def _offline_indentation(
+        self,
+        gantry: ASMIIndentationGantry,
+        z_limit: float,
+        step_size: float,
+        indentation_start_z: float,
+    ) -> dict:
         """Fast offline indentation — no idle-wait, synthetic data."""
         coords = gantry.get_coordinates()
         cur_x, cur_y = coords["x"], coords["y"]
-        gantry.move_to(cur_x, cur_y, measurement_height)
+        gantry.move_to(cur_x, cur_y, indentation_start_z)
 
         measurements = []
-        z = measurement_height
+        z = indentation_start_z
         while z > z_limit:
             z -= step_size
             gantry.move_to(cur_x, cur_y, z)
