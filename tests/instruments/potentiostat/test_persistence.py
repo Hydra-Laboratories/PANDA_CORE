@@ -133,11 +133,11 @@ class TestPersistence:
 
         row = store._conn.execute(
             "SELECT technique, time_s, voltage_v, current_a, sample_period_s, "
-            "duration_s, vendor, metadata_json "
+            "duration_s, vendor, device_id "
             "FROM potentiostat_measurements WHERE id = ?",
             (row_id,),
         ).fetchone()
-        technique, time_s, voltage_v, current_a, sample_period_s, duration_s, vendor, meta_json = row
+        technique, time_s, voltage_v, current_a, sample_period_s, duration_s, vendor, device_id = row
         assert technique == "ocp"
         assert json.loads(time_s) == [0.0, 0.1]
         assert json.loads(voltage_v) == [0.35, 0.36]
@@ -145,7 +145,7 @@ class TestPersistence:
         assert sample_period_s == 0.1
         assert duration_s == 0.2
         assert vendor == "admiral"
-        assert json.loads(meta_json)["device_id"] == "unit-test"
+        assert device_id == "unit-test"
         store.close()
 
     def test_log_cv_result_writes_technique_columns(self):
@@ -213,4 +213,60 @@ class TestPersistence:
             (row_id,),
         ).fetchone()[0]
         assert step_current_a == 1e-3
+        store.close()
+
+    def test_promoted_metadata_fields_persist(self):
+        """device_id / channel / started_at / stopped_at / aborted / stop_reason
+        land in their own typed columns rather than a JSON blob.
+        """
+        store = _make_store()
+        raw = OCPResult(
+            time_s=(0.0, 0.1),
+            voltage_v=(0.35, 0.36),
+            sample_period_s=0.1,
+            duration_s=0.2,
+            vendor="admiral",
+            metadata={
+                "device_id": "SquidStatPlus-42",
+                "channel": 1,
+                "started_at": "2026-04-13T12:34:56+00:00",
+                "stopped_at": "2026-04-13T12:35:01+00:00",
+                "aborted": False,
+                "stop_reason": "completed",
+            },
+        )
+        m = normalize_measurement("pstat_a", "run_ocp", raw)
+        row_id = store.log_measurement(store._experiment_id, m)
+
+        row = store._conn.execute(
+            "SELECT device_id, channel, started_at, stopped_at, aborted, "
+            "stop_reason FROM potentiostat_measurements WHERE id = ?",
+            (row_id,),
+        ).fetchone()
+        device_id, channel, started_at, stopped_at, aborted, stop_reason = row
+        assert device_id == "SquidStatPlus-42"
+        assert channel == 1
+        assert started_at == "2026-04-13T12:34:56+00:00"
+        assert stopped_at == "2026-04-13T12:35:01+00:00"
+        assert aborted == 0   # SQLite stores bool as int
+        assert stop_reason == "completed"
+        store.close()
+
+    def test_aborted_true_persists_as_one(self):
+        store = _make_store()
+        raw = OCPResult(
+            time_s=(0.0,),
+            voltage_v=(0.3,),
+            sample_period_s=0.1,
+            duration_s=0.1,
+            vendor="admiral",
+            metadata={"aborted": True, "stop_reason": "user_stop"},
+        )
+        m = normalize_measurement("pstat_a", "run_ocp", raw)
+        row_id = store.log_measurement(store._experiment_id, m)
+        aborted = store._conn.execute(
+            "SELECT aborted FROM potentiostat_measurements WHERE id = ?",
+            (row_id,),
+        ).fetchone()[0]
+        assert aborted == 1
         store.close()

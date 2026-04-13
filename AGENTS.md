@@ -177,7 +177,7 @@ SQLite-backed persistence layer for self-driving lab campaigns. All state lives 
         - `UVVisSpectrum` → `uvvis_measurements` (wavelengths/intensities stored as little-endian BLOB via `struct.pack`)
         - `MeasurementResult` → `filmetrics_measurements` (thickness_nm, goodness_of_fit)
         - `str` (image path) → `camera_measurements`
-        - `InstrumentMeasurement` with potentiostat type → `potentiostat_measurements` (technique, JSON-encoded `time_s`/`voltage_v`/`current_a`, plus per-technique scalars: `sample_period_s`, `duration_s`, `step_potential_v`, `step_current_a`, `scan_rate_v_s`, `step_size_v`, `cycles`; plus `vendor` and the full result `metadata_json`)
+        - `InstrumentMeasurement` with potentiostat type → `potentiostat_measurements` (technique, JSON-encoded `time_s`/`voltage_v`/`current_a`, plus per-technique scalars: `sample_period_s`, `duration_s`, `step_potential_v`, `step_current_a`, `scan_rate_v_s`, `step_size_v`, `cycles`; run metadata `vendor`, `device_id`, `channel`, `started_at`, `stopped_at`, `aborted`, `stop_reason` each promoted to their own column)
     - **Labware API** (volume and content tracking, persisted to `labware` table):
         - `register_labware(campaign_id, labware_key, labware)` — registers a Vial (1 row) or WellPlate (1 row per well) with total/working volume from the model.
         - `record_dispense(campaign_id, labware_key, well_id, source_name, volume_ul)` — increments `current_volume_ul` and appends to `contents` JSON.

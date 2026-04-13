@@ -87,7 +87,12 @@ CREATE TABLE IF NOT EXISTS potentiostat_measurements (
     step_size_v       REAL,
     cycles            INTEGER,
     vendor            TEXT,
-    metadata_json     TEXT,
+    device_id         TEXT,
+    channel           INTEGER,
+    started_at        TEXT,
+    stopped_at        TEXT,
+    aborted           INTEGER,
+    stop_reason       TEXT,
     timestamp         TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -259,7 +264,12 @@ class DataStore:
                 step_size_v=meta.get("step_size_v"),
                 cycles=meta.get("cycles"),
                 vendor=meta.get("vendor"),
-                metadata_json=json.dumps(dict(meta)),
+                device_id=meta.get("device_id"),
+                channel=meta.get("channel"),
+                started_at=meta.get("started_at"),
+                stopped_at=meta.get("stopped_at"),
+                aborted=meta.get("aborted"),
+                stop_reason=meta.get("stop_reason"),
             )
 
         raise TypeError(
@@ -350,14 +360,20 @@ class DataStore:
         step_size_v: Optional[float],
         cycles: Optional[int],
         vendor: Optional[str],
-        metadata_json: str,
+        device_id: Optional[str],
+        channel: Optional[int],
+        started_at: Optional[str],
+        stopped_at: Optional[str],
+        aborted: Optional[bool],
+        stop_reason: Optional[str],
     ) -> int:
         cursor = self._conn.execute(
             "INSERT INTO potentiostat_measurements "
             "(experiment_id, technique, time_s, voltage_v, current_a, "
             "sample_period_s, duration_s, step_potential_v, step_current_a, "
-            "scan_rate_v_s, step_size_v, cycles, vendor, metadata_json) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "scan_rate_v_s, step_size_v, cycles, vendor, device_id, channel, "
+            "started_at, stopped_at, aborted, stop_reason) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 experiment_id,
                 technique,
@@ -372,7 +388,12 @@ class DataStore:
                 step_size_v,
                 cycles,
                 vendor,
-                metadata_json,
+                device_id,
+                channel,
+                started_at,
+                stopped_at,
+                int(aborted) if aborted is not None else None,
+                stop_reason,
             ),
         )
         self._conn.commit()
