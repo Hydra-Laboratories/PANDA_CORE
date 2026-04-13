@@ -75,11 +75,11 @@ Driver for the Excelitas OmniCure S1500 PRO UV curing system over RS-232 serial.
 #### Pipette (`src/instruments/pipette`)
 Driver for Opentrons OT-2 and Flex pipettes. Communicates with the pipette motor via Arduino serial (Pawduino firmware). Supports 10 pipette models; the P300 single-channel has real calibrated values from the BEAR-DEN workcell.
 
-- **`driver.py`**: `Pipette(BaseInstrument)` — the real serial driver.
-    - **Constructor**: `Pipette(pipette_model, port, baud_rate=115200, command_timeout=30.0, name=None)`
+- **`driver.py`**: `Pipette(BaseInstrument)` — serial driver with built-in offline mode.
+    - **Constructor**: `Pipette(pipette_model, port, baud_rate=115200, command_timeout=30.0, name=None, offline=False)`
     - **Lifecycle**: `connect()`, `disconnect()`, `health_check()`, `warm_up()` (homes + primes)
     - **Commands**: `home()`, `prime(speed)`, `aspirate(volume_ul, speed)`, `dispense(volume_ul, speed)`, `blowout(speed)`, `mix(volume_ul, reps, speed)`, `pick_up_tip(speed)`, `drop_tip(speed)`, `get_status() -> PipetteStatus`, `drip_stop(volume_ul, speed)`
-- **`mock.py`**: `MockPipette` — in-memory mock for testing. Tracks `command_history: list[str]`.
+    - **Offline mode**: Pass `offline=True` for dry runs — simulates plunger state in memory without serial I/O.
 - **`models.py`**: `PipetteConfig` (frozen, per-model hardware description), `PipetteStatus`, `AspirateResult`, `MixResult` (all frozen dataclasses). `PIPETTE_MODELS` registry dict. `PipetteFamily` enum (OT2/FLEX).
 - **`exceptions.py`**: `PipetteError` hierarchy (`PipetteConnectionError`, `PipetteCommandError`, `PipetteTimeoutError`, `PipetteConfigError`).
 
