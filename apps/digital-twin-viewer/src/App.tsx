@@ -16,7 +16,7 @@ import {
   toWorldPosition,
 } from "./lib/playback";
 
-const DEFAULT_BUNDLE_PATH = "/examples/cubos-move.json";
+const DEFAULT_BUNDLE_PATH = "/examples/cubos-scan-test.json";
 
 type ViewerToggles = {
   showWorkingVolume: boolean;

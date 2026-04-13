@@ -79,3 +79,23 @@ def test_export_bundle_to_path_writes_json(tmp_path):
 
     saved = json.loads(output_path.read_text())
     assert saved["summary"]["timeline_event_count"] == 2
+
+
+def test_export_bundle_supports_scan_protocol():
+    bundle = export_bundle(
+        gantry_path=ROOT / "configs/gantry/cubos.yaml",
+        deck_path=ROOT / "configs/deck/mofcat_deck.yaml",
+        board_path=ROOT / "configs/board/mock_mofcat_board.yaml",
+        protocol_path=ROOT / "configs/protocol/cubos_scan_test.yaml",
+    )
+
+    motion_events = [event for event in bundle["timeline"] if event["type"] == "motion"]
+    action_events = [event for event in bundle["timeline"] if event["type"] == "action"]
+
+    assert bundle["summary"]["step_count"] == 2
+    assert len(action_events) == 96
+    assert motion_events[0]["target_label"] == "plate_1.A1"
+    assert action_events[0]["target_label"] == "plate_1.A1"
+    assert action_events[1]["target_label"] == "plate_1.A2"
+    assert action_events[-1]["target_label"] == "plate_1.H12"
+    assert all(event["kind"] == "measure" for event in action_events)

@@ -9,9 +9,9 @@ The app ships with a checked-in example bundle generated from:
 - `configs/gantry/cubos.yaml`
 - `configs/deck/mofcat_deck.yaml`
 - `configs/board/mock_mofcat_board.yaml`
-- `configs/protocol/move.yaml`
+- `configs/protocol/cubos_scan_test.yaml`
 
-That bundle lives at `public/examples/cubos-move.json`.
+That bundle lives at `public/examples/cubos-scan-test.json`.
 
 ## Development
 
@@ -48,6 +48,6 @@ PYTHONPATH=src:. python -m digital_twin \
   --gantry configs/gantry/cubos.yaml \
   --deck configs/deck/mofcat_deck.yaml \
   --board configs/board/mock_mofcat_board.yaml \
-  --protocol configs/protocol/move.yaml \
-  --out apps/digital-twin-viewer/public/examples/cubos-move.json
+  --protocol configs/protocol/cubos_scan_test.yaml \
+  --out apps/digital-twin-viewer/public/examples/cubos-scan-test.json
 ```

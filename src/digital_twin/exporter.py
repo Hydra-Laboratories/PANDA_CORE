@@ -49,7 +49,7 @@ from validation.bounds import validate_deck_positions, validate_gantry_positions
 from validation.errors import SetupValidationError
 
 
-_SUPPORTED_PHASE_ONE_COMMANDS = {"move"}
+_SUPPORTED_PHASE_ONE_COMMANDS = {"move", "scan"}
 _DEFINITIONS_DIR = Path(definition_registry.__file__).resolve().parent
 
 
@@ -114,6 +114,7 @@ class TracingBoard(Board):
         gantry: _TracingGantry,
         instruments: dict[str, Any],
         timeline: list[dict[str, Any]],
+        deck: Deck | None = None,
         safe_z_height: float = DEFAULT_USER_SAFE_Z_HEIGHT,
         max_z_height: float = DEFAULT_USER_MAX_Z_HEIGHT,
         feed_rate: float = DEFAULT_FEED_RATE,
@@ -123,7 +124,11 @@ class TracingBoard(Board):
         self.safe_z_height = safe_z_height
         self.max_z_height = max_z_height
         self.feed_rate = feed_rate
+        self.deck = deck
         self._active_step: ProtocolStep | None = None
+        self._last_target_label: str | None = None
+        self._coordinate_lookup = self._build_coordinate_lookup(deck)
+        self._xy_lookup = self._build_xy_lookup(deck)
 
     def set_active_step(self, step: ProtocolStep | None) -> None:
         self._active_step = step
@@ -165,6 +170,60 @@ class TracingBoard(Board):
             }
         )
 
+    @property
+    def last_target_label(self) -> str | None:
+        return self._last_target_label
+
+    def _build_coordinate_lookup(self, deck: Deck | None) -> dict[tuple[float, float, float], str]:
+        if deck is None:
+            return {}
+
+        lookup: dict[tuple[float, float, float], str] = {}
+        for deck_key, labware in deck.labware.items():
+            for point_id, coord in labware.iter_positions().items():
+                label = f"{deck_key}.{point_id}"
+                lookup[self._coord_key(coord)] = label
+            initial_key = self._coord_key(labware.get_initial_position())
+            lookup.setdefault(initial_key, deck_key)
+        return lookup
+
+    def _build_xy_lookup(self, deck: Deck | None) -> dict[tuple[float, float], str]:
+        if deck is None:
+            return {}
+
+        lookup: dict[tuple[float, float], str] = {}
+        for deck_key, labware in deck.labware.items():
+            for point_id, coord in labware.iter_positions().items():
+                lookup[(round(float(coord.x), 6), round(float(coord.y), 6))] = f"{deck_key}.{point_id}"
+            initial_pose = labware.get_initial_position()
+            lookup.setdefault(
+                (round(float(initial_pose.x), 6), round(float(initial_pose.y), 6)),
+                deck_key,
+            )
+        return lookup
+
+    @staticmethod
+    def _coord_key(coord: Any) -> tuple[float, float, float]:
+        pose = coerce_motion_pose(coord)
+        return (round(pose.x, 6), round(pose.y, 6), round(pose.z, 6))
+
+    def _target_label_for_position(self, position: Any) -> str:
+        if self._active_step is not None and "position" in self._active_step.args:
+            raw_position = self._active_step.args["position"]
+            if isinstance(raw_position, str):
+                return raw_position
+
+        lookup_key = self._coord_key(position)
+        if lookup_key in self._coordinate_lookup:
+            return self._coordinate_lookup[lookup_key]
+
+        pose = coerce_motion_pose(position)
+        xy_key = (round(pose.x, 6), round(pose.y, 6))
+        if xy_key in self._xy_lookup:
+            return self._xy_lookup[xy_key]
+
+        return _format_target_label(position)
+
     def move(
         self,
         instrument: str | Any,
@@ -185,9 +244,7 @@ class TracingBoard(Board):
         if self._active_step is None:
             raise RuntimeError("TracingBoard step context must be set before moves.")
 
-        target_label = _format_target_label(
-            self._active_step.args.get("position", position)
-        )
+        target_label = self._target_label_for_position(position)
         for segment in motion_segments:
             self.timeline.append(
                 _motion_event_from_segment(
@@ -203,6 +260,7 @@ class TracingBoard(Board):
                 segment.end_pose.y,
                 segment.end_pose.z,
             )
+        self._last_target_label = target_label
 
 
 def _motion_event_from_segment(
@@ -231,6 +289,48 @@ def _motion_event_from_segment(
         "real_duration_s": segment.real_duration_s,
         "display_duration_s": max(segment.real_duration_s, 0.05),
     }
+
+
+def _result_payload(result: Any) -> dict[str, Any]:
+    payload = {"result_type": type(result).__name__}
+    if hasattr(result, "is_valid"):
+        payload["is_valid"] = bool(getattr(result, "is_valid"))
+    return payload
+
+
+def _install_action_wrappers(protocol: Protocol, board: TracingBoard) -> None:
+    wrapped_methods: set[tuple[str, str]] = set()
+    for step in protocol.steps:
+        if step.command_name != "scan":
+            continue
+
+        instrument_id = step.args["instrument"]
+        method_name = step.args["method"]
+        wrapped_key = (instrument_id, method_name)
+        if wrapped_key in wrapped_methods:
+            continue
+
+        instrument = board.instruments[instrument_id]
+        original_method = getattr(instrument, method_name)
+
+        def _wrapped_method(
+            *args,
+            __orig=original_method,
+            __instrument_id=instrument_id,
+            __method_name=method_name,
+            **kwargs,
+        ):
+            result = __orig(*args, **kwargs)
+            board.append_action_event(
+                kind=__method_name,
+                instrument_id=__instrument_id,
+                target_label=board.last_target_label,
+                payload=_result_payload(result),
+            )
+            return result
+
+        setattr(instrument, method_name, _wrapped_method)
+        wrapped_methods.add(wrapped_key)
 
 
 def _resolve_asset_source(load_name: str | None) -> Path | None:
@@ -512,6 +612,7 @@ def _ensure_supported_protocol(protocol: Protocol) -> None:
 
 
 def _run_traced_protocol(protocol: Protocol, context: ProtocolContext, board: TracingBoard) -> None:
+    _install_action_wrappers(protocol, board)
     board.connect_instruments()
     try:
         for step in protocol.steps:
@@ -543,6 +644,7 @@ def export_bundle(
         gantry=tracing_gantry,
         instruments=loaded_board.instruments,
         timeline=timeline,
+        deck=deck,
     )
     protocol = load_protocol_from_yaml_safe(protocol_path)
     _ensure_supported_protocol(protocol)
