@@ -49,8 +49,9 @@ def measure(
         )
 
     coord = context.deck.resolve(position)
-    target = (coord.x, coord.y, coord.z + instr.measurement_height)
-    context.board.move(instrument, target)
+    # move_to_labware handles approach (safe_approach_height) and action
+    # (measurement_height) offsets in a single call.
+    context.board.move_to_labware(instrument, coord)
 
     context.logger.info("measure: %s.%s(%s) at %s", instrument, method, method_kwargs, position)
     return getattr(instr, method)(**method_kwargs)

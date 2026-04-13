@@ -57,6 +57,37 @@ class Board:
         )
         self.gantry.move_to(gantry_x, gantry_y, gantry_z)
 
+    def move_to_labware(
+        self,
+        instrument: str | BaseInstrument,
+        position: Position,
+    ) -> None:
+        """Safely move *instrument* to a labware *position*, applying the
+        instrument's Z offsets.
+
+        Two-step sequence:
+          1. Travel to (x, y, labware_z + safe_approach_height) — keeps the
+             instrument above labware during XY motion.
+          2. Lower to (x, y, labware_z + measurement_height) — the final
+             action position (touch / dip / probe clearance).
+
+        If safe_approach_height equals measurement_height (the default for
+        non-contact instruments), the second step is skipped.
+
+        Args:
+            instrument: Name or instance.
+            position:   (x, y, z) or labware object whose z is the labware
+                        reference point (e.g. well bottom, vial bottom,
+                        tip engagement Z).
+        """
+        instr = self._resolve_instrument(instrument)
+        x, y, z = self._resolve_position(position)
+        approach_z = z + instr.safe_approach_height
+        action_z = z + instr.measurement_height
+        self.move(instr, (x, y, approach_z))
+        if abs(approach_z - action_z) > 1e-9:
+            self.move(instr, (x, y, action_z))
+
     def object_position(
         self, obj: str | BaseInstrument | Any,
     ) -> tuple[float, float]:

@@ -65,7 +65,7 @@ def aspirate(
     """Move pipette to *position*, then aspirate."""
     coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
-    context.board.move("pipette", coord)
+    context.board.move_to_labware("pipette", coord)
     return pipette.aspirate(volume_ul, speed)
 
 
@@ -82,7 +82,7 @@ def dispense(
     """
     coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
-    context.board.move("pipette", coord)
+    context.board.move_to_labware("pipette", coord)
     return pipette.dispense(volume_ul, speed)
 
 
@@ -95,7 +95,7 @@ def blowout(
     """Move pipette to *position*, then blowout."""
     coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
-    context.board.move("pipette", coord)
+    context.board.move_to_labware("pipette", coord)
     pipette.blowout(speed)
 
 
@@ -110,7 +110,7 @@ def mix(
     """Move pipette to *position*, then mix."""
     coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
-    context.board.move("pipette", coord)
+    context.board.move_to_labware("pipette", coord)
     return pipette.mix(volume_ul, repetitions, speed)
 
 
@@ -123,7 +123,7 @@ def pick_up_tip(
     """Move pipette to *position*, then pick up a tip."""
     coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
-    context.board.move("pipette", coord)
+    context.board.move_to_labware("pipette", coord)
     pipette.pick_up_tip(speed)
 
 
@@ -139,9 +139,9 @@ def transfer(
     source_coord = context.deck.resolve(source)
     dest_coord = context.deck.resolve(destination)
     pipette = _get_pipette(context)
-    context.board.move("pipette", source_coord)
+    context.board.move_to_labware("pipette", source_coord)
     pipette.aspirate(volume_ul, speed)
-    context.board.move("pipette", dest_coord)
+    context.board.move_to_labware("pipette", dest_coord)
     pipette.dispense(volume_ul, speed)
 
     source_key, _ = _parse_position(source)
@@ -158,7 +158,7 @@ def drop_tip(
     """Move pipette to *position*, then drop the tip."""
     coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
-    context.board.move("pipette", coord)
+    context.board.move_to_labware("pipette", coord)
     pipette.drop_tip(speed)
 
 

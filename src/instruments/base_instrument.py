@@ -14,6 +14,20 @@ class BaseInstrument(ABC):
     All instruments accept an ``offline`` flag. When True, connect/disconnect
     are no-ops, health_check returns True, and instrument-specific methods
     return synthetic data without touching hardware.
+
+    Z-offset convention
+    -------------------
+    * ``measurement_height`` — Z offset from the labware reference point
+      when the instrument is taking its measurement/action. Positive =
+      above, negative = below. Non-contact instruments (uvvis, filmetrics,
+      uv_curing) use a small positive value (probe clearance). Contact
+      instruments (pipette, asmi, potentiostat) use 0 (touch) or negative
+      (dip into the sample).
+    * ``safe_approach_height`` — Z offset from the labware reference point
+      while traveling toward a target. Always >= ``measurement_height``
+      so the instrument never drags through labware during XY motion.
+      Defaults to ``measurement_height`` (correct for non-contact tools);
+      contact instruments should set a positive value explicitly.
     """
 
     def __init__(
@@ -23,6 +37,7 @@ class BaseInstrument(ABC):
         offset_y: float = 0.0,
         depth: float = 0.0,
         measurement_height: float = 0.0,
+        safe_approach_height: Optional[float] = None,
         offline: bool = False,
     ):
         self.name = name or self.__class__.__name__
@@ -30,6 +45,9 @@ class BaseInstrument(ABC):
         self.offset_y = offset_y
         self.depth = depth
         self.measurement_height = measurement_height
+        self.safe_approach_height = (
+            safe_approach_height if safe_approach_height is not None else measurement_height
+        )
         self._offline = offline
         self.logger = logging.getLogger(f"{__name__}.{self.name}")
 

@@ -84,8 +84,10 @@ def scan(
             time.sleep(delay_s)
 
         well = plate_obj.get_well_center(well_id)
-        target = (well.x, well.y, well.z - instr.measurement_height)
-        context.board.move(instrument, target)
+        # Use move_to_labware so scan respects both measurement_height
+        # (action) and safe_approach_height (XY travel). Previously this
+        # subtracted measurement_height — inconsistent with `measure`.
+        context.board.move_to_labware(instrument, well)
 
         # Inject gantry if the method accepts it (e.g. ASMI.indentation
         # needs the gantry for Z stepping), then merge with method_kwargs.

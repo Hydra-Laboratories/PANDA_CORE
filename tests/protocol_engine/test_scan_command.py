@@ -124,7 +124,7 @@ class TestScanCommand:
 
         scan(ctx, plate="plate_1", instrument="uvvis", method="measure")
 
-        assert ctx.board.move.call_count == 4
+        assert ctx.board.move_to_labware.call_count == 4
 
     def test_visits_wells_in_row_major_order(self):
         from protocol_engine.commands.scan import scan
@@ -136,12 +136,15 @@ class TestScanCommand:
         scan(ctx, plate="plate_2", instrument="uvvis", method="measure")
 
         # Row-major: A1, A2, A3, B1, B2, B3
-        move_calls = ctx.board.move.call_args_list
+        move_calls = ctx.board.move_to_labware.call_args_list
         positions = [c.args[1] for c in move_calls]
-        xs = [p[0] for p in positions]
+        xs = [p.x for p in positions]
         assert xs == [0.0, 10.0, 20.0, 0.0, 10.0, 20.0]
 
-    def test_applies_measurement_height_offset(self):
+    def test_passes_raw_well_coord_to_move_to_labware(self):
+        # scan now delegates offset application to Board.move_to_labware
+        # (which applies +measurement_height). The command itself should
+        # pass the raw labware z.
         from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()  # wells at z=75.0
@@ -150,10 +153,10 @@ class TestScanCommand:
 
         scan(ctx, plate="plate_1", instrument="uvvis", method="measure")
 
-        # target z = well.z - measurement_height = 75.0 - 3.0 = 72.0
-        move_calls = ctx.board.move.call_args_list
-        zs = [c.args[1][2] for c in move_calls]
-        assert zs == [72.0, 72.0, 72.0, 72.0]
+        move_calls = ctx.board.move_to_labware.call_args_list
+        zs = [c.args[1].z for c in move_calls]
+        # Raw well z — offset is applied inside move_to_labware.
+        assert zs == [75.0, 75.0, 75.0, 75.0]
 
     def test_returns_dict_of_results_per_well(self):
         from protocol_engine.commands.scan import scan
@@ -242,7 +245,7 @@ class TestScanCommand:
 
         scan(ctx, plate="plate_1", instrument="uvvis", method="measure")
 
-        for c in ctx.board.move.call_args_list:
+        for c in ctx.board.move_to_labware.call_args_list:
             assert c.args[0] == "uvvis"
 
     def test_logs_normalized_instrument_measurement(self):

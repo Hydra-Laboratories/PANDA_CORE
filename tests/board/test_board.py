@@ -11,12 +11,21 @@ def _mock_gantry(x=0.0, y=0.0, z=0.0):
     return gantry
 
 
-def _mock_instrument(name="mock", offset_x=0.0, offset_y=0.0, depth=0.0):
+def _mock_instrument(
+    name="mock",
+    offset_x=0.0,
+    offset_y=0.0,
+    depth=0.0,
+    measurement_height=0.0,
+    safe_approach_height=0.0,
+):
     instr = MagicMock(spec=BaseInstrument)
     instr.name = name
     instr.offset_x = offset_x
     instr.offset_y = offset_y
     instr.depth = depth
+    instr.measurement_height = measurement_height
+    instr.safe_approach_height = safe_approach_height
     return instr
 
 
@@ -248,3 +257,61 @@ class TestBoardDisconnectInstruments:
     def test_disconnect_empty_instruments_is_noop(self):
         board = Board(gantry=_mock_gantry())
         board.disconnect_instruments()
+
+
+# ─── move_to_labware tests ───────────────────────────────────────────────────
+
+class TestBoardMoveToLabware:
+
+    def test_non_contact_instrument_single_move(self):
+        """When safe_approach_height == measurement_height, only one move."""
+        gantry = _mock_gantry()
+        instr = _mock_instrument(measurement_height=3.0, safe_approach_height=3.0)
+        board = Board(gantry=gantry, instruments={"sensor": instr})
+        board.move_to_labware("sensor", _mock_labware(x=100, y=50, z=20))
+
+        assert gantry.move_to.call_count == 1
+        args = gantry.move_to.call_args.args
+        # instrument tip at (100, 50, 20+3=23); gantry has depth=0 so same
+        assert args == (100.0, 50.0, 23.0)
+
+    def test_contact_instrument_approach_then_action(self):
+        """Contact instrument: approach at safe_approach_height, then lower."""
+        gantry = _mock_gantry()
+        # pipette: dips 5mm below labware reference, travels 20mm above
+        instr = _mock_instrument(measurement_height=-5.0, safe_approach_height=20.0)
+        board = Board(gantry=gantry, instruments={"pipette": instr})
+        board.move_to_labware("pipette", _mock_labware(x=100, y=50, z=30))
+
+        assert gantry.move_to.call_count == 2
+        # Step 1: approach at z=30+20=50
+        assert gantry.move_to.call_args_list[0].args == (100.0, 50.0, 50.0)
+        # Step 2: lower to action z=30+(-5)=25
+        assert gantry.move_to.call_args_list[1].args == (100.0, 50.0, 25.0)
+
+    def test_applies_instrument_xy_offsets(self):
+        gantry = _mock_gantry()
+        instr = _mock_instrument(
+            offset_x=10.0, offset_y=-5.0,
+            measurement_height=0.0, safe_approach_height=15.0,
+        )
+        board = Board(gantry=gantry, instruments={"probe": instr})
+        board.move_to_labware("probe", _mock_labware(x=100, y=50, z=30))
+
+        # Gantry X = labware.x - offset_x; same for Y.
+        args_approach = gantry.move_to.call_args_list[0].args
+        args_action = gantry.move_to.call_args_list[1].args
+        assert args_approach[0] == 90.0 and args_approach[1] == 55.0
+        assert args_action[0] == 90.0 and args_action[1] == 55.0
+        # Z: approach = 30+15=45, action = 30+0=30
+        assert args_approach[2] == 45.0
+        assert args_action[2] == 30.0
+
+    def test_accepts_tuple_position(self):
+        gantry = _mock_gantry()
+        instr = _mock_instrument(measurement_height=2.0, safe_approach_height=2.0)
+        board = Board(gantry=gantry, instruments={"probe": instr})
+        board.move_to_labware("probe", (50.0, 40.0, 10.0))
+
+        assert gantry.move_to.call_count == 1
+        assert gantry.move_to.call_args.args == (50.0, 40.0, 12.0)
