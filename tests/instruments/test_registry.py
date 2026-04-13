@@ -10,7 +10,7 @@ from instruments.registry import (
 from instruments.base_instrument import BaseInstrument
 
 
-EXPECTED_TYPES = ["asmi", "filmetrics", "pipette", "uv_curing", "uvvis_ccs"]
+EXPECTED_TYPES = ["asmi", "filmetrics", "pipette", "potentiostat", "uv_curing", "uvvis_ccs"]
 
 
 class TestLoadRegistry:
@@ -49,6 +49,9 @@ class TestGetSupportedVendors:
     def test_pipette_vendors(self):
         assert get_supported_vendors("pipette") == ["opentrons"]
 
+    def test_potentiostat_vendors(self):
+        assert get_supported_vendors("potentiostat") == ["admiral"]
+
     def test_uv_curing_vendors(self):
         assert get_supported_vendors("uv_curing") == ["excelitas"]
 
@@ -79,6 +82,10 @@ class TestGetInstrumentClass:
         from instruments.pipette.driver import Pipette
         assert get_instrument_class("pipette") is Pipette
 
+    def test_potentiostat_class(self):
+        from instruments.potentiostat.driver import Potentiostat
+        assert get_instrument_class("potentiostat") is Potentiostat
+
     def test_uv_curing_class(self):
         from instruments.uv_curing.driver import UVCuring
         assert get_instrument_class("uv_curing") is UVCuring
@@ -99,6 +106,7 @@ class TestValidateInstrument:
             ("asmi", "vernier"),
             ("filmetrics", "kla"),
             ("pipette", "opentrons"),
+            ("potentiostat", "admiral"),
             ("uv_curing", "excelitas"),
             ("uvvis_ccs", "thorlabs"),
         ]

@@ -83,6 +83,21 @@ Driver for Opentrons OT-2 and Flex pipettes. Communicates with the pipette motor
 - **`models.py`**: `PipetteConfig` (frozen, per-model hardware description), `PipetteStatus`, `AspirateResult`, `MixResult` (all frozen dataclasses). `PIPETTE_MODELS` registry dict. `PipetteFamily` enum (OT2/FLEX).
 - **`exceptions.py`**: `PipetteError` hierarchy (`PipetteConnectionError`, `PipetteCommandError`, `PipetteTimeoutError`, `PipetteConfigError`).
 
+#### Potentiostat (`src/instruments/potentiostat`)
+Driver for Admiral Instruments SquidStat potentiostats via the vendor `SquidstatPyLibrary` (Qt/PySide6 signal-slot API). Wraps the async vendor API in a blocking, synchronous facade matching the rest of the instrument stack: a lazy process-wide `QCoreApplication` plus a per-experiment `QEventLoop`. Vendor SDK is lazy-imported inside `connect()`; the package imports and runs in `offline=True` mode without it.
+
+Install the optional extra to get the vendor SDK and numpy: `pip install -e ".[potentiostat]"`.
+
+- **`driver.py`**: `Potentiostat(BaseInstrument)` — the real driver.
+    - **Class attribute**: `vendor = "admiral"` — surfaced on every result so the persistence layer can tag rows.
+    - **Constructor**: `Potentiostat(port, channel=0, command_timeout=600.0, name=None, offline=False)`
+    - **Lifecycle**: `connect()`, `disconnect()`, `health_check()`
+    - **Experiments**: `run_cv(CVParams) -> CVResult`, `run_ocp(OCPParams) -> OCPResult`, `run_ca(CAParams) -> CAResult`, `run_cp(CPParams) -> CPResult`
+    - Offline mode returns deterministic synthetic traces (seeded RNG) so downstream code can be exercised without hardware.
+- **`models.py`**: frozen param dataclasses (`CVParams`, `OCPParams`, `CAParams`, `CPParams`) with validation in `__post_init__`, and frozen result dataclasses (`OCPResult`, `CAResult`, `CPResult`, `CVResult`) carrying `tuple[float, ...]` traces (`time_s`, `voltage_v`, `current_a`), the requested technique scalars (e.g. `scan_rate_v_s`, `step_potential_v`, `cycles`), a `vendor` field, a `.technique` property, and a free-form `metadata` mapping (`device_id`, `channel`, `started_at`, `stopped_at`, `aborted`, `stop_reason`).
+- **`exceptions.py`**: `PotentiostatError` hierarchy (`PotentiostatConnectionError`, `PotentiostatCommandError`, `PotentiostatTimeoutError`, `PotentiostatConfigError`).
+- **Persistence**: results flow through `protocol_engine.measurements.normalize_measurement` (which recognises all four result types) into `DataStore.log_measurement`, which writes to the `potentiostat_measurements` table. See the data-layer section for the schema.
+
 ### Protocol Engine (`src/protocol_engine`)
 A modular system for executing experiment sequences defined in code or YAML.
 
@@ -108,7 +123,7 @@ Gantry YAML loader and domain model for CNC gantry working volume and homing str
 - **`yaml_schema.py`**: `GantryYamlSchema` with strict Pydantic validation (working volume bounds, homing strategy, serial port, and `cnc.total_z_height`).
 - **`gantry_config.py`**: `GantryConfig` and `WorkingVolume` frozen dataclasses. `WorkingVolume.contains(x, y, z)` checks if a point is within bounds (inclusive). `GantryConfig.total_z_height` is the top-reference height used for labware height conversion. `HomingStrategy` enum: `STANDARD`, `XY_HARD_LIMITS`, `MANUAL_ORIGIN`.
 - **`loader.py`**: `load_gantry_from_yaml(path)` and `load_gantry_from_yaml_safe(path)`.
-- **Config files**: `configs/gantry/` (e.g., `cubos_xl.yaml`).
+- **Config files**: `configs/gantry/` (e.g., `cub_xl.yaml`).
 
 ### Validation (`src/validation`)
 Bounds validation for protocol setup — ensures all deck positions and gantry-computed positions are within the gantry's working volume before the protocol runs.
@@ -162,11 +177,12 @@ SQLite-backed persistence layer for self-driving lab campaigns. All state lives 
         - `UVVisSpectrum` → `uvvis_measurements` (wavelengths/intensities stored as little-endian BLOB via `struct.pack`)
         - `MeasurementResult` → `filmetrics_measurements` (thickness_nm, goodness_of_fit)
         - `str` (image path) → `camera_measurements`
+        - `InstrumentMeasurement` with potentiostat type → `potentiostat_measurements` (technique, JSON-encoded `time_s`/`voltage_v`/`current_a`, plus per-technique scalars: `sample_period_s`, `duration_s`, `step_potential_v`, `step_current_a`, `scan_rate_v_s`, `step_size_v`, `cycles`; run metadata `vendor`, `device_id`, `channel`, `started_at`, `stopped_at`, `aborted`, `stop_reason` each promoted to their own column)
     - **Labware API** (volume and content tracking, persisted to `labware` table):
         - `register_labware(campaign_id, labware_key, labware)` — registers a Vial (1 row) or WellPlate (1 row per well) with total/working volume from the model.
         - `record_dispense(campaign_id, labware_key, well_id, source_name, volume_ul)` — increments `current_volume_ul` and appends to `contents` JSON.
         - `get_contents(campaign_id, labware_key, well_id) -> list | None` — returns parsed contents list.
-    - **Schema tables**: `campaigns`, `experiments`, `uvvis_measurements`, `filmetrics_measurements`, `camera_measurements`, `labware`
+    - **Schema tables**: `campaigns`, `experiments`, `uvvis_measurements`, `filmetrics_measurements`, `camera_measurements`, `asmi_measurements`, `potentiostat_measurements`, `labware`
 
 #### Protocol Integration
 - **`ProtocolContext.data_store`**: Optional `DataStore` instance. When set (along with `campaign_id`), `scan` and `transfer` commands automatically persist measurements and labware state.
@@ -205,7 +221,7 @@ First-run scripts for verifying hardware after unboxing.
 - **`keyboard_input.py`**: Helper module that reads single keypresses (including arrow keys) without requiring Enter. Uses `tty`/`termios` (Unix only).
 
 ### Calibration (`calibration/`)
-- **`home_gantry.py`**: CNC homing wrapper that loads `configs/gantry/cubos_xl.yaml`, connects to the gantry, and runs the configured homing sequence.
+- **`home_gantry.py`**: CNC homing wrapper that loads `configs/gantry/cub_xl.yaml`, connects to the gantry, and runs the configured homing sequence.
     - **Usage**: `python calibration/home_gantry.py`
 
 ### Development Commands

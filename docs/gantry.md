@@ -70,5 +70,5 @@ Working volume bounds are inclusive. Current configs include both positive-space
 
 | Config | System | Working Volume |
 |--------|--------|----------------|
-| `cubos_xl.yaml` | CubOS-XL / Genmitsu 3018 PRO | 400 x 300 x 80 mm |
-| `cubos.yaml` | CubOS / Genmitsu 3018 PROVer V2 | 300 x 200 x 80 mm |
+| `cub_xl.yaml` | CubOS-XL / Genmitsu 3018 PRO | 400 x 300 x 80 mm |
+| `cub.yaml` | CubOS / Genmitsu 3018 PROVer V2 | 300 x 200 x 80 mm |

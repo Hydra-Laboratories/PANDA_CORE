@@ -8,12 +8,21 @@ from typing import Any
 
 from instruments.uvvis_ccs.models import UVVisSpectrum
 
+# Potentiostat results are recognised by duck-typing on their `.technique`
+# attribute (see `_POTENTIOSTAT_TECHNIQUES` below). Concrete classes are
+# NOT imported here so protocol_engine stays decoupled from the
+# instrument packages.
+
 
 class MeasurementType(str, Enum):
     """Normalized measurement types understood by protocol persistence."""
 
     UVVIS_SPECTRUM = "uvvis_spectrum"
     ASMI_INDENTATION = "asmi_indentation"
+    POTENTIOSTAT_OCP = "potentiostat_ocp"
+    POTENTIOSTAT_CA = "potentiostat_ca"
+    POTENTIOSTAT_CV = "potentiostat_cv"
+    POTENTIOSTAT_CP = "potentiostat_cp"
 
 
 @dataclass(frozen=True)
@@ -23,6 +32,80 @@ class InstrumentMeasurement:
     measurement_type: MeasurementType
     payload: dict[str, Any]
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+_POTENTIOSTAT_TECHNIQUES = {
+    "ocp": MeasurementType.POTENTIOSTAT_OCP,
+    "ca": MeasurementType.POTENTIOSTAT_CA,
+    "cp": MeasurementType.POTENTIOSTAT_CP,
+    "cv": MeasurementType.POTENTIOSTAT_CV,
+}
+
+
+def _is_potentiostat_result(raw_result: Any) -> bool:
+    """True if ``raw_result`` quacks like an ``instruments.potentiostat`` result."""
+    technique = getattr(raw_result, "technique", None)
+    if technique not in _POTENTIOSTAT_TECHNIQUES:
+        return False
+    for attr in ("time_s", "voltage_v", "vendor", "metadata"):
+        if not hasattr(raw_result, attr):
+            return False
+    return True
+
+
+def _potentiostat_base_metadata(
+    raw_result: Any,
+    instrument_name: str,
+    method_name: str,
+) -> dict[str, Any]:
+    """Common metadata keys for every potentiostat result type."""
+    return {
+        **dict(raw_result.metadata),
+        "technique": raw_result.technique,
+        "vendor": raw_result.vendor,
+        "instrument_name": instrument_name,
+        "method_name": method_name,
+    }
+
+
+def _normalize_potentiostat_result(
+    raw_result: Any,
+    instrument_name: str,
+    method_name: str,
+) -> "InstrumentMeasurement":
+    """Build an ``InstrumentMeasurement`` from a potentiostat result via duck-typing.
+
+    Per-technique scalar fields are optional — only OCP lacks ``current_a`` —
+    so we probe each expected attribute with ``getattr`` and skip missing ones.
+    """
+    technique = raw_result.technique
+    measurement_type = _POTENTIOSTAT_TECHNIQUES[technique]
+    meta = _potentiostat_base_metadata(raw_result, instrument_name, method_name)
+
+    payload: dict[str, Any] = {
+        "time_s": list(raw_result.time_s),
+        "voltage_v": list(raw_result.voltage_v),
+    }
+    if hasattr(raw_result, "current_a"):
+        payload["current_a"] = list(raw_result.current_a)
+
+    for attr in (
+        "sample_period_s",
+        "duration_s",
+        "step_potential_v",
+        "step_current_a",
+        "scan_rate_v_s",
+        "step_size_v",
+        "cycles",
+    ):
+        if hasattr(raw_result, attr):
+            meta[attr] = getattr(raw_result, attr)
+
+    return InstrumentMeasurement(
+        measurement_type=measurement_type,
+        payload=payload,
+        metadata=meta,
+    )
 
 
 def normalize_measurement(
@@ -63,6 +146,11 @@ def normalize_measurement(
                 "instrument_name": instrument_name,
                 "method_name": method_name,
             },
+        )
+
+    if _is_potentiostat_result(raw_result):
+        return _normalize_potentiostat_result(
+            raw_result, instrument_name, method_name,
         )
 
     raise TypeError(

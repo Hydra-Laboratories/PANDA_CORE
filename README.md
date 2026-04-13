@@ -31,8 +31,8 @@ Included examples:
 
 | Config | System |
 |--------|--------|
-| `cubos.yaml` | Cub |
-| `cubos_xl.yaml` | Cub-XL |
+| `cub.yaml` | Cub |
+| `cub_xl.yaml` | Cub-XL |
 
 ### 2. Deck (`configs/deck/*.yaml`)
 
@@ -120,6 +120,13 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
+Optional per-instrument extras pull in vendor SDKs only when you need them:
+
+```bash
+# Admiral Instruments SquidStat potentiostat (PySide6 + SquidstatPyLibrary)
+pip install -e ".[potentiostat]"
+```
+
 Interactive jog test:
 
 ```bash
@@ -130,7 +137,7 @@ Validate a setup:
 
 ```bash
 python setup/validate_setup.py \
-    configs/gantry/cubos.yaml \
+    configs/gantry/cub.yaml \
     configs/deck/mofcat_deck.yaml \
     configs/board/mofcat_board.yaml \
     configs/protocol/protocol.sample.yaml
@@ -140,7 +147,7 @@ Run a protocol:
 
 ```bash
 python setup/run_protocol.py \
-    configs/gantry/cubos.yaml \
+    configs/gantry/cub.yaml \
     configs/deck/mofcat_deck.yaml \
     configs/board/mofcat_board.yaml \
     configs/protocol/protocol.sample.yaml
@@ -152,7 +159,7 @@ Programmatic setup:
 from protocol_engine.setup import setup_protocol
 
 protocol, context = setup_protocol(
-    gantry_path="configs/gantry/cubos.yaml",
+    gantry_path="configs/gantry/cub.yaml",
     deck_path="configs/deck/mofcat_deck.yaml",
     board_path="configs/board/mofcat_board.yaml",
     protocol_path="configs/protocol/protocol.sample.yaml",
