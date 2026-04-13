@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 
 from instruments.potentiostat.driver import Potentiostat, _QtBindings
@@ -39,6 +38,7 @@ class TestConstructor:
         assert p._channel == 0
         assert p._port == ""
         assert p._offline is False
+        assert p.vendor == "admiral"
 
     def test_name_override(self):
         p = Potentiostat(name="station_a")
@@ -80,13 +80,14 @@ class TestOfflineLifecycle:
             )
         )
         assert isinstance(result, CVResult)
-        n = result.potentials_V.size
-        assert result.currents_A.shape == (n,)
-        assert result.timestamps_s.shape == (n,)
-        assert result.cycle_index.shape == (n,)
-        assert set(np.unique(result.cycle_index).tolist()) == {0, 1}
+        n = len(result.voltage_v)
+        assert len(result.current_a) == n
+        assert len(result.time_s) == n
+        assert result.cycles == 2
+        assert result.vendor == "admiral"
         assert result.metadata["aborted"] is False
         assert result.metadata["device_id"] == "offline"
+        assert result.technique == "cv"
 
     def test_run_cv_offline_is_deterministic(self):
         p1 = Potentiostat(offline=True)
@@ -94,28 +95,35 @@ class TestOfflineLifecycle:
         params = CVParams(0.0, 0.2, -0.2, 0.0, 0.05, cycles=1, sampling_interval_s=0.1)
         r1 = p1.run_cv(params)
         r2 = p2.run_cv(params)
-        np.testing.assert_allclose(r1.currents_A, r2.currents_A)
+        assert r1.current_a == r2.current_a
 
     def test_run_ocp_offline(self):
         p = Potentiostat(offline=True)
         result = p.run_ocp(OCPParams(duration_s=1.0, sampling_interval_s=0.1))
         assert isinstance(result, OCPResult)
-        assert result.potentials_V.size == result.timestamps_s.size == 10
+        assert len(result.voltage_v) == len(result.time_s) == 10
+        assert result.duration_s == 1.0
+        assert result.sample_period_s == 0.1
         assert result.metadata["aborted"] is False
+        assert result.technique == "ocp"
 
     def test_run_ca_offline(self):
         p = Potentiostat(offline=True)
         result = p.run_ca(CAParams(potential_V=0.6, duration_s=0.5, sampling_interval_s=0.05))
         assert isinstance(result, CAResult)
-        assert np.allclose(result.potentials_V, 0.6)
-        assert result.currents_A.size == 10
+        assert all(v == 0.6 for v in result.voltage_v)
+        assert len(result.current_a) == 10
+        assert result.step_potential_v == 0.6
+        assert result.technique == "ca"
 
     def test_run_cp_offline(self):
         p = Potentiostat(offline=True)
         result = p.run_cp(CPParams(current_A=1e-3, duration_s=0.5, sampling_interval_s=0.05))
         assert isinstance(result, CPResult)
-        assert np.allclose(result.currents_A, 1e-3)
-        assert result.potentials_V.size == 10
+        assert all(c == 1e-3 for c in result.current_a)
+        assert len(result.voltage_v) == 10
+        assert result.step_current_a == 1e-3
+        assert result.technique == "cp"
 
 
 # --- Online mode helpers ------------------------------------------------------
@@ -126,14 +134,10 @@ def _make_qt_mock_bindings(
     schedule_device_connected: bool = True,
     schedule_experiment_stopped: bool = True,
     dc_samples: list[tuple[float, float, float]] | None = None,
-    new_element_breakpoints: list[int] | None = None,
 ):
     """Build a ``_QtBindings`` whose QEventLoop/QTimer fire pre-scripted events.
 
-    The "event loop" here just executes queued callbacks synchronously when
-    ``exec()`` is called. ``QTimer.singleShot`` appends a callback; a test can
-    pre-queue signal emissions so that when the driver calls ``loop.exec()``
-    the expected sequence fires and ``loop.quit()`` is invoked.
+    Each entry in ``dc_samples`` is ``(timestamp_s, voltage_v, current_a)``.
     """
     squidstat = MagicMock()
     tracker = MagicMock()
@@ -157,9 +161,6 @@ def _make_qt_mock_bindings(
 
     tracker.newDeviceConnected = _register_signal("tracker", "newDeviceConnected")
     handler.activeDCDataReady = _register_signal("handler", "activeDCDataReady")
-    handler.experimentNewElementStarting = _register_signal(
-        "handler", "experimentNewElementStarting",
-    )
     handler.experimentStopped = _register_signal("handler", "experimentStopped")
 
     # uploadExperimentToChannel / startUploadedExperiment return falsy on success.
@@ -190,9 +191,8 @@ def _make_qt_mock_bindings(
         def __call__(self):
             loop = _Loop()
             active_loop["loop"] = loop
-            # Auto-schedule the signal emissions that each test stage needs.
-            # Iteration of the slot list happens at call time inside exec(),
-            # by which point the driver has already wired its slots.
+            # Iterate slot lists at call time (lambdas fire during exec()
+            # after the driver has wired its slots).
             if schedule_device_connected:
                 loop.queue(
                     lambda: [
@@ -203,19 +203,12 @@ def _make_qt_mock_bindings(
                     ]
                 )
             if dc_samples is not None:
-                for i, (v, cur, ts) in enumerate(dc_samples):
-                    def _emit(v=v, cur=cur, ts=ts, i=i):
-                        if new_element_breakpoints and i in new_element_breakpoints:
-                            for slot in list(
-                                signal_registry[
-                                    ("handler", "experimentNewElementStarting")
-                                ]
-                            ):
-                                slot(0, MagicMock(), MagicMock())
+                for (ts, v, cur) in dc_samples:
+                    def _emit(ts=ts, v=v, cur=cur):
                         sample = MagicMock()
+                        sample.timestamp = ts
                         sample.workingElectrodeVoltage = v
                         sample.current = cur
-                        sample.timestamp = ts
                         for slot in list(
                             signal_registry[("handler", "activeDCDataReady")]
                         ):
@@ -258,7 +251,6 @@ def _make_qt_mock_bindings(
 class TestConnectMissingDependency:
 
     def test_raises_connection_error_with_install_hint(self):
-        # Patch the real loader: simulate ImportError on SquidstatPyLibrary.
         def _raise(*_a, **_k):
             raise PotentiostatConnectionError(
                 "SquidstatPyLibrary is not installed. "
@@ -289,7 +281,7 @@ class TestConnectOnline:
         assert p._device_id == "SquidStatMock"
         tracker.connectToDeviceOnComPort.assert_called_once_with("COM3")
 
-    def test_no_device_raises_timeout_error_style(self):
+    def test_no_device_raises_connection_error(self):
         bindings, tracker, _handler = _make_qt_mock_bindings(
             schedule_device_connected=False,
         )
@@ -311,17 +303,14 @@ class TestConnectOnline:
 
 class TestRunCVOnline:
 
-    def test_collects_samples_and_increments_cycle_on_new_element(self):
+    def test_collects_samples_into_tuple_arrays(self):
         samples = [
-            (0.0, 1e-6, 0.00),
-            (0.1, 2e-6, 0.01),
-            (0.2, 3e-6, 0.02),  # new element boundary fires BEFORE this sample
-            (0.3, 4e-6, 0.03),
+            (0.00, 0.0, 1e-6),
+            (0.01, 0.1, 2e-6),
+            (0.02, 0.2, 3e-6),
+            (0.03, 0.3, 4e-6),
         ]
-        bindings, _tracker, handler = _make_qt_mock_bindings(
-            dc_samples=samples,
-            new_element_breakpoints=[2],
-        )
+        bindings, _tracker, handler = _make_qt_mock_bindings(dc_samples=samples)
         with patch(
             "instruments.potentiostat.driver._load_qt_bindings",
             return_value=bindings,
@@ -333,9 +322,13 @@ class TestRunCVOnline:
             )
 
         assert isinstance(result, CVResult)
-        np.testing.assert_allclose(result.potentials_V, [0.0, 0.1, 0.2, 0.3])
-        np.testing.assert_allclose(result.currents_A, [1e-6, 2e-6, 3e-6, 4e-6])
-        np.testing.assert_array_equal(result.cycle_index, [0, 0, 1, 1])
+        assert result.time_s == (0.00, 0.01, 0.02, 0.03)
+        assert result.voltage_v == (0.0, 0.1, 0.2, 0.3)
+        assert result.current_a == (1e-6, 2e-6, 3e-6, 4e-6)
+        assert result.cycles == 2
+        assert result.scan_rate_v_s == 0.05
+        assert result.step_size_v == pytest.approx(0.05 * 0.01)
+        assert result.vendor == "admiral"
         assert result.metadata["aborted"] is False
         assert result.metadata["channel"] == 0
         handler.uploadExperimentToChannel.assert_called_once()
@@ -353,7 +346,6 @@ class TestRunCVOnline:
 class TestExperimentTimeout:
 
     def test_timeout_raises_and_stops_experiment(self):
-        # Omit experiment_stopped emission so only the QTimer fires.
         bindings, _tracker, handler = _make_qt_mock_bindings(
             schedule_experiment_stopped=False,
         )

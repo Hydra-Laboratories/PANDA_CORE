@@ -1,17 +1,19 @@
-"""Parameter and result dataclasses for SquidStat experiments.
+"""Parameter and result dataclasses for potentiostat experiments.
 
-All dataclasses are frozen. Param types validate in ``__post_init__`` and raise
-:class:`PotentiostatConfigError` on bad input. Result types carry numpy arrays
-and a ``metadata`` mapping with run-level info (model, channel, timestamps,
-aborted flag).
+All dataclasses are frozen. ``*Params`` types validate in ``__post_init__``
+and raise :class:`PotentiostatConfigError` on bad input. ``*Result`` types
+carry ``tuple[float, ...]`` traces plus the requested-experiment scalars,
+the driver's ``vendor`` name, and a free-form ``metadata`` mapping with
+run-level info (device ID, timestamps, ``aborted`` flag, stop reason).
+
+The result shape matches ``UVVisSpectrum`` and friends: tuple-backed arrays
+serialize cheaply into SQLite via :class:`DataStore.log_measurement`.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Mapping
-
-import numpy as np
 
 from instruments.potentiostat.exceptions import PotentiostatConfigError
 
@@ -127,32 +129,118 @@ class CPParams:
 
 
 @dataclass(frozen=True)
-class CVResult:
-    potentials_V: np.ndarray
-    currents_A: np.ndarray
-    timestamps_s: np.ndarray
-    cycle_index: np.ndarray
-    metadata: Mapping[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
 class OCPResult:
-    potentials_V: np.ndarray
-    timestamps_s: np.ndarray
+    """Open-circuit potential trace.
+
+    Current is not recorded by OCP (the cell is open), so only voltage_v is
+    populated. Use ``final_voltage_v`` to grab the last reading.
+    """
+
+    time_s: tuple[float, ...]
+    voltage_v: tuple[float, ...]
+    sample_period_s: float
+    duration_s: float
+    vendor: str
     metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def technique(self) -> str:
+        return "ocp"
+
+    @property
+    def final_voltage_v(self) -> float | None:
+        return self.voltage_v[-1] if self.voltage_v else None
+
+    @property
+    def is_valid(self) -> bool:
+        return (
+            len(self.time_s) > 0
+            and len(self.time_s) == len(self.voltage_v)
+            and self.sample_period_s > 0
+            and self.duration_s > 0
+        )
 
 
 @dataclass(frozen=True)
 class CAResult:
-    currents_A: np.ndarray
-    potentials_V: np.ndarray
-    timestamps_s: np.ndarray
+    """Chronoamperometry trace (current measured at constant applied potential)."""
+
+    time_s: tuple[float, ...]
+    voltage_v: tuple[float, ...]
+    current_a: tuple[float, ...]
+    sample_period_s: float
+    duration_s: float
+    step_potential_v: float
+    vendor: str
     metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def technique(self) -> str:
+        return "ca"
+
+    @property
+    def is_valid(self) -> bool:
+        return (
+            len(self.time_s) > 0
+            and len(self.time_s) == len(self.current_a)
+            and len(self.time_s) == len(self.voltage_v)
+            and self.sample_period_s > 0
+            and self.duration_s > 0
+        )
 
 
 @dataclass(frozen=True)
 class CPResult:
-    currents_A: np.ndarray
-    potentials_V: np.ndarray
-    timestamps_s: np.ndarray
+    """Chronopotentiometry trace (voltage measured at constant applied current)."""
+
+    time_s: tuple[float, ...]
+    voltage_v: tuple[float, ...]
+    current_a: tuple[float, ...]
+    sample_period_s: float
+    duration_s: float
+    step_current_a: float
+    vendor: str
     metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def technique(self) -> str:
+        return "cp"
+
+    @property
+    def is_valid(self) -> bool:
+        return (
+            len(self.time_s) > 0
+            and len(self.time_s) == len(self.current_a)
+            and len(self.time_s) == len(self.voltage_v)
+            and self.sample_period_s > 0
+            and self.duration_s > 0
+        )
+
+
+@dataclass(frozen=True)
+class CVResult:
+    """Cyclic voltammetry trace."""
+
+    time_s: tuple[float, ...]
+    voltage_v: tuple[float, ...]
+    current_a: tuple[float, ...]
+    scan_rate_v_s: float
+    step_size_v: float
+    cycles: int
+    vendor: str
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def technique(self) -> str:
+        return "cv"
+
+    @property
+    def is_valid(self) -> bool:
+        return (
+            len(self.time_s) > 0
+            and len(self.time_s) == len(self.current_a)
+            and len(self.time_s) == len(self.voltage_v)
+            and self.scan_rate_v_s > 0
+            and self.step_size_v > 0
+            and self.cycles >= 1
+        )

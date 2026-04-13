@@ -72,6 +72,25 @@ CREATE TABLE IF NOT EXISTS asmi_measurements (
     timestamp       TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS potentiostat_measurements (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    experiment_id     INTEGER NOT NULL REFERENCES experiments(id),
+    technique         TEXT    NOT NULL,
+    time_s            TEXT    NOT NULL,
+    voltage_v         TEXT    NOT NULL,
+    current_a         TEXT,
+    sample_period_s   REAL,
+    duration_s        REAL,
+    step_potential_v  REAL,
+    step_current_a    REAL,
+    scan_rate_v_s     REAL,
+    step_size_v       REAL,
+    cycles            INTEGER,
+    vendor            TEXT,
+    metadata_json     TEXT,
+    timestamp         TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS labware (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     campaign_id       INTEGER NOT NULL REFERENCES campaigns(id),
@@ -214,6 +233,35 @@ class DataStore:
                 data_points=int(measurement.metadata["data_points"]),
             )
 
+        if measurement.measurement_type in {
+            MeasurementType.POTENTIOSTAT_OCP,
+            MeasurementType.POTENTIOSTAT_CA,
+            MeasurementType.POTENTIOSTAT_CV,
+            MeasurementType.POTENTIOSTAT_CP,
+        }:
+            payload = measurement.payload
+            meta = measurement.metadata
+            return self._log_potentiostat(
+                experiment_id=experiment_id,
+                technique=str(meta["technique"]),
+                time_s=tuple(payload["time_s"]),
+                voltage_v=tuple(payload["voltage_v"]),
+                current_a=(
+                    tuple(payload["current_a"])
+                    if "current_a" in payload
+                    else None
+                ),
+                sample_period_s=meta.get("sample_period_s"),
+                duration_s=meta.get("duration_s"),
+                step_potential_v=meta.get("step_potential_v"),
+                step_current_a=meta.get("step_current_a"),
+                scan_rate_v_s=meta.get("scan_rate_v_s"),
+                step_size_v=meta.get("step_size_v"),
+                cycles=meta.get("cycles"),
+                vendor=meta.get("vendor"),
+                metadata_json=json.dumps(dict(meta)),
+            )
+
         raise TypeError(
             "Unsupported instrument measurement type: "
             f"{measurement.measurement_type}"
@@ -282,6 +330,49 @@ class DataStore:
                 baseline_std,
                 int(force_exceeded),
                 data_points,
+            ),
+        )
+        self._conn.commit()
+        return cursor.lastrowid
+
+    def _log_potentiostat(
+        self,
+        experiment_id: int,
+        technique: str,
+        time_s: tuple[float, ...],
+        voltage_v: tuple[float, ...],
+        current_a: Optional[tuple[float, ...]],
+        sample_period_s: Optional[float],
+        duration_s: Optional[float],
+        step_potential_v: Optional[float],
+        step_current_a: Optional[float],
+        scan_rate_v_s: Optional[float],
+        step_size_v: Optional[float],
+        cycles: Optional[int],
+        vendor: Optional[str],
+        metadata_json: str,
+    ) -> int:
+        cursor = self._conn.execute(
+            "INSERT INTO potentiostat_measurements "
+            "(experiment_id, technique, time_s, voltage_v, current_a, "
+            "sample_period_s, duration_s, step_potential_v, step_current_a, "
+            "scan_rate_v_s, step_size_v, cycles, vendor, metadata_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                experiment_id,
+                technique,
+                json.dumps(list(time_s)),
+                json.dumps(list(voltage_v)),
+                json.dumps(list(current_a)) if current_a is not None else None,
+                sample_period_s,
+                duration_s,
+                step_potential_v,
+                step_current_a,
+                scan_rate_v_s,
+                step_size_v,
+                cycles,
+                vendor,
+                metadata_json,
             ),
         )
         self._conn.commit()

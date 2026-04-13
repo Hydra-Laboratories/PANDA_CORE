@@ -1,6 +1,5 @@
 """Unit tests for potentiostat params/results dataclasses and exceptions."""
 
-import numpy as np
 import pytest
 
 from instruments.base_instrument import InstrumentError
@@ -137,46 +136,117 @@ class TestDurationParams:
 # --- Result dataclasses -------------------------------------------------------
 
 
-class TestResults:
+class TestOCPResult:
 
-    def test_cv_result_holds_arrays_and_metadata(self):
-        r = CVResult(
-            potentials_V=np.array([0.0, 0.1, 0.2]),
-            currents_A=np.array([1e-6, 2e-6, 3e-6]),
-            timestamps_s=np.array([0.0, 0.01, 0.02]),
-            cycle_index=np.array([0, 0, 0]),
-            metadata={"model": "SquidStatPlus", "aborted": False},
-        )
-        assert r.potentials_V.shape == (3,)
-        assert r.metadata["model"] == "SquidStatPlus"
-
-    def test_cv_result_is_frozen(self):
-        r = CVResult(
-            potentials_V=np.array([0.0]),
-            currents_A=np.array([0.0]),
-            timestamps_s=np.array([0.0]),
-            cycle_index=np.array([0]),
-        )
-        with pytest.raises(AttributeError):
-            r.metadata = {"x": 1}  # type: ignore[misc]
-
-    def test_default_metadata_is_empty_mapping(self):
+    def test_fields_and_technique(self):
         r = OCPResult(
-            potentials_V=np.array([0.0]),
-            timestamps_s=np.array([0.0]),
+            time_s=(0.0, 0.1, 0.2),
+            voltage_v=(0.35, 0.36, 0.37),
+            sample_period_s=0.1,
+            duration_s=0.3,
+            vendor="admiral",
         )
+        assert r.technique == "ocp"
+        assert r.final_voltage_v == 0.37
+        assert r.is_valid
         assert r.metadata == {}
 
-    def test_ca_and_cp_shapes_align(self):
-        ca = CAResult(
-            currents_A=np.array([1e-6, 2e-6]),
-            potentials_V=np.array([0.5, 0.5]),
-            timestamps_s=np.array([0.0, 0.01]),
+    def test_empty_trace_not_valid(self):
+        r = OCPResult(
+            time_s=(),
+            voltage_v=(),
+            sample_period_s=0.1,
+            duration_s=1.0,
+            vendor="admiral",
         )
-        cp = CPResult(
-            currents_A=np.array([1e-3, 1e-3]),
-            potentials_V=np.array([0.3, 0.31]),
-            timestamps_s=np.array([0.0, 0.01]),
+        assert r.final_voltage_v is None
+        assert not r.is_valid
+
+    def test_frozen(self):
+        r = OCPResult(
+            time_s=(0.0,), voltage_v=(0.5,),
+            sample_period_s=0.1, duration_s=1.0, vendor="admiral",
         )
-        assert ca.currents_A.shape == ca.potentials_V.shape == ca.timestamps_s.shape
-        assert cp.currents_A.shape == cp.potentials_V.shape == cp.timestamps_s.shape
+        with pytest.raises(AttributeError):
+            r.duration_s = 9.9  # type: ignore[misc]
+
+
+class TestCAResult:
+
+    def test_fields_and_technique(self):
+        r = CAResult(
+            time_s=(0.0, 0.01),
+            voltage_v=(0.5, 0.5),
+            current_a=(1e-6, 9e-7),
+            sample_period_s=0.01,
+            duration_s=0.02,
+            step_potential_v=0.5,
+            vendor="admiral",
+        )
+        assert r.technique == "ca"
+        assert r.is_valid
+
+    def test_mismatched_lengths_not_valid(self):
+        r = CAResult(
+            time_s=(0.0, 0.01),
+            voltage_v=(0.5,),
+            current_a=(1e-6,),
+            sample_period_s=0.01,
+            duration_s=0.02,
+            step_potential_v=0.5,
+            vendor="admiral",
+        )
+        assert not r.is_valid
+
+
+class TestCPResult:
+
+    def test_fields_and_technique(self):
+        r = CPResult(
+            time_s=(0.0, 0.01),
+            voltage_v=(0.1, 0.11),
+            current_a=(1e-3, 1e-3),
+            sample_period_s=0.01,
+            duration_s=0.02,
+            step_current_a=1e-3,
+            vendor="admiral",
+        )
+        assert r.technique == "cp"
+        assert r.is_valid
+        assert r.step_current_a == 1e-3
+
+
+class TestCVResult:
+
+    def test_fields_and_technique(self):
+        r = CVResult(
+            time_s=(0.0, 0.01, 0.02),
+            voltage_v=(0.0, 0.1, 0.2),
+            current_a=(1e-6, 2e-6, 3e-6),
+            scan_rate_v_s=0.05,
+            step_size_v=0.0005,
+            cycles=2,
+            vendor="admiral",
+            metadata={"device_id": "abc"},
+        )
+        assert r.technique == "cv"
+        assert r.is_valid
+        assert r.cycles == 2
+        assert r.metadata["device_id"] == "abc"
+
+    def test_zero_cycles_not_valid(self):
+        r = CVResult(
+            time_s=(0.0,), voltage_v=(0.0,), current_a=(1e-6,),
+            scan_rate_v_s=0.05, step_size_v=0.0005, cycles=0,
+            vendor="admiral",
+        )
+        assert not r.is_valid
+
+    def test_frozen(self):
+        r = CVResult(
+            time_s=(0.0,), voltage_v=(0.0,), current_a=(1e-6,),
+            scan_rate_v_s=0.05, step_size_v=0.0005, cycles=1,
+            vendor="admiral",
+        )
+        with pytest.raises(AttributeError):
+            r.cycles = 9  # type: ignore[misc]

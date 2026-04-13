@@ -13,12 +13,15 @@ Qt integration strategy (see plan for rationale):
 
 The vendor SDK is imported lazily inside :meth:`connect`; the package can be
 imported, params/results built, and :attr:`offline` runs performed without it.
+
+Result shape follows the ``UVVisSpectrum`` precedent: ``tuple[float, ...]``
+traces, technique-specific scalar fields surfaced at the top level, and a
+free-form ``metadata`` mapping for run-level annotations.
 """
 
 from __future__ import annotations
 
 import math
-import time
 from datetime import datetime, timezone
 from typing import Any, Callable, List, Optional
 
@@ -43,6 +46,9 @@ from instruments.potentiostat.models import (
 )
 
 
+_VENDOR = "admiral"
+
+
 class Potentiostat(BaseInstrument):
     """Driver for Admiral Instruments SquidStat potentiostats.
 
@@ -57,8 +63,10 @@ class Potentiostat(BaseInstrument):
         Hard upper bound (seconds) on any single experiment. Defaults to 10 min.
     offline:
         When True, hardware calls are replaced with deterministic synthetic
-        arrays. Useful for dry-running protocols without a device attached.
+        traces. Useful for dry-running protocols without a device attached.
     """
+
+    vendor: str = _VENDOR
 
     def __init__(
         self,
@@ -188,25 +196,26 @@ class Potentiostat(BaseInstrument):
             params.end_V, params.scan_rate_V_per_s,
             params.sampling_interval_s,
         )
-        potentials: List[float] = []
-        currents: List[float] = []
-        timestamps: List[float] = []
-        cycles: List[int] = []
+        time_buf: List[float] = []
+        voltage_buf: List[float] = []
+        current_buf: List[float] = []
         meta = self._run_experiment(
             element_factory,
             cycles=params.cycles,
-            dc_sink=lambda sample, cycle_idx: (
-                potentials.append(float(sample.workingElectrodeVoltage)),
-                currents.append(float(sample.current)),
-                timestamps.append(float(sample.timestamp)),
-                cycles.append(int(cycle_idx)),
+            dc_sink=lambda sample: (
+                time_buf.append(float(sample.timestamp)),
+                voltage_buf.append(float(sample.workingElectrodeVoltage)),
+                current_buf.append(float(sample.current)),
             ),
         )
         return CVResult(
-            potentials_V=np.asarray(potentials, dtype=float),
-            currents_A=np.asarray(currents, dtype=float),
-            timestamps_s=np.asarray(timestamps, dtype=float),
-            cycle_index=np.asarray(cycles, dtype=int),
+            time_s=tuple(time_buf),
+            voltage_v=tuple(voltage_buf),
+            current_a=tuple(current_buf),
+            scan_rate_v_s=params.scan_rate_V_per_s,
+            step_size_v=params.scan_rate_V_per_s * params.sampling_interval_s,
+            cycles=params.cycles,
+            vendor=self.vendor,
             metadata=meta,
         )
 
@@ -216,19 +225,22 @@ class Potentiostat(BaseInstrument):
         element_factory = lambda mod: mod.AisOpenCircuitElement(
             params.duration_s, params.sampling_interval_s,
         )
-        potentials: List[float] = []
-        timestamps: List[float] = []
+        time_buf: List[float] = []
+        voltage_buf: List[float] = []
         meta = self._run_experiment(
             element_factory,
             cycles=1,
-            dc_sink=lambda sample, _cycle_idx: (
-                potentials.append(float(sample.workingElectrodeVoltage)),
-                timestamps.append(float(sample.timestamp)),
+            dc_sink=lambda sample: (
+                time_buf.append(float(sample.timestamp)),
+                voltage_buf.append(float(sample.workingElectrodeVoltage)),
             ),
         )
         return OCPResult(
-            potentials_V=np.asarray(potentials, dtype=float),
-            timestamps_s=np.asarray(timestamps, dtype=float),
+            time_s=tuple(time_buf),
+            voltage_v=tuple(voltage_buf),
+            sample_period_s=params.sampling_interval_s,
+            duration_s=params.duration_s,
+            vendor=self.vendor,
             metadata=meta,
         )
 
@@ -238,22 +250,26 @@ class Potentiostat(BaseInstrument):
         element_factory = lambda mod: mod.AisConstantPotElement(
             params.potential_V, params.sampling_interval_s, params.duration_s,
         )
-        currents: List[float] = []
-        potentials: List[float] = []
-        timestamps: List[float] = []
+        time_buf: List[float] = []
+        voltage_buf: List[float] = []
+        current_buf: List[float] = []
         meta = self._run_experiment(
             element_factory,
             cycles=1,
-            dc_sink=lambda sample, _cycle_idx: (
-                currents.append(float(sample.current)),
-                potentials.append(float(sample.workingElectrodeVoltage)),
-                timestamps.append(float(sample.timestamp)),
+            dc_sink=lambda sample: (
+                time_buf.append(float(sample.timestamp)),
+                voltage_buf.append(float(sample.workingElectrodeVoltage)),
+                current_buf.append(float(sample.current)),
             ),
         )
         return CAResult(
-            currents_A=np.asarray(currents, dtype=float),
-            potentials_V=np.asarray(potentials, dtype=float),
-            timestamps_s=np.asarray(timestamps, dtype=float),
+            time_s=tuple(time_buf),
+            voltage_v=tuple(voltage_buf),
+            current_a=tuple(current_buf),
+            sample_period_s=params.sampling_interval_s,
+            duration_s=params.duration_s,
+            step_potential_v=params.potential_V,
+            vendor=self.vendor,
             metadata=meta,
         )
 
@@ -263,22 +279,26 @@ class Potentiostat(BaseInstrument):
         element_factory = lambda mod: mod.AisConstantCurrentElement(
             params.current_A, params.sampling_interval_s, params.duration_s,
         )
-        currents: List[float] = []
-        potentials: List[float] = []
-        timestamps: List[float] = []
+        time_buf: List[float] = []
+        voltage_buf: List[float] = []
+        current_buf: List[float] = []
         meta = self._run_experiment(
             element_factory,
             cycles=1,
-            dc_sink=lambda sample, _cycle_idx: (
-                currents.append(float(sample.current)),
-                potentials.append(float(sample.workingElectrodeVoltage)),
-                timestamps.append(float(sample.timestamp)),
+            dc_sink=lambda sample: (
+                time_buf.append(float(sample.timestamp)),
+                voltage_buf.append(float(sample.workingElectrodeVoltage)),
+                current_buf.append(float(sample.current)),
             ),
         )
         return CPResult(
-            currents_A=np.asarray(currents, dtype=float),
-            potentials_V=np.asarray(potentials, dtype=float),
-            timestamps_s=np.asarray(timestamps, dtype=float),
+            time_s=tuple(time_buf),
+            voltage_v=tuple(voltage_buf),
+            current_a=tuple(current_buf),
+            sample_period_s=params.sampling_interval_s,
+            duration_s=params.duration_s,
+            step_current_a=params.current_A,
+            vendor=self.vendor,
             metadata=meta,
         )
 
@@ -289,13 +309,13 @@ class Potentiostat(BaseInstrument):
         element_factory: Callable[[Any], Any],
         *,
         cycles: int,
-        dc_sink: Callable[[Any, int], None],
+        dc_sink: Callable[[Any], None],
     ) -> dict[str, Any]:
         """Run one experiment to completion, collecting DC samples.
 
         ``element_factory(mod)`` builds the SquidstatPyLibrary experiment
         element from the vendor module. ``dc_sink`` receives each DC sample
-        plus the current cycle index as they arrive.
+        as it arrives.
         """
         if self._handler is None or self._qt is None:
             raise PotentiostatCommandError(
@@ -315,21 +335,16 @@ class Potentiostat(BaseInstrument):
 
         loop = qt.QEventLoop()
         started_at = datetime.now(timezone.utc)
-        cycle_counter = {"index": 0}
         stopped_reason: dict[str, Any] = {}
 
         def _on_dc(_channel: int, sample: Any) -> None:
-            dc_sink(sample, cycle_counter["index"])
-
-        def _on_new_element(_channel: int, _element: Any, _step: Any) -> None:
-            cycle_counter["index"] += 1
+            dc_sink(sample)
 
         def _on_stopped(_channel: int, reason: Any) -> None:
             stopped_reason["reason"] = reason
             loop.quit()
 
         self._handler.activeDCDataReady.connect(_on_dc)
-        self._handler.experimentNewElementStarting.connect(_on_new_element)
         self._handler.experimentStopped.connect(_on_stopped)
 
         timeout_flag = {"fired": False}
@@ -361,7 +376,6 @@ class Potentiostat(BaseInstrument):
         finally:
             for signal, slot in (
                 (self._handler.activeDCDataReady, _on_dc),
-                (self._handler.experimentNewElementStarting, _on_new_element),
                 (self._handler.experimentStopped, _on_stopped),
             ):
                 try:
@@ -401,12 +415,13 @@ class Potentiostat(BaseInstrument):
             + abs(params.end_V - params.vertex2_V)
         )
         cycle_duration = span / params.scan_rate_V_per_s
-        per_cycle = max(int(math.ceil(cycle_duration / params.sampling_interval_s)), 2)
+        per_cycle = max(
+            int(math.ceil(cycle_duration / params.sampling_interval_s)), 2
+        )
+        n = per_cycle * params.cycles
 
-        potentials = np.empty(per_cycle * params.cycles, dtype=float)
-        currents = np.empty_like(potentials)
-        timestamps = np.empty_like(potentials)
-        cycle_index = np.empty(potentials.shape, dtype=int)
+        voltage = np.empty(n, dtype=float)
+        time = np.empty(n, dtype=float)
 
         for c in range(params.cycles):
             sweep = self._triangular_sweep(
@@ -414,64 +429,86 @@ class Potentiostat(BaseInstrument):
                 params.vertex2_V, params.end_V, per_cycle,
             )
             base = c * per_cycle
-            potentials[base:base + per_cycle] = sweep
-            cycle_index[base:base + per_cycle] = c
-            timestamps[base:base + per_cycle] = (
+            voltage[base:base + per_cycle] = sweep
+            time[base:base + per_cycle] = (
                 (c * cycle_duration)
                 + np.linspace(0.0, cycle_duration, per_cycle, endpoint=False)
             )
 
         # Simple Butler-Volmer-ish synthetic current: scaled sinh around 0V.
-        currents[:] = 1e-6 * np.sinh(potentials / 0.05)
-        currents += self._offline_rng.normal(0.0, 5e-9, size=currents.shape)
+        current = 1e-6 * np.sinh(voltage / 0.05)
+        current = current + self._offline_rng.normal(0.0, 5e-9, size=n)
 
         return CVResult(
-            potentials_V=potentials,
-            currents_A=currents,
-            timestamps_s=timestamps,
-            cycle_index=cycle_index,
+            time_s=tuple(time.tolist()),
+            voltage_v=tuple(voltage.tolist()),
+            current_a=tuple(current.tolist()),
+            scan_rate_v_s=params.scan_rate_V_per_s,
+            step_size_v=params.scan_rate_V_per_s * params.sampling_interval_s,
+            cycles=params.cycles,
+            vendor=self.vendor,
             metadata=self._offline_metadata(aborted=False),
         )
 
     def _offline_ocp(self, params: OCPParams) -> OCPResult:
-        n = max(int(math.ceil(params.duration_s / params.sampling_interval_s)), 1)
-        timestamps = np.linspace(0.0, params.duration_s, n, endpoint=False)
-        # Slow exponential decay toward a stable OCV of ~0.35 V.
-        potentials = 0.35 + 0.05 * np.exp(-timestamps / max(params.duration_s / 4.0, 1e-6))
-        potentials += self._offline_rng.normal(0.0, 1e-4, size=n)
+        n = max(
+            int(math.ceil(params.duration_s / params.sampling_interval_s)), 1
+        )
+        time = np.linspace(0.0, params.duration_s, n, endpoint=False)
+        # Slow exponential settle toward a stable OCV of ~0.35 V.
+        decay = max(params.duration_s / 4.0, 1e-6)
+        voltage = 0.35 + 0.05 * np.exp(-time / decay)
+        voltage = voltage + self._offline_rng.normal(0.0, 1e-4, size=n)
         return OCPResult(
-            potentials_V=potentials,
-            timestamps_s=timestamps,
+            time_s=tuple(time.tolist()),
+            voltage_v=tuple(voltage.tolist()),
+            sample_period_s=params.sampling_interval_s,
+            duration_s=params.duration_s,
+            vendor=self.vendor,
             metadata=self._offline_metadata(aborted=False),
         )
 
     def _offline_ca(self, params: CAParams) -> CAResult:
-        n = max(int(math.ceil(params.duration_s / params.sampling_interval_s)), 1)
-        timestamps = np.linspace(0.0, params.duration_s, n, endpoint=False)
+        n = max(
+            int(math.ceil(params.duration_s / params.sampling_interval_s)), 1
+        )
+        time = np.linspace(0.0, params.duration_s, n, endpoint=False)
         # Cottrell-like t^-1/2 decay, clipped near t=0.
-        t_safe = np.maximum(timestamps, params.sampling_interval_s)
-        currents = 1e-5 / np.sqrt(t_safe)
-        currents += self._offline_rng.normal(0.0, 1e-8, size=n)
-        potentials = np.full(n, params.potential_V, dtype=float)
+        t_safe = np.maximum(time, params.sampling_interval_s)
+        current = 1e-5 / np.sqrt(t_safe)
+        current = current + self._offline_rng.normal(0.0, 1e-8, size=n)
+        voltage = np.full(n, params.potential_V, dtype=float)
         return CAResult(
-            currents_A=currents,
-            potentials_V=potentials,
-            timestamps_s=timestamps,
+            time_s=tuple(time.tolist()),
+            voltage_v=tuple(voltage.tolist()),
+            current_a=tuple(current.tolist()),
+            sample_period_s=params.sampling_interval_s,
+            duration_s=params.duration_s,
+            step_potential_v=params.potential_V,
+            vendor=self.vendor,
             metadata=self._offline_metadata(aborted=False),
         )
 
     def _offline_cp(self, params: CPParams) -> CPResult:
-        n = max(int(math.ceil(params.duration_s / params.sampling_interval_s)), 1)
-        timestamps = np.linspace(0.0, params.duration_s, n, endpoint=False)
-        currents = np.full(n, params.current_A, dtype=float)
+        n = max(
+            int(math.ceil(params.duration_s / params.sampling_interval_s)), 1
+        )
+        time = np.linspace(0.0, params.duration_s, n, endpoint=False)
+        current = np.full(n, params.current_A, dtype=float)
         # Faradaic-ish drift on the working electrode potential.
-        potentials = 0.1 + 0.002 * timestamps + self._offline_rng.normal(
-            0.0, 1e-4, size=n,
+        voltage = (
+            0.1
+            + 0.002 * time
+            + self._offline_rng.normal(0.0, 1e-4, size=n)
         )
         return CPResult(
-            currents_A=currents,
-            potentials_V=potentials,
-            timestamps_s=timestamps,
+            time_s=tuple(time.tolist()),
+            voltage_v=tuple(voltage.tolist()),
+            current_a=tuple(current.tolist()),
+            sample_period_s=params.sampling_interval_s,
+            duration_s=params.duration_s,
+            step_current_a=params.current_A,
+            vendor=self.vendor,
             metadata=self._offline_metadata(aborted=False),
         )
 
