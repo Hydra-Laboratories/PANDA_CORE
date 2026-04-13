@@ -1,9 +1,11 @@
 # Two-instrument board: liquid handler + potentiostat mounted 25 mm apart in X.
 #
-# When the gantry positions the liquid_handler over a labware target, the
-# potentiostat sits 25 mm further along +X (same Y/Z). Deck layout must
-# keep labware spaced accordingly so the "off" instrument doesn't hover
-# over an unintended target.
+# Offsets are symmetric around the gantry reference point (±12.5 mm) so the
+# overlap between each instrument's reach and the gantry working volume is
+# the same — both instruments can reach the same 275 mm usable X range.
+#
+# When the gantry positions the liquid_handler over a target, the
+# potentiostat sits 25 mm further along +X at the same Y/Z.
 #
 # NOTE: cubos has no potentiostat instrument type yet — uvvis_ccs is used
 # here as a placeholder probe with the same mounting geometry. Swap the
@@ -15,7 +17,7 @@ instruments:
     vendor: opentrons
     pipette_model: p300_single_gen2
     port: ""
-    offset_x: 0.0
+    offset_x: -12.5
     offset_y: 0.0
     depth: 0.0
     measurement_height: 0.0
@@ -24,7 +26,7 @@ instruments:
     type: uvvis_ccs          # placeholder — no potentiostat type in cubos yet
     vendor: thorlabs
     serial_number: "placeholder"
-    offset_x: 25.0           # 25 mm to the right of the liquid handler
+    offset_x: 12.5
     offset_y: 0.0
     depth: 0.0
     measurement_height: 0.0

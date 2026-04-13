@@ -1,59 +1,57 @@
-# Two-instrument deck: tip rack, vial holder, well plate, tip disposal.
+# Two-instrument deck: tip rack, 2x3 vial holder, well plate, tip disposal.
 #
-# Layout designed for a board with two instruments 25 mm apart in X
-# (see configs/board/two_instrument_board.yaml). Each labware is spaced
-# at least 30 mm from its neighbours along X so the "off" instrument
-# lands in free space when the "on" instrument addresses a target.
+# Laid out for a board with two instruments 25 mm apart in X (liquid handler
+# at offset_x=-12.5, potentiostat at offset_x=+12.5). Both instruments can
+# simultaneously reach the usable X range ~12.5..287.5 mm.
 #
-# Working volume: 300 mm × 200 mm × 80 mm. Working Z surface ≈ 10 mm.
+# Collision avoidance rule (no cubos-side path planner yet, so enforced
+# by layout): vial pitch 45 mm > 25 mm offset + 14 mm vial radius so the
+# "off" instrument lands in free space between vials when the active
+# instrument addresses a vial. Labware XY footprints don't overlap.
+#
+# Working volume: 300 × 200 × 80 mm.
 
 labware:
-  # Top-left: tip source rack (2×15 Ursa tip rack).
-  # Override z_pickup/z_drop to fit the 80 mm working volume.
+  # Top-left: 2x3 tip source rack (overrides the default 15-row ursa rack).
   tip_rack:
     load_name: ursa_tip_rack
-    # A1 at x=30 (>= 25) so the potentiostat at offset_x=25 can also reach.
+    rows: 3
+    columns: 2
     calibration:
-      a1: { x: 30.0, y: 20.0 }
-      a2: { x: 38.5, y: 20.0 }
+      a1: { x: 25.0, y: 160.0 }
+      a2: { x: 33.5, y: 160.0 }
     z_pickup: 40.0
     z_drop: 30.0
 
-  # Bottom-left: 9-vial reagent holder (3×3, 33 mm pitch).
-  # Right edge at x ≈ 95 — 35 mm clear of well plate at x=130.
+  # Middle-left: 2x3 = 6 reagent vials, 45 mm X pitch (>25+14 = potentiostat
+  # lands in free space between vial centers when pipette aspirates).
   vial_holder:
     type: vial_holder
     name: reagent_rack
-    # Holder at x=30 (>= 25) so the potentiostat can also reach it.
-    location: { x: 30.0, y: 110.0, z: 10.0 }
-    length_mm: 75.0
-    width_mm: 75.0
+    location: { x: 50.0, y: 40.0, z: 10.0 }
+    length_mm: 80.0
+    width_mm: 110.0
     height_mm: 30.0
     labware_support_height_mm: 30.0
     labware_seat_height_from_bottom_mm: 25.0
     vials:
       v1: { model_name: 20ml_vial, height_mm: 57.0, diameter_mm: 28.0,
-            location: { x: 35.0, y: 125.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
+            location: { x: 60.0, y: 55.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
       v2: { model_name: 20ml_vial, height_mm: 57.0, diameter_mm: 28.0,
-            location: { x: 60.0, y: 125.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
+            location: { x: 105.0, y: 55.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
       v3: { model_name: 20ml_vial, height_mm: 57.0, diameter_mm: 28.0,
-            location: { x: 85.0, y: 125.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
+            location: { x: 60.0, y: 95.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
       v4: { model_name: 20ml_vial, height_mm: 57.0, diameter_mm: 28.0,
-            location: { x: 35.0, y: 150.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
+            location: { x: 105.0, y: 95.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
       v5: { model_name: 20ml_vial, height_mm: 57.0, diameter_mm: 28.0,
-            location: { x: 60.0, y: 150.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
+            location: { x: 60.0, y: 135.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
       v6: { model_name: 20ml_vial, height_mm: 57.0, diameter_mm: 28.0,
-            location: { x: 85.0, y: 150.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
-      v7: { model_name: 20ml_vial, height_mm: 57.0, diameter_mm: 28.0,
-            location: { x: 35.0, y: 175.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
-      v8: { model_name: 20ml_vial, height_mm: 57.0, diameter_mm: 28.0,
-            location: { x: 60.0, y: 175.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
-      v9: { model_name: 20ml_vial, height_mm: 57.0, diameter_mm: 28.0,
-            location: { x: 85.0, y: 175.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
+            location: { x: 105.0, y: 135.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
 
   # Right side: standard SBS 96-well plate.
-  # A1 at x=130, spans to x=229 (12 cols × 9 mm). Left edge 35 mm clear of
-  # vial holder (x=95); right edge 36 mm clear of tip disposal (x=265).
+  # A1 at x=140; A12 at x=239. Pipette at offset=-12.5 reaches A12 with
+  # gantry_x=251.5 (in bounds). Potentiostat at offset=+12.5 reaches A12
+  # with gantry_x=226.5 (in bounds).
   well_plate:
     type: well_plate
     name: reaction_plate
@@ -64,19 +62,21 @@ labware:
     width_mm: 85.47
     height_mm: 14.22
     calibration:
-      a1: { x: 130.0, y: 40.0, z: 10.0 }
-      a2: { x: 139.0, y: 40.0, z: 10.0 }
+      a1: { x: 140.0, y: 40.0, z: 10.0 }
+      a2: { x: 149.0, y: 40.0, z: 10.0 }
     x_offset_mm: 9.0
     y_offset_mm: 9.0
     capacity_ul: 360.0
     working_volume_ul: 200.0
 
-  # Top-right: used-tip disposal box (simple bounding-box fixture).
+  # Top-right: used-tip disposal box. Placed above the well plate so the
+  # potentiostat doesn't land on the well plate when the pipette disposes.
+  # Centered at (260, 175) — pipette gantry_x=272.5, potentiostat gantry_x=247.5.
   tip_disposal:
     type: tip_disposal
     name: used_tip_box
     model_name: tip_disposal
-    location: { x: 265.0, y: 20.0, z: 10.0 }
+    location: { x: 245.0, y: 155.0, z: 10.0 }
     length_mm: 30.0
-    width_mm: 60.0
+    width_mm: 40.0
     height_mm: 40.0
