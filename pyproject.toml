@@ -14,6 +14,12 @@ dev = [
     # Needed by tests/instruments/test_registry_packaging.py, which shells
     # out to setuptools.build_meta. Python 3.12+ no longer bundles setuptools.
     "setuptools",
+    # Required to import instruments.potentiostat during tests.
+    "numpy",
+]
+potentiostat = [
+    "SquidstatPyLibrary",
+    "numpy",
 ]
 docs = [
     "mkdocs>=1.6",

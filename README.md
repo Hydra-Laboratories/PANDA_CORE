@@ -120,6 +120,13 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
+Optional per-instrument extras pull in vendor SDKs only when you need them:
+
+```bash
+# Admiral Instruments SquidStat potentiostat (PySide6 + SquidstatPyLibrary)
+pip install -e ".[potentiostat]"
+```
+
 Interactive jog test:
 
 ```bash
