@@ -22,10 +22,9 @@ free-form ``metadata`` mapping for run-level annotations.
 from __future__ import annotations
 
 import math
+import random
 from datetime import datetime, timezone
 from typing import Any, Callable, List, Optional
-
-import numpy as np
 
 from instruments.base_instrument import BaseInstrument
 from instruments.potentiostat.exceptions import (
@@ -103,8 +102,10 @@ class Potentiostat(BaseInstrument):
         self._handler: Optional[Any] = None
         self._device_id: Optional[str] = None
 
-        # Seedable RNG for reproducible offline synthesis.
-        self._offline_rng = np.random.default_rng(0)
+        # Fixed-seed RNG (seed=0) for reproducible offline synthesis.
+        # Shared stdlib Random so offline results are stable across runs of
+        # a freshly-constructed driver.
+        self._offline_rng = random.Random(0)
 
     # ── BaseInstrument interface ──────────────────────────────────────────
 
@@ -146,10 +147,15 @@ class Potentiostat(BaseInstrument):
 
         loop.exec()
 
+        # Best-effort cleanup of the one-shot connect slot. A late disconnect
+        # can raise if the underlying Qt object is already gone (device
+        # yanked mid-handshake) — logged, never swallowed silently.
         try:
             tracker.newDeviceConnected.disconnect(_on_device_connected)
-        except Exception:
-            pass
+        except (RuntimeError, TypeError) as exc:
+            self.logger.warning(
+                "newDeviceConnected.disconnect during connect cleanup: %s", exc
+            )
 
         if "handler" not in captured or captured["handler"] is None:
             raise PotentiostatConnectionError(
@@ -374,14 +380,21 @@ class Potentiostat(BaseInstrument):
 
             loop.exec()
         finally:
-            for signal, slot in (
-                (self._handler.activeDCDataReady, _on_dc),
-                (self._handler.experimentStopped, _on_stopped),
+            # Signal disconnect is best-effort: PySide6 can raise RuntimeError
+            # when the underlying C++ object is gone (device disconnected mid-
+            # run) or TypeError if the slot was never actually connected.
+            # Either is worth logging so slot-leak regressions are visible.
+            for signal_name, signal, slot in (
+                ("activeDCDataReady", self._handler.activeDCDataReady, _on_dc),
+                ("experimentStopped", self._handler.experimentStopped, _on_stopped),
             ):
                 try:
                     signal.disconnect(slot)
-                except Exception:
-                    pass
+                except (RuntimeError, TypeError) as exc:
+                    self.logger.warning(
+                        "%s.disconnect during experiment cleanup: %s",
+                        signal_name, exc,
+                    )
 
         aborted = timeout_flag["fired"] and "reason" not in stopped_reason
         if aborted:
@@ -406,6 +419,12 @@ class Potentiostat(BaseInstrument):
         }
 
     # ── Offline synthesis ─────────────────────────────────────────────────
+    #
+    # Uses stdlib ``math`` + ``random`` so the driver (and therefore the
+    # package) can be imported without numpy. Trace sizes here are small
+    # (seconds of data at 10-100 ms sampling), so list/tuple math is
+    # perfectly adequate — the numpy dependency would only be justified for
+    # large-N matrix operations that don't happen in synthetic data.
 
     def _offline_cv(self, params: CVParams) -> CVResult:
         # One full cycle: start → v1 → v2 → end. Span is distance traversed.
@@ -418,31 +437,31 @@ class Potentiostat(BaseInstrument):
         per_cycle = max(
             int(math.ceil(cycle_duration / params.sampling_interval_s)), 2
         )
-        n = per_cycle * params.cycles
 
-        voltage = np.empty(n, dtype=float)
-        time = np.empty(n, dtype=float)
-
+        voltage: List[float] = []
+        time: List[float] = []
         for c in range(params.cycles):
             sweep = self._triangular_sweep(
                 params.start_V, params.vertex1_V,
                 params.vertex2_V, params.end_V, per_cycle,
             )
-            base = c * per_cycle
-            voltage[base:base + per_cycle] = sweep
-            time[base:base + per_cycle] = (
-                (c * cycle_duration)
-                + np.linspace(0.0, cycle_duration, per_cycle, endpoint=False)
+            voltage.extend(sweep)
+            offset = c * cycle_duration
+            time.extend(
+                offset + i * cycle_duration / per_cycle
+                for i in range(per_cycle)
             )
 
         # Simple Butler-Volmer-ish synthetic current: scaled sinh around 0V.
-        current = 1e-6 * np.sinh(voltage / 0.05)
-        current = current + self._offline_rng.normal(0.0, 5e-9, size=n)
+        current = [
+            1e-6 * math.sinh(v / 0.05) + self._offline_rng.gauss(0.0, 5e-9)
+            for v in voltage
+        ]
 
         return CVResult(
-            time_s=tuple(time.tolist()),
-            voltage_v=tuple(voltage.tolist()),
-            current_a=tuple(current.tolist()),
+            time_s=tuple(time),
+            voltage_v=tuple(voltage),
+            current_a=tuple(current),
             scan_rate_v_s=params.scan_rate_V_per_s,
             step_size_v=params.scan_rate_V_per_s * params.sampling_interval_s,
             cycles=params.cycles,
@@ -454,14 +473,17 @@ class Potentiostat(BaseInstrument):
         n = max(
             int(math.ceil(params.duration_s / params.sampling_interval_s)), 1
         )
-        time = np.linspace(0.0, params.duration_s, n, endpoint=False)
+        time = tuple(i * params.duration_s / n for i in range(n))
         # Slow exponential settle toward a stable OCV of ~0.35 V.
         decay = max(params.duration_s / 4.0, 1e-6)
-        voltage = 0.35 + 0.05 * np.exp(-time / decay)
-        voltage = voltage + self._offline_rng.normal(0.0, 1e-4, size=n)
+        voltage = tuple(
+            0.35 + 0.05 * math.exp(-t / decay)
+            + self._offline_rng.gauss(0.0, 1e-4)
+            for t in time
+        )
         return OCPResult(
-            time_s=tuple(time.tolist()),
-            voltage_v=tuple(voltage.tolist()),
+            time_s=time,
+            voltage_v=voltage,
             sample_period_s=params.sampling_interval_s,
             duration_s=params.duration_s,
             vendor=self.vendor,
@@ -472,16 +494,18 @@ class Potentiostat(BaseInstrument):
         n = max(
             int(math.ceil(params.duration_s / params.sampling_interval_s)), 1
         )
-        time = np.linspace(0.0, params.duration_s, n, endpoint=False)
+        time = tuple(i * params.duration_s / n for i in range(n))
         # Cottrell-like t^-1/2 decay, clipped near t=0.
-        t_safe = np.maximum(time, params.sampling_interval_s)
-        current = 1e-5 / np.sqrt(t_safe)
-        current = current + self._offline_rng.normal(0.0, 1e-8, size=n)
-        voltage = np.full(n, params.potential_V, dtype=float)
+        current = tuple(
+            1e-5 / math.sqrt(max(t, params.sampling_interval_s))
+            + self._offline_rng.gauss(0.0, 1e-8)
+            for t in time
+        )
+        voltage = tuple(params.potential_V for _ in range(n))
         return CAResult(
-            time_s=tuple(time.tolist()),
-            voltage_v=tuple(voltage.tolist()),
-            current_a=tuple(current.tolist()),
+            time_s=time,
+            voltage_v=voltage,
+            current_a=current,
             sample_period_s=params.sampling_interval_s,
             duration_s=params.duration_s,
             step_potential_v=params.potential_V,
@@ -493,18 +517,17 @@ class Potentiostat(BaseInstrument):
         n = max(
             int(math.ceil(params.duration_s / params.sampling_interval_s)), 1
         )
-        time = np.linspace(0.0, params.duration_s, n, endpoint=False)
-        current = np.full(n, params.current_A, dtype=float)
+        time = tuple(i * params.duration_s / n for i in range(n))
+        current = tuple(params.current_A for _ in range(n))
         # Faradaic-ish drift on the working electrode potential.
-        voltage = (
-            0.1
-            + 0.002 * time
-            + self._offline_rng.normal(0.0, 1e-4, size=n)
+        voltage = tuple(
+            0.1 + 0.002 * t + self._offline_rng.gauss(0.0, 1e-4)
+            for t in time
         )
         return CPResult(
-            time_s=tuple(time.tolist()),
-            voltage_v=tuple(voltage.tolist()),
-            current_a=tuple(current.tolist()),
+            time_s=time,
+            voltage_v=voltage,
+            current_a=current,
             sample_period_s=params.sampling_interval_s,
             duration_s=params.duration_s,
             step_current_a=params.current_A,
@@ -515,20 +538,31 @@ class Potentiostat(BaseInstrument):
     @staticmethod
     def _triangular_sweep(
         start: float, v1: float, v2: float, end: float, n: int,
-    ) -> np.ndarray:
-        # Distribute samples across three legs weighted by their voltage span.
+    ) -> List[float]:
+        """Distribute ``n`` samples across three linear legs weighted by span.
+
+        Legs are endpoint-exclusive except the final one, which closes the
+        sweep at ``end``. Returned list is exactly ``n`` long.
+        """
         legs = [(start, v1), (v1, v2), (v2, end)]
         lengths = [abs(b - a) for a, b in legs]
         total = sum(lengths) or 1.0
         counts = [max(int(round(n * (L / total))), 1) for L in lengths]
-        # Adjust to exactly n samples by padding/trimming the last leg.
-        counts[-1] += n - sum(counts)
-        pieces = [
-            np.linspace(a, b, c, endpoint=False) if i < 2
-            else np.linspace(a, b, c, endpoint=True)
-            for i, ((a, b), c) in enumerate(zip(legs, counts))
-        ]
-        return np.concatenate(pieces)[:n]
+        # Adjust final leg so the total is exactly n, clamping to at least 1.
+        counts[-1] = max(n - (counts[0] + counts[1]), 1)
+
+        result: List[float] = []
+        for i, ((a, b), c) in enumerate(zip(legs, counts)):
+            if i < 2:
+                # endpoint-exclusive leg
+                result.extend(a + (b - a) * k / c for k in range(c))
+            else:
+                # endpoint-inclusive final leg
+                if c == 1:
+                    result.append(b)
+                else:
+                    result.extend(a + (b - a) * k / (c - 1) for k in range(c))
+        return result[:n]
 
     def _offline_metadata(self, *, aborted: bool) -> dict[str, Any]:
         now = datetime.now(timezone.utc).isoformat()

@@ -28,7 +28,7 @@ Run a safe offline validation first:
 
 ```bash
 python setup/validate_setup.py \
-  configs/gantry/cubos_xl.yaml \
+  configs/gantry/cub_xl.yaml \
   configs/deck/mofcat_deck.yaml \
   configs/board/mofcat_board.yaml \
   configs/protocol/scan.yaml

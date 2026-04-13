@@ -340,6 +340,122 @@ class TestRunCVOnline:
             p.run_cv(CVParams(0.0, 0.5, -0.5, 0.0, 0.05))
 
 
+# --- Online run_ocp / run_ca / run_cp ---------------------------------------
+#
+# These tests guard against argument-order regressions on the vendor element
+# classes (AisOpenCircuitElement / AisConstantPotElement /
+# AisConstantCurrentElement) — easy to swap since all three are copy-paste
+# similar — and verify each result type picks up only the fields it should.
+
+
+class TestRunOCPOnline:
+
+    def test_collects_voltage_only(self):
+        samples = [(0.0, 0.35, 0.0), (0.1, 0.36, 0.0)]
+        bindings, _tracker, handler = _make_qt_mock_bindings(dc_samples=samples)
+        with patch(
+            "instruments.potentiostat.driver._load_qt_bindings",
+            return_value=bindings,
+        ):
+            p = Potentiostat(port="COM3")
+            p.connect()
+            result = p.run_ocp(OCPParams(duration_s=1.0, sampling_interval_s=0.1))
+
+        assert isinstance(result, OCPResult)
+        assert result.time_s == (0.0, 0.1)
+        assert result.voltage_v == (0.35, 0.36)
+        assert result.duration_s == 1.0
+        assert result.sample_period_s == 0.1
+        assert result.vendor == "admiral"
+        # OCP does not expose current.
+        assert not hasattr(result, "current_a")
+        # Vendor element built with (duration, sample_period) positional order.
+        bindings.squidstat.AisOpenCircuitElement.assert_called_once_with(1.0, 0.1)
+        handler.startUploadedExperiment.assert_called_once_with(0)
+
+
+class TestRunCAOnline:
+
+    def test_collects_voltage_and_current_with_step_potential(self):
+        samples = [(0.0, 0.5, 1e-6), (0.01, 0.5, 2e-6)]
+        bindings, _tracker, handler = _make_qt_mock_bindings(dc_samples=samples)
+        with patch(
+            "instruments.potentiostat.driver._load_qt_bindings",
+            return_value=bindings,
+        ):
+            p = Potentiostat(port="COM3")
+            p.connect()
+            result = p.run_ca(
+                CAParams(potential_V=0.5, duration_s=1.0, sampling_interval_s=0.01)
+            )
+
+        assert isinstance(result, CAResult)
+        assert result.current_a == (1e-6, 2e-6)
+        assert result.voltage_v == (0.5, 0.5)
+        assert result.step_potential_v == 0.5
+        # Vendor element order: (potential, interval, duration).
+        bindings.squidstat.AisConstantPotElement.assert_called_once_with(
+            0.5, 0.01, 1.0,
+        )
+
+
+class TestRunCPOnline:
+
+    def test_collects_voltage_and_current_with_step_current(self):
+        samples = [(0.0, 0.1, 1e-3), (0.01, 0.11, 1e-3)]
+        bindings, _tracker, handler = _make_qt_mock_bindings(dc_samples=samples)
+        with patch(
+            "instruments.potentiostat.driver._load_qt_bindings",
+            return_value=bindings,
+        ):
+            p = Potentiostat(port="COM3")
+            p.connect()
+            result = p.run_cp(
+                CPParams(current_A=1e-3, duration_s=1.0, sampling_interval_s=0.01)
+            )
+
+        assert isinstance(result, CPResult)
+        assert result.current_a == (1e-3, 1e-3)
+        assert result.voltage_v == (0.1, 0.11)
+        assert result.step_current_a == 1e-3
+        # Vendor element order: (current, interval, duration).
+        bindings.squidstat.AisConstantCurrentElement.assert_called_once_with(
+            1e-3, 0.01, 1.0,
+        )
+
+
+# --- Upload / start error-code handling -------------------------------------
+
+
+class TestVendorErrorCodes:
+
+    def test_upload_returning_truthy_raises_command_error(self):
+        bindings, _tracker, handler = _make_qt_mock_bindings()
+        handler.uploadExperimentToChannel.return_value = "E_BUSY"
+        with patch(
+            "instruments.potentiostat.driver._load_qt_bindings",
+            return_value=bindings,
+        ):
+            p = Potentiostat(port="COM3")
+            p.connect()
+            with pytest.raises(PotentiostatCommandError, match="E_BUSY"):
+                p.run_ocp(OCPParams(duration_s=1.0))
+        # When upload fails, start must NOT be called.
+        handler.startUploadedExperiment.assert_not_called()
+
+    def test_start_returning_truthy_raises_command_error(self):
+        bindings, _tracker, handler = _make_qt_mock_bindings()
+        handler.startUploadedExperiment.return_value = "E_NOT_READY"
+        with patch(
+            "instruments.potentiostat.driver._load_qt_bindings",
+            return_value=bindings,
+        ):
+            p = Potentiostat(port="COM3")
+            p.connect()
+            with pytest.raises(PotentiostatCommandError, match="E_NOT_READY"):
+                p.run_ocp(OCPParams(duration_s=1.0))
+
+
 # --- Timeout -----------------------------------------------------------------
 
 

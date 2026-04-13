@@ -123,7 +123,7 @@ Gantry YAML loader and domain model for CNC gantry working volume and homing str
 - **`yaml_schema.py`**: `GantryYamlSchema` with strict Pydantic validation (working volume bounds, homing strategy, serial port, and `cnc.total_z_height`).
 - **`gantry_config.py`**: `GantryConfig` and `WorkingVolume` frozen dataclasses. `WorkingVolume.contains(x, y, z)` checks if a point is within bounds (inclusive). `GantryConfig.total_z_height` is the top-reference height used for labware height conversion. `HomingStrategy` enum: `STANDARD`, `XY_HARD_LIMITS`, `MANUAL_ORIGIN`.
 - **`loader.py`**: `load_gantry_from_yaml(path)` and `load_gantry_from_yaml_safe(path)`.
-- **Config files**: `configs/gantry/` (e.g., `cubos_xl.yaml`).
+- **Config files**: `configs/gantry/` (e.g., `cub_xl.yaml`).
 
 ### Validation (`src/validation`)
 Bounds validation for protocol setup — ensures all deck positions and gantry-computed positions are within the gantry's working volume before the protocol runs.
@@ -221,7 +221,7 @@ First-run scripts for verifying hardware after unboxing.
 - **`keyboard_input.py`**: Helper module that reads single keypresses (including arrow keys) without requiring Enter. Uses `tty`/`termios` (Unix only).
 
 ### Calibration (`calibration/`)
-- **`home_gantry.py`**: CNC homing wrapper that loads `configs/gantry/cubos_xl.yaml`, connects to the gantry, and runs the configured homing sequence.
+- **`home_gantry.py`**: CNC homing wrapper that loads `configs/gantry/cub_xl.yaml`, connects to the gantry, and runs the configured homing sequence.
     - **Usage**: `python calibration/home_gantry.py`
 
 ### Development Commands

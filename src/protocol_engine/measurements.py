@@ -6,13 +6,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from instruments.potentiostat.models import (
-    CAResult,
-    CPResult,
-    CVResult,
-    OCPResult,
-)
 from instruments.uvvis_ccs.models import UVVisSpectrum
+
+# Potentiostat results are recognised by duck-typing on their `.technique`
+# attribute (see `_POTENTIOSTAT_TECHNIQUES` below). Concrete classes are
+# NOT imported here so protocol_engine stays decoupled from the
+# instrument packages.
 
 
 class MeasurementType(str, Enum):
@@ -35,6 +34,25 @@ class InstrumentMeasurement:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+_POTENTIOSTAT_TECHNIQUES = {
+    "ocp": MeasurementType.POTENTIOSTAT_OCP,
+    "ca": MeasurementType.POTENTIOSTAT_CA,
+    "cp": MeasurementType.POTENTIOSTAT_CP,
+    "cv": MeasurementType.POTENTIOSTAT_CV,
+}
+
+
+def _is_potentiostat_result(raw_result: Any) -> bool:
+    """True if ``raw_result`` quacks like an ``instruments.potentiostat`` result."""
+    technique = getattr(raw_result, "technique", None)
+    if technique not in _POTENTIOSTAT_TECHNIQUES:
+        return False
+    for attr in ("time_s", "voltage_v", "vendor", "metadata"):
+        if not hasattr(raw_result, attr):
+            return False
+    return True
+
+
 def _potentiostat_base_metadata(
     raw_result: Any,
     instrument_name: str,
@@ -48,6 +66,46 @@ def _potentiostat_base_metadata(
         "instrument_name": instrument_name,
         "method_name": method_name,
     }
+
+
+def _normalize_potentiostat_result(
+    raw_result: Any,
+    instrument_name: str,
+    method_name: str,
+) -> "InstrumentMeasurement":
+    """Build an ``InstrumentMeasurement`` from a potentiostat result via duck-typing.
+
+    Per-technique scalar fields are optional — only OCP lacks ``current_a`` —
+    so we probe each expected attribute with ``getattr`` and skip missing ones.
+    """
+    technique = raw_result.technique
+    measurement_type = _POTENTIOSTAT_TECHNIQUES[technique]
+    meta = _potentiostat_base_metadata(raw_result, instrument_name, method_name)
+
+    payload: dict[str, Any] = {
+        "time_s": list(raw_result.time_s),
+        "voltage_v": list(raw_result.voltage_v),
+    }
+    if hasattr(raw_result, "current_a"):
+        payload["current_a"] = list(raw_result.current_a)
+
+    for attr in (
+        "sample_period_s",
+        "duration_s",
+        "step_potential_v",
+        "step_current_a",
+        "scan_rate_v_s",
+        "step_size_v",
+        "cycles",
+    ):
+        if hasattr(raw_result, attr):
+            meta[attr] = getattr(raw_result, attr)
+
+    return InstrumentMeasurement(
+        measurement_type=measurement_type,
+        payload=payload,
+        metadata=meta,
+    )
 
 
 def normalize_measurement(
@@ -90,74 +148,9 @@ def normalize_measurement(
             },
         )
 
-    if isinstance(raw_result, OCPResult):
-        return InstrumentMeasurement(
-            measurement_type=MeasurementType.POTENTIOSTAT_OCP,
-            payload={
-                "time_s": list(raw_result.time_s),
-                "voltage_v": list(raw_result.voltage_v),
-            },
-            metadata={
-                **_potentiostat_base_metadata(
-                    raw_result, instrument_name, method_name,
-                ),
-                "sample_period_s": raw_result.sample_period_s,
-                "duration_s": raw_result.duration_s,
-            },
-        )
-
-    if isinstance(raw_result, CAResult):
-        return InstrumentMeasurement(
-            measurement_type=MeasurementType.POTENTIOSTAT_CA,
-            payload={
-                "time_s": list(raw_result.time_s),
-                "voltage_v": list(raw_result.voltage_v),
-                "current_a": list(raw_result.current_a),
-            },
-            metadata={
-                **_potentiostat_base_metadata(
-                    raw_result, instrument_name, method_name,
-                ),
-                "sample_period_s": raw_result.sample_period_s,
-                "duration_s": raw_result.duration_s,
-                "step_potential_v": raw_result.step_potential_v,
-            },
-        )
-
-    if isinstance(raw_result, CPResult):
-        return InstrumentMeasurement(
-            measurement_type=MeasurementType.POTENTIOSTAT_CP,
-            payload={
-                "time_s": list(raw_result.time_s),
-                "voltage_v": list(raw_result.voltage_v),
-                "current_a": list(raw_result.current_a),
-            },
-            metadata={
-                **_potentiostat_base_metadata(
-                    raw_result, instrument_name, method_name,
-                ),
-                "sample_period_s": raw_result.sample_period_s,
-                "duration_s": raw_result.duration_s,
-                "step_current_a": raw_result.step_current_a,
-            },
-        )
-
-    if isinstance(raw_result, CVResult):
-        return InstrumentMeasurement(
-            measurement_type=MeasurementType.POTENTIOSTAT_CV,
-            payload={
-                "time_s": list(raw_result.time_s),
-                "voltage_v": list(raw_result.voltage_v),
-                "current_a": list(raw_result.current_a),
-            },
-            metadata={
-                **_potentiostat_base_metadata(
-                    raw_result, instrument_name, method_name,
-                ),
-                "scan_rate_v_s": raw_result.scan_rate_v_s,
-                "step_size_v": raw_result.step_size_v,
-                "cycles": raw_result.cycles,
-            },
+    if _is_potentiostat_result(raw_result):
+        return _normalize_potentiostat_result(
+            raw_result, instrument_name, method_name,
         )
 
     raise TypeError(
