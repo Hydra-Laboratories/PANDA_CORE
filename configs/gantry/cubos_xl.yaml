@@ -6,8 +6,6 @@ cnc:
   homing_strategy: xy_hard_limits
   total_z_height: 90.0
   y_axis_motion: head
-  total_z_height: 90.0
-  y_axis_motion: head
 
 working_volume:
   x_min: 0.0

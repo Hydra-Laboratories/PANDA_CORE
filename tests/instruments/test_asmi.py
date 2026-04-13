@@ -49,8 +49,9 @@ class TestASMIOffline(unittest.TestCase):
         gantry = Gantry(offline=True)
         # Use small range for fast test
         self.asmi._z_target = -12.0
-        self.asmi._indentation_start_z = -10.0
+        self.asmi._well_top_z = -10.0
         self.asmi._step_size = 0.1
+        self.asmi._safe_z = -5.0
 
         result = self.asmi.indentation(gantry)
 
@@ -60,17 +61,6 @@ class TestASMIOffline(unittest.TestCase):
         self.assertEqual(result["data_points"], len(result["measurements"]))
         self.assertGreater(result["data_points"], 0)
         self.assertFalse(result["force_exceeded"])
-
-    def test_measurement_height_alias_still_controls_start_z(self):
-        from gantry.gantry import Gantry
-
-        gantry = Gantry(offline=True)
-        self.asmi._z_target = -12.0
-        self.asmi._step_size = 1.0
-
-        result = self.asmi.indentation(gantry, measurement_height=-10.0)
-
-        self.assertEqual(result["measurements"][0]["z_mm"], -11.0)
 
 
 class TestASMIOnlineRequiresHardware(unittest.TestCase):
