@@ -1,0 +1,40 @@
+# Two-instrument board: liquid handler + potentiostat mounted 25 mm apart in X.
+#
+# Offsets are symmetric around the gantry reference point (±12.5 mm) so the
+# overlap between each instrument's reach and the gantry working volume is
+# the same — both instruments can reach the same 275 mm usable X range.
+#
+# When the gantry positions the liquid_handler over a target, the
+# potentiostat sits 25 mm further along +X at the same Y/Z.
+#
+# NOTE: cubos has no potentiostat instrument type yet — uvvis_ccs is used
+# here as a placeholder probe with the same mounting geometry. Swap the
+# type/vendor when a real potentiostat driver lands.
+
+instruments:
+  # Pipette is mounted low (long plunger). depth=0 means its tip is at the
+  # gantry Z reference; when gantry descends, the pipette tip reaches into
+  # wells and vials.
+  liquid_handler:
+    type: pipette
+    vendor: opentrons
+    pipette_model: p300_single_gen2
+    port: ""
+    offset_x: -12.5
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 0.0
+
+  # Potentiostat mounted at the same Z level as the pipette. Both operate
+  # above elevated labware (vials on tall seats, well plate on a stand,
+  # tips stick up from an elevated rack), so the lowest pipette Z is the
+  # top of each labware's interior — the potentiostat at the same Z
+  # clears the short holder/stand bases sitting below.
+  potentiostat:
+    type: uvvis_ccs          # placeholder — no potentiostat type in cubos yet
+    vendor: thorlabs
+    serial_number: "placeholder"
+    offset_x: 12.5
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 0.0

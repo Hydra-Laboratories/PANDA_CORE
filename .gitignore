@@ -173,3 +173,13 @@ src/gantry/gantry_driver/mill_port.txt
 .omx/
 PANDA-BEAR/
 .claude/
+.codex/
+!.codex/agents/
+!.codex/agents/**
+!.codex/skills/
+!.codex/skills/**
+.codex/skills/.system/**
+!.codex/prompts/
+!.codex/prompts/**
+cubos @ git+https://github.com/Ursa-Laboratories/CubOS.git@main
+cubos @ git+https://github.com/Ursa-Laboratories/CubOS.git@main

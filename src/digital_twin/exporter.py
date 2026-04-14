@@ -352,6 +352,8 @@ def _select_render_kind(
     labware: Any,
     load_name: str | None,
 ) -> tuple[str, Path | None]:
+    if load_name == "ursa_tip_rack":
+        return ("tip_rack", None)
     asset_source = _resolve_asset_source(load_name)
     if asset_source is not None:
         return ("asset", asset_source)
@@ -630,6 +632,7 @@ def export_bundle(
     board_path: str | Path,
     protocol_path: str | Path,
     output_path: str | Path | None = None,
+    skip_validation: bool = False,
 ) -> dict[str, Any]:
     """Build a digital twin bundle from CubOS config files."""
 
@@ -651,7 +654,7 @@ def export_bundle(
 
     violations = validate_deck_positions(gantry_config, deck)
     violations.extend(validate_gantry_positions(gantry_config, deck, tracing_board))
-    if violations:
+    if violations and not skip_validation:
         raise SetupValidationError(violations)
 
     board_schema = BoardYamlSchema.model_validate(_load_yaml(board_path))
@@ -681,6 +684,8 @@ def export_bundle(
             "step_count": len(protocol.steps),
             "timeline_event_count": len(timeline),
             "total_display_duration_s": sum(_event_base_duration(event) for event in timeline),
+            "validation_skipped": skip_validation,
+            "validation_violation_count": len(violations),
         },
     }
     return bundle
@@ -693,6 +698,7 @@ def export_bundle_to_path(
     board_path: str | Path,
     protocol_path: str | Path,
     output_path: str | Path,
+    skip_validation: bool = False,
 ) -> dict[str, Any]:
     """Build and write a digital twin bundle to disk."""
 
@@ -703,6 +709,7 @@ def export_bundle_to_path(
         board_path=board_path,
         protocol_path=protocol_path,
         output_path=resolved_output_path,
+        skip_validation=skip_validation,
     )
     resolved_output_path.parent.mkdir(parents=True, exist_ok=True)
     resolved_output_path.write_text(json.dumps(bundle, indent=2) + "\n")

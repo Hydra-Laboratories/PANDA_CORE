@@ -16,7 +16,7 @@ import {
   toWorldPosition,
 } from "./lib/playback";
 
-const DEFAULT_BUNDLE_PATH = "/examples/cubos-scan-test.json";
+const DEFAULT_BUNDLE_PATH = "/examples/asmi-panda-deck.json";
 
 type ViewerToggles = {
   showWorkingVolume: boolean;
@@ -56,6 +56,24 @@ function deckBoxPose(item: SceneDeckItem): { center: Pose; size: [number, number
     item.dimensions.width_mm ?? poseSpread(points, 10)[2],
   ];
   const topAnchored = item.render_kind === "well_plate" || item.render_kind === "tip_rack";
+  const anchorLocation = (item.render_meta as { location?: Pose }).location;
+  const cornerAnchored =
+    item.type === "tip_disposal" ||
+    (item.type === "vial_holder" &&
+      anchorLocation !== undefined &&
+      points.some((point) => point.x > anchorLocation.x || point.y > anchorLocation.y));
+
+  if (cornerAnchored && anchorLocation) {
+    return {
+      center: {
+        x: anchorLocation.x + length / 2,
+        y: anchorLocation.y + width / 2,
+        z: anchorLocation.z + height / 2,
+      },
+      size: [length, height, width],
+    };
+  }
+
   return {
     center: {
       x: center.x,
@@ -100,9 +118,15 @@ function DeckItemMesh({ item }: { item: SceneDeckItem }) {
   if (item.render_kind === "vial") {
     const diameter = Number(item.render_meta.diameter_mm ?? item.dimensions.length_mm ?? 14);
     const height = Number(item.render_meta.height_mm ?? item.dimensions.height_mm ?? 30);
+    const baseAnchored = item.parent_id !== null;
     return (
       <group>
-        <mesh position={toWorldPosition(item.primary_position)}>
+        <mesh
+          position={toWorldPosition({
+            ...item.primary_position,
+            z: baseAnchored ? item.primary_position.z + height / 2 : item.primary_position.z,
+          })}
+        >
           <cylinderGeometry args={[diameter / 2, diameter / 2, height, 20]} />
           <meshStandardMaterial color="#d4a45f" roughness={0.45} metalness={0.05} />
         </mesh>
@@ -111,7 +135,14 @@ function DeckItemMesh({ item }: { item: SceneDeckItem }) {
   }
 
   if (item.render_kind === "asset" && item.asset_path) {
-    return <AssetMesh assetPath={item.asset_path} fallbackCenter={worldCenter} fallbackSize={size} />;
+    return (
+      <AssetMesh
+        assetPath={item.asset_path}
+        fallbackCenter={worldCenter}
+        fallbackSize={size}
+        yawRadians={yawRadians}
+      />
+    );
   }
 
   const boxColor = item.render_kind === "well_plate" ? "#e8f0f3" : item.render_kind === "tip_rack" ? "#dec8a8" : "#a1b4ad";
@@ -134,17 +165,26 @@ function AssetMesh({
   assetPath,
   fallbackCenter,
   fallbackSize,
+  yawRadians,
 }: {
   assetPath: string;
   fallbackCenter: [number, number, number];
   fallbackSize: [number, number, number];
+  yawRadians: number;
 }) {
   try {
     const gltf = useGLTF(assetPath);
-    return <primitive object={gltf.scene.clone()} position={fallbackCenter} />;
+    const scene = gltf.scene.clone();
+    return (
+      <primitive
+        object={scene}
+        position={fallbackCenter}
+        rotation={[-Math.PI / 2, yawRadians, 0]}
+      />
+    );
   } catch {
     return (
-      <mesh position={fallbackCenter}>
+      <mesh position={fallbackCenter} rotation={[0, yawRadians, 0]}>
         <boxGeometry args={fallbackSize} />
         <meshStandardMaterial color="#7c8c86" transparent opacity={0.65} />
       </mesh>

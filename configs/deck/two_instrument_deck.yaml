@@ -1,0 +1,88 @@
+# Two-instrument deck: tip rack, 2x3 vial holder, well plate, tip disposal.
+#
+# Laid out for a board with two instruments 25 mm apart in X (liquid handler
+# at offset_x=-12.5, potentiostat at offset_x=+12.5). Both instruments can
+# simultaneously reach the usable X range ~12.5..287.5 mm.
+#
+# Collision avoidance rule (no cubos-side path planner yet, so enforced
+# by layout): vial pitch 45 mm > 25 mm offset + 14 mm vial radius so the
+# "off" instrument lands in free space between vials when the active
+# instrument addresses a vial. Labware XY footprints don't overlap.
+#
+# Working volume: 300 × 200 × 80 mm.
+
+labware:
+  # Top-left: 2x3 tip source rack. Tips elevated — z_pickup=50 mm is the
+  # tip engagement height; the rack/stand structure sits below that.
+  tip_rack:
+    load_name: ursa_tip_rack
+    rows: 3
+    columns: 2
+    calibration:
+      a1: { x: 25.0, y: 160.0 }
+      a2: { x: 33.5, y: 160.0 }
+    z_pickup: 50.0
+    z_drop: 45.0
+
+  # Middle-left: 2x3 = 6 reagent vials, 45 mm X pitch (>25+14 = potentiostat
+  # lands in free space between vial centers when pipette aspirates).
+  # Vials are elevated: holder base is 5 mm thick, vials seated at the top.
+  # Vial interior z extends from 5 mm up to 62 mm.
+  vial_holder:
+    type: vial_holder
+    name: reagent_rack
+    location: { x: 50.0, y: 40.0, z: 0.0 }
+    length_mm: 80.0
+    width_mm: 110.0
+    height_mm: 5.0
+    labware_support_height_mm: 5.0
+    labware_seat_height_from_bottom_mm: 5.0
+    vials:
+      v1: { model_name: 20ml_vial, height_mm: 57.0, diameter_mm: 28.0,
+            location: { x: 60.0, y: 55.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
+      v2: { model_name: 20ml_vial, height_mm: 57.0, diameter_mm: 28.0,
+            location: { x: 105.0, y: 55.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
+      v3: { model_name: 20ml_vial, height_mm: 57.0, diameter_mm: 28.0,
+            location: { x: 60.0, y: 95.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
+      v4: { model_name: 20ml_vial, height_mm: 57.0, diameter_mm: 28.0,
+            location: { x: 105.0, y: 95.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
+      v5: { model_name: 20ml_vial, height_mm: 57.0, diameter_mm: 28.0,
+            location: { x: 60.0, y: 135.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
+      v6: { model_name: 20ml_vial, height_mm: 57.0, diameter_mm: 28.0,
+            location: { x: 105.0, y: 135.0 }, capacity_ul: 20000.0, working_volume_ul: 18000.0 }
+
+  # Right side: standard SBS 96-well plate, elevated on a stand.
+  # Well bottoms at z=30 (stand top), plate rim at z=44. Pipette enters
+  # each well from above z=44 and dispenses at z~32. Because 25 mm
+  # instrument offset / 9 mm well pitch = 2.78, the potentiostat lands
+  # ~2 mm from a well center 3 columns away — inside that well's hole
+  # (well radius ~3.2 mm), not on the plate plastic.
+  well_plate:
+    type: well_plate
+    name: reaction_plate
+    model_name: corning_96_wellplate_360ul_flat
+    rows: 8
+    columns: 12
+    length_mm: 127.76
+    width_mm: 85.47
+    height_mm: 14.22
+    height: 30
+    calibration:
+      a1: { x: 140.0, y: 40.0}
+      a2: { x: 149.0, y: 40.0}
+    x_offset_mm: 9.0
+    y_offset_mm: 9.0
+    capacity_ul: 360.0
+    working_volume_ul: 200.0
+
+  # Top-right: used-tip disposal box. Placed above the well plate so the
+  # potentiostat doesn't land on the well plate when the pipette disposes.
+  # Centered at (260, 175) — pipette gantry_x=272.5, potentiostat gantry_x=247.5.
+  tip_disposal:
+    type: tip_disposal
+    name: used_tip_box
+    model_name: tip_disposal
+    location: { x: 245.0, y: 155.0, z: 10.0 }
+    length_mm: 30.0
+    width_mm: 40.0
+    height_mm: 40.0

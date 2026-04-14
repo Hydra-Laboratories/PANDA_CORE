@@ -99,3 +99,34 @@ def test_export_bundle_supports_scan_protocol():
     assert action_events[1]["target_label"] == "plate_1.A2"
     assert action_events[-1]["target_label"] == "plate_1.H12"
     assert all(event["kind"] == "measure" for event in action_events)
+
+
+def test_export_bundle_can_skip_validation_for_visualization_combo():
+    bundle = export_bundle(
+        gantry_path=ROOT / "configs/gantry/cubos_xl.yaml",
+        deck_path=ROOT / "configs/deck/panda_deck.yaml",
+        board_path=ROOT / "configs/board/asmi_board.yaml",
+        protocol_path=ROOT / "configs/protocol/asmi_panda_deck_test.yaml",
+        skip_validation=True,
+    )
+
+    assert bundle["summary"]["validation_skipped"] is True
+    assert bundle["summary"]["validation_violation_count"] > 0
+    assert bundle["timeline"][0]["target_label"] == "well_plate_holder.plate.A1"
+
+
+def test_export_bundle_supports_two_instrument_visualization_protocol():
+    bundle = export_bundle(
+        gantry_path=ROOT / "configs/gantry/cubos_xl.yaml",
+        deck_path=ROOT / "configs/deck/two_instrument_deck.yaml",
+        board_path=ROOT / "configs/board/two_instrument_board.yaml",
+        protocol_path=ROOT / "configs/protocol/two_instrument_visualization_test.yaml",
+    )
+
+    motion_events = [event for event in bundle["timeline"] if event["type"] == "motion"]
+    assert bundle["summary"]["step_count"] == 9
+    assert bundle["summary"]["timeline_event_count"] >= 9
+    assert motion_events[0]["instrument_id"] == "liquid_handler"
+    assert motion_events[0]["target_label"] == "tip_rack.A1"
+    assert any(event["instrument_id"] == "potentiostat" for event in motion_events)
+    assert motion_events[-1]["target_label"] == "tip_disposal"

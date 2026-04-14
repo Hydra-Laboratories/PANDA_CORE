@@ -1,0 +1,44 @@
+# Visualization-only protocol for the two-instrument CubOS-XL setup.
+# Uses only `move` so it can be replayed directly by the current digital twin.
+
+protocol:
+  # Pick up point over the tip rack with the liquid handler.
+  - move:
+      instrument: liquid_handler
+      position: tip_rack.A1
+
+  # Visit two reagent vials.
+  - move:
+      instrument: liquid_handler
+      position: vial_holder.v1
+
+  - move:
+      instrument: liquid_handler
+      position: vial_holder.v6
+
+  # Traverse across the reaction plate with the liquid handler.
+  - move:
+      instrument: liquid_handler
+      position: well_plate.A1
+
+  - move:
+      instrument: liquid_handler
+      position: well_plate.H12
+
+  # Sweep the second instrument across a few plate wells to show the X offset.
+  - move:
+      instrument: potentiostat
+      position: well_plate.A4
+
+  - move:
+      instrument: potentiostat
+      position: well_plate.D7
+
+  - move:
+      instrument: potentiostat
+      position: well_plate.H10
+
+  # End with a liquid-handler move to the disposal box.
+  - move:
+      instrument: liquid_handler
+      position: tip_disposal

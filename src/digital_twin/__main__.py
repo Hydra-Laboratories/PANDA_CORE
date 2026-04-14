@@ -16,6 +16,11 @@ def main() -> None:
     parser.add_argument("--board", required=True, help="Path to board YAML.")
     parser.add_argument("--protocol", required=True, help="Path to protocol YAML.")
     parser.add_argument("--out", required=True, help="Path to output JSON bundle.")
+    parser.add_argument(
+        "--skip-validation",
+        action="store_true",
+        help="Export even when gantry/deck/board bounds validation fails.",
+    )
     args = parser.parse_args()
 
     export_bundle_to_path(
@@ -24,6 +29,7 @@ def main() -> None:
         board_path=args.board,
         protocol_path=args.protocol,
         output_path=args.out,
+        skip_validation=args.skip_validation,
     )
 
 

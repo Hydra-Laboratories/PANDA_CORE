@@ -6,12 +6,12 @@ Browser viewer for CubOS protocol replay bundles exported by `python -m digital_
 
 The app ships with a checked-in example bundle generated from:
 
-- `configs/gantry/cubos.yaml`
-- `configs/deck/mofcat_deck.yaml`
-- `configs/board/mock_mofcat_board.yaml`
-- `configs/protocol/cubos_scan_test.yaml`
+- `configs/gantry/cubos_xl.yaml`
+- `configs/deck/panda_deck.yaml`
+- `configs/board/asmi_board.yaml`
+- `configs/protocol/asmi_panda_deck_test.yaml`
 
-That bundle lives at `public/examples/cubos-scan-test.json`.
+That bundle lives at `public/examples/asmi-panda-deck.json`.
 
 ## Development
 
@@ -45,9 +45,10 @@ From the repo root:
 
 ```bash
 PYTHONPATH=src:. python -m digital_twin \
-  --gantry configs/gantry/cubos.yaml \
-  --deck configs/deck/mofcat_deck.yaml \
-  --board configs/board/mock_mofcat_board.yaml \
-  --protocol configs/protocol/cubos_scan_test.yaml \
-  --out apps/digital-twin-viewer/public/examples/cubos-scan-test.json
+  --gantry configs/gantry/cubos_xl.yaml \
+  --deck configs/deck/panda_deck.yaml \
+  --board configs/board/asmi_board.yaml \
+  --protocol configs/protocol/asmi_panda_deck_test.yaml \
+  --skip-validation \
+  --out apps/digital-twin-viewer/public/examples/asmi-panda-deck.json
 ```
