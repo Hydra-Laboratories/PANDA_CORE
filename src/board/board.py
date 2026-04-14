@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any, TYPE_CHECKING
 
 from instruments.base_instrument import BaseInstrument
@@ -11,6 +12,12 @@ if TYPE_CHECKING:
 # A position is either an (x, y, z) tuple or any object with x, y, z attributes
 # (e.g. a labware object sitting at a fixed deck location).
 Position = Any
+
+# Tolerance for Z-offset comparisons in Board.move_to_labware. The gantry's
+# physical encoder resolution is ~1e-4 mm (0.1 μm), so sub-0.1 μm differences
+# are dominated by numerical noise, not real motion. A tighter tolerance
+# (e.g. 1e-9) would fire spurious retract/lower moves on floating-point drift.
+_Z_TOLERANCE_MM = 1e-4
 
 
 class Board:
@@ -75,9 +82,12 @@ class Board:
           3. **Lower.** Drop to (x, y, labware_z + measurement_height)
              if that differs from the approach height.
 
-        For non-contact instruments where ``safe_approach_height ==
-        measurement_height``, steps 1 and 3 are skipped — only the XY
-        travel executes.
+        Step 1 is skipped when the instrument is already at or above
+        approach_z (e.g. after a home or a prior travel). Step 3 is
+        skipped when ``safe_approach_height == measurement_height``
+        (non-contact instruments). So a non-contact instrument arriving
+        from above emits a single XY move; a contact instrument between
+        two labware targets emits all three.
 
         Args:
             instrument: Name or instance.
@@ -87,22 +97,49 @@ class Board:
         """
         instr = self._resolve_instrument(instrument)
         x, y, z = self._resolve_position(position)
+        for label, value in (("x", x), ("y", y), ("z", z)):
+            if not math.isfinite(value):
+                raise ValueError(
+                    f"move_to_labware received non-finite {label}={value} "
+                    f"for instrument {instr.name!r}."
+                )
         approach_z = z + instr.safe_approach_height
         action_z = z + instr.measurement_height
 
         # Step 1: retract at current XY if currently below approach Z.
-        current = self.gantry.get_coordinates()
-        current_tip_x = current["x"] + instr.offset_x
-        current_tip_y = current["y"] + instr.offset_y
-        current_tip_z = current["z"] + instr.depth
-        if current_tip_z < approach_z - 1e-9:
+        try:
+            current = self.gantry.get_coordinates()
+        except Exception as exc:
+            raise RuntimeError(
+                f"move_to_labware: failed to read gantry coordinates while "
+                f"planning move for instrument {instr.name!r} to "
+                f"({x:.3f}, {y:.3f}, {z:.3f}): {exc}"
+            ) from exc
+        try:
+            gantry_x = current["x"]
+            gantry_y = current["y"]
+            gantry_z = current["z"]
+        except (KeyError, TypeError) as exc:
+            raise RuntimeError(
+                f"move_to_labware: gantry.get_coordinates() returned "
+                f"unexpected shape {current!r} for instrument {instr.name!r}."
+            ) from exc
+        if not all(math.isfinite(v) for v in (gantry_x, gantry_y, gantry_z)):
+            raise RuntimeError(
+                f"move_to_labware: gantry reports non-finite coordinates "
+                f"{current!r} for instrument {instr.name!r}."
+            )
+        current_tip_x = gantry_x + instr.offset_x
+        current_tip_y = gantry_y + instr.offset_y
+        current_tip_z = gantry_z + instr.depth
+        if current_tip_z < approach_z - _Z_TOLERANCE_MM:
             self.move(instr, (current_tip_x, current_tip_y, approach_z))
 
         # Step 2: travel XY at approach Z.
         self.move(instr, (x, y, approach_z))
 
-        # Step 3: lower to action Z (skipped for non-contact instruments).
-        if abs(approach_z - action_z) > 1e-9:
+        # Step 3: lower to action Z (skipped when approach == action).
+        if abs(approach_z - action_z) > _Z_TOLERANCE_MM:
             self.move(instr, (x, y, action_z))
 
     def object_position(

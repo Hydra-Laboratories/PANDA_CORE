@@ -17,17 +17,21 @@ class BaseInstrument(ABC):
 
     Z-offset convention
     -------------------
-    * ``measurement_height`` — Z offset from the labware reference point
-      when the instrument is taking its measurement/action. Positive =
-      above, negative = below. Non-contact instruments (uvvis, filmetrics,
-      uv_curing) use a small positive value (probe clearance). Contact
-      instruments (pipette, asmi, potentiostat) use 0 (touch) or negative
-      (dip into the sample).
-    * ``safe_approach_height`` — Z offset from the labware reference point
-      while traveling toward a target. Always >= ``measurement_height``
-      so the instrument never drags through labware during XY motion.
-      Defaults to ``measurement_height`` (correct for non-contact tools);
-      contact instruments should set a positive value explicitly.
+    Coordinates use the gantry's user-space convention: larger Z = further
+    above the deck (away from labware surfaces). Both offsets are added to
+    the labware reference z by ``Board.move_to_labware``.
+
+    * ``measurement_height`` — signed Z offset from the labware reference
+      during the measurement/action. Positive = above the reference;
+      negative = below. Non-contact instruments (uvvis, filmetrics,
+      uv_curing) use a small positive value (probe clearance above sample).
+      Contact instruments (pipette, asmi, potentiostat) use 0 (touch) or
+      negative (dip into the sample).
+    * ``safe_approach_height`` — signed Z offset during XY travel. Must
+      be >= ``measurement_height`` (enforced in __init__) so the
+      instrument never travels *below* its own action Z. Defaults to
+      ``measurement_height`` (correct for non-contact tools); contact
+      instruments should set a larger positive value explicitly.
     """
 
     def __init__(

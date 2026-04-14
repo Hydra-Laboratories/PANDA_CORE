@@ -21,9 +21,10 @@ def measure(
 ) -> Any:
     """Measure at a deck position using *instrument*.
 
-    Resolves *position* on the deck, applies the instrument's
-    measurement_height offset to Z, moves the instrument there,
-    then calls the instrument method with any provided kwargs.
+    Resolves *position* on the deck and moves the instrument there via
+    ``Board.move_to_labware``, which applies the instrument's
+    ``safe_approach_height`` during XY travel and ``measurement_height``
+    at the target. Then calls the instrument method with any provided kwargs.
 
     Args:
         context:       Runtime context (board, deck, logger).

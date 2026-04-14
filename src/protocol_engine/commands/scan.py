@@ -38,9 +38,10 @@ def scan(
     """Scan every well on *plate* using *instrument*'s *method*.
 
     Iterates wells in row-major order (A1, A2, ..., B1, B2, ...).
-    For each well, moves the instrument into position (applying
-    measurement_height offset) then calls the method with any
-    provided keyword arguments.
+    For each well, moves the instrument via ``Board.move_to_labware``
+    (which applies ``safe_approach_height`` during XY travel and
+    ``measurement_height`` at the target), then calls the method with
+    any provided keyword arguments.
 
     When a ``DataStore`` is configured on *context*, each measurement
     is persisted as an experiment + measurement row in the database.
@@ -84,9 +85,6 @@ def scan(
             time.sleep(delay_s)
 
         well = plate_obj.get_well_center(well_id)
-        # Use move_to_labware so scan respects both measurement_height
-        # (action) and safe_approach_height (XY travel). Previously this
-        # subtracted measurement_height — inconsistent with `measure`.
         context.board.move_to_labware(instrument, well)
 
         # Inject gantry if the method accepts it (e.g. ASMI.indentation

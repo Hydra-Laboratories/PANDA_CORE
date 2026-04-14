@@ -364,3 +364,93 @@ class TestBoardMoveToLabware:
             (110.0, 50.0, 50.0),   # travel XY at approach z
             (110.0, 50.0, 25.0),   # lower to action z
         ]
+
+    def test_retract_accounts_for_nonzero_depth_and_offsets(self):
+        """When depth != 0 and offsets != 0, the retract's tip XY must
+        account for instrument offsets and its tip Z for depth."""
+        # Gantry is at (30, 40, 15). Instrument mounted offset=(5, -3),
+        # depth=10 => tip is at (35, 37, 25). Target is (100, 50, 20) with
+        # approach_height=30 => approach_z=50.
+        gantry = _mock_gantry(x=30.0, y=40.0, z=15.0)
+        instr = _mock_instrument(
+            offset_x=5.0, offset_y=-3.0, depth=10.0,
+            measurement_height=-5.0, safe_approach_height=30.0,
+        )
+        board = Board(gantry=gantry, instruments={"pipette": instr})
+        board.move_to_labware("pipette", _mock_labware(x=100, y=50, z=20))
+
+        calls = gantry.move_to.call_args_list
+        # Step 1: retract at CURRENT tip XY (35, 37) to approach_z=50.
+        #   Gantry target x = 35 - 5 = 30, y = 37 - (-3) = 40, z = 50 - 10 = 40.
+        assert calls[0].args == (30.0, 40.0, 40.0)
+        # Step 2: travel to target XY at approach_z.
+        #   Gantry target x = 100 - 5 = 95, y = 50 - (-3) = 53, z = 40.
+        assert calls[1].args == (95.0, 53.0, 40.0)
+        # Step 3: lower to action_z = 20 + (-5) = 15; gantry z = 15 - 10 = 5.
+        assert calls[2].args == (95.0, 53.0, 5.0)
+
+    def test_does_not_retract_when_exactly_at_approach_z(self):
+        """Boundary: current_tip_z == approach_z, no retract (within tolerance)."""
+        # Instrument with approach 20 above labware z=30 => approach_z=50.
+        # depth=0, so gantry z=50 == current tip z.
+        gantry = _mock_gantry(x=100.0, y=50.0, z=50.0)
+        instr = _mock_instrument(measurement_height=-5.0, safe_approach_height=20.0)
+        board = Board(gantry=gantry, instruments={"pipette": instr})
+        board.move_to_labware("pipette", _mock_labware(x=100, y=50, z=30))
+
+        # Only travel + lower (2 moves), no retract.
+        assert gantry.move_to.call_count == 2
+        assert gantry.move_to.call_args_list[0].args == (100.0, 50.0, 50.0)
+        assert gantry.move_to.call_args_list[1].args == (100.0, 50.0, 25.0)
+
+    def test_does_not_retract_for_submicron_offset(self):
+        """Boundary: tip Z below approach by < 1e-4 mm (gantry encoder
+        resolution) must not trigger a spurious micro-retract."""
+        # approach_z = 50.0; start at 49.99995 (5e-5 below — within tolerance).
+        gantry = _mock_gantry(x=100.0, y=50.0, z=49.99995)
+        instr = _mock_instrument(measurement_height=-5.0, safe_approach_height=20.0)
+        board = Board(gantry=gantry, instruments={"pipette": instr})
+        board.move_to_labware("pipette", _mock_labware(x=100, y=50, z=30))
+        assert gantry.move_to.call_count == 2   # no retract
+
+    def test_retracts_when_below_tolerance(self):
+        """Boundary: tip Z below approach by 1e-3 mm (above tolerance)
+        must retract."""
+        gantry = _mock_gantry(x=100.0, y=50.0, z=49.999)
+        instr = _mock_instrument(measurement_height=-5.0, safe_approach_height=20.0)
+        board = Board(gantry=gantry, instruments={"pipette": instr})
+        board.move_to_labware("pipette", _mock_labware(x=100, y=50, z=30))
+        # Retract happens: 3 moves.
+        assert gantry.move_to.call_count == 3
+
+    def test_rejects_nan_position_z(self):
+        gantry = _mock_gantry(z=100.0)
+        instr = _mock_instrument(measurement_height=0.0, safe_approach_height=0.0)
+        board = Board(gantry=gantry, instruments={"probe": instr})
+        with pytest.raises(ValueError, match="non-finite"):
+            board.move_to_labware("probe", (10.0, 20.0, float("nan")))
+
+    def test_rejects_infinite_position_x(self):
+        gantry = _mock_gantry(z=100.0)
+        instr = _mock_instrument(measurement_height=0.0, safe_approach_height=0.0)
+        board = Board(gantry=gantry, instruments={"probe": instr})
+        with pytest.raises(ValueError, match="non-finite"):
+            board.move_to_labware("probe", (float("inf"), 20.0, 10.0))
+
+    def test_wraps_gantry_read_failure(self):
+        """If gantry.get_coordinates() raises, surface a clear error."""
+        gantry = MagicMock()
+        gantry.get_coordinates.side_effect = RuntimeError("serial timeout")
+        instr = _mock_instrument(measurement_height=0.0, safe_approach_height=0.0)
+        board = Board(gantry=gantry, instruments={"probe": instr})
+        with pytest.raises(RuntimeError, match="failed to read gantry coordinates"):
+            board.move_to_labware("probe", _mock_labware(x=10, y=20, z=30))
+
+    def test_rejects_gantry_nan_coordinates(self):
+        """If the gantry reports NaN, refuse to plan a move."""
+        gantry = MagicMock()
+        gantry.get_coordinates.return_value = {"x": 0.0, "y": 0.0, "z": float("nan")}
+        instr = _mock_instrument(measurement_height=0.0, safe_approach_height=0.0)
+        board = Board(gantry=gantry, instruments={"probe": instr})
+        with pytest.raises(RuntimeError, match="non-finite coordinates"):
+            board.move_to_labware("probe", _mock_labware(x=10, y=20, z=30))
