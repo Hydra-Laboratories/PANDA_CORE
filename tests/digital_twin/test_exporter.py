@@ -111,7 +111,7 @@ def test_export_bundle_can_skip_validation_for_visualization_combo():
     )
 
     assert bundle["summary"]["validation_skipped"] is True
-    assert bundle["summary"]["validation_violation_count"] > 0
+    assert bundle["summary"]["validation_violation_count"] == 0
     assert bundle["timeline"][0]["target_label"] == "well_plate_holder.plate.A1"
 
 

@@ -1,4 +1,4 @@
-import { Bounds, Line, OrbitControls, PerspectiveCamera, Sphere, useGLTF } from "@react-three/drei";
+import { Bounds, Grid, Html, Line, OrbitControls, PerspectiveCamera, Sphere, useGLTF } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
@@ -19,6 +19,7 @@ import {
 const DEFAULT_BUNDLE_PATH = "/examples/asmi-panda-deck.json";
 
 type ViewerToggles = {
+  showGrid: boolean;
   showWorkingVolume: boolean;
   showGantryPath: boolean;
   showInstrumentOffsets: boolean;
@@ -57,11 +58,26 @@ function deckBoxPose(item: SceneDeckItem): { center: Pose; size: [number, number
   ];
   const topAnchored = item.render_kind === "well_plate" || item.render_kind === "tip_rack";
   const anchorLocation = (item.render_meta as { location?: Pose }).location;
+  const childPoints = item.points
+    .filter((point) => point.id !== "location")
+    .map((point) => point.position);
   const cornerAnchored =
     item.type === "tip_disposal" ||
     (item.type === "vial_holder" &&
       anchorLocation !== undefined &&
       points.some((point) => point.x > anchorLocation.x || point.y > anchorLocation.y));
+
+  if ((item.type === "vial_holder" || item.type === "well_plate_holder") && anchorLocation) {
+    const childCenter = childPoints.length > 0 ? poseCenter(childPoints) : center;
+    return {
+      center: {
+        x: childCenter.x,
+        y: childCenter.y,
+        z: anchorLocation.z + height / 2,
+      },
+      size: [length, height, width],
+    };
+  }
 
   if (cornerAnchored && anchorLocation) {
     return {
@@ -106,6 +122,30 @@ function WorkingVolumeFrame({ volume }: { volume: WorkingVolume }) {
         <lineBasicMaterial color="#2e5b51" transparent opacity={0.7} />
       </lineSegments>
     </mesh>
+  );
+}
+
+function OriginMarker() {
+  return (
+    <group position={toWorldPosition({ x: 0, y: 0, z: 0 })}>
+      <Sphere args={[2.2, 16, 16]}>
+        <meshStandardMaterial color="#111111" />
+      </Sphere>
+      <Html
+        position={[8, -8, 8]}
+        style={{
+          fontSize: "12px",
+          fontWeight: 700,
+          color: "#111111",
+          background: "rgba(255,255,255,0.82)",
+          padding: "3px 6px",
+          borderRadius: "8px",
+          whiteSpace: "nowrap",
+        }}
+      >
+        0,0,0
+      </Html>
+    </group>
   );
 }
 
@@ -265,6 +305,22 @@ function TwinScene({
       <OrbitControls makeDefault />
       <Bounds fit clip observe margin={1.25}>
         <group>
+          {toggles.showGrid ? (
+            <Grid
+              position={toWorldPosition({ x: 200, y: 150, z: 0 })}
+              args={[420, 320]}
+              cellSize={20}
+              cellThickness={0.5}
+              sectionSize={100}
+              sectionThickness={1}
+              cellColor="#6f7f78"
+              sectionColor="#2e5b51"
+              fadeDistance={800}
+              fadeStrength={1}
+              infiniteGrid={false}
+            />
+          ) : null}
+          <OriginMarker />
           {toggles.showWorkingVolume ? (
             <WorkingVolumeFrame volume={bundle.scene.gantry.working_volume} />
           ) : null}
@@ -307,6 +363,7 @@ function App() {
   const [speedMultiplier, setSpeedMultiplier] = useState(1);
   const [timeSeconds, setTimeSeconds] = useState(0);
   const [toggles, setToggles] = useState<ViewerToggles>({
+    showGrid: true,
     showWorkingVolume: true,
     showGantryPath: true,
     showInstrumentOffsets: true,
@@ -472,6 +529,16 @@ function App() {
           <section className="card">
             <h2>Visibility</h2>
             <div className="toggle-grid">
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={toggles.showGrid}
+                  onChange={(event) =>
+                    setToggles((current) => ({ ...current, showGrid: event.target.checked }))
+                  }
+                />
+                Grid Lines
+              </label>
               <label className="toggle-row">
                 <input
                   type="checkbox"
