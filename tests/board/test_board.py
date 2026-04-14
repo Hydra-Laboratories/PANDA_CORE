@@ -17,15 +17,20 @@ def _mock_instrument(
     offset_y=0.0,
     depth=0.0,
     measurement_height=0.0,
-    safe_approach_height=0.0,
+    safe_approach_height=None,
 ):
+    # Mirror BaseInstrument's fallback so tests that set only
+    # measurement_height get a consistent safe_approach_height.
+    resolved_safe = (
+        safe_approach_height if safe_approach_height is not None else measurement_height
+    )
     instr = MagicMock(spec=BaseInstrument)
     instr.name = name
     instr.offset_x = offset_x
     instr.offset_y = offset_y
     instr.depth = depth
     instr.measurement_height = measurement_height
-    instr.safe_approach_height = safe_approach_height
+    instr.safe_approach_height = resolved_safe
     return instr
 
 

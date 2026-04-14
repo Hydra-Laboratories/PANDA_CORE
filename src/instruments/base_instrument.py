@@ -40,14 +40,24 @@ class BaseInstrument(ABC):
         safe_approach_height: Optional[float] = None,
         offline: bool = False,
     ):
+        resolved_safe = (
+            safe_approach_height if safe_approach_height is not None else measurement_height
+        )
+        if resolved_safe < measurement_height:
+            raise ValueError(
+                f"safe_approach_height ({resolved_safe}) must be >= "
+                f"measurement_height ({measurement_height}) for "
+                f"{self.__class__.__name__}. Otherwise Board.move_to_labware "
+                f"would travel XY below the action Z and the 'lower' step "
+                f"would move the instrument upward — defeating the retract-"
+                f"travel-lower safety guarantee."
+            )
         self.name = name or self.__class__.__name__
         self.offset_x = offset_x
         self.offset_y = offset_y
         self.depth = depth
         self.measurement_height = measurement_height
-        self.safe_approach_height = (
-            safe_approach_height if safe_approach_height is not None else measurement_height
-        )
+        self.safe_approach_height = resolved_safe
         self._offline = offline
         self.logger = logging.getLogger(f"{__name__}.{self.name}")
 

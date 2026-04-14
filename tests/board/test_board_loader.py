@@ -160,6 +160,50 @@ class TestLoadBoardMeasurementHeight:
         assert board.instruments["sensor"].measurement_height == 0.0
 
 
+class TestLoadBoardSafeApproachHeight:
+
+    def test_safe_approach_height_explicit_is_preserved(self, tmp_path):
+        yaml_path = _write_yaml(tmp_path, """\
+            instruments:
+              pipette:
+                type: pipette
+                vendor: opentrons
+                pipette_model: p300_single_gen2
+                measurement_height: -5.0
+                safe_approach_height: 20.0
+        """)
+        board = load_board_from_yaml(yaml_path, _mock_gantry())
+        assert board.instruments["pipette"].measurement_height == -5.0
+        assert board.instruments["pipette"].safe_approach_height == 20.0
+
+    def test_safe_approach_height_defaults_to_measurement_height(self, tmp_path):
+        """Omitting safe_approach_height is valid and falls back to measurement_height."""
+        yaml_path = _write_yaml(tmp_path, """\
+            instruments:
+              sensor:
+                type: uvvis_ccs
+                vendor: thorlabs
+                measurement_height: 3.0
+        """)
+        board = load_board_from_yaml(yaml_path, _mock_gantry())
+        assert board.instruments["sensor"].measurement_height == 3.0
+        assert board.instruments["sensor"].safe_approach_height == 3.0
+
+    def test_safe_approach_below_measurement_is_rejected(self, tmp_path):
+        """YAML validator catches misconfiguration at parse time."""
+        yaml_path = _write_yaml(tmp_path, """\
+            instruments:
+              pipette:
+                type: pipette
+                vendor: opentrons
+                pipette_model: p300_single_gen2
+                measurement_height: 5.0
+                safe_approach_height: 2.0
+        """)
+        with pytest.raises(Exception, match="safe_approach_height"):
+            load_board_from_yaml(yaml_path, _mock_gantry())
+
+
 class TestLoadBoardGantry:
 
     def test_gantry_attached_to_board(self, tmp_path):
