@@ -83,11 +83,8 @@ def test_measure_unknown_instrument_raises():
 
 
 def test_measure_unknown_method_raises():
-    instr = _mock_instr()
-    # Make hasattr return False for 'nonexistent_method' via spec
-    del instr.nonexistent_method
-    instr.nonexistent_method = MagicMock(side_effect=AttributeError)
-    # Use spec-less mock without the method attribute
+    # Use a spec-bound mock so hasattr() returns False for methods
+    # that aren't on BaseInstrument (i.e. "nope").
     instr = MagicMock(spec=BaseInstrument)
     instr.name = "uvvis"
     instr.offset_x = instr.offset_y = instr.depth = 0.0

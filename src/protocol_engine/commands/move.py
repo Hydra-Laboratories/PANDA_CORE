@@ -2,6 +2,7 @@
 
 from typing import Any, TYPE_CHECKING
 
+from ..errors import ProtocolExecutionError
 from ..registry import protocol_command
 
 if TYPE_CHECKING:
@@ -41,6 +42,19 @@ def move(context: "ProtocolContext", instrument: str, position: Any) -> None:
 
     # Deck target — route through move_to_labware so safe_approach_height
     # is applied consistently with measure/aspirate at the same position.
-    coord = context.deck.resolve(position)
+    # If resolution fails AND the string doesn't look like a deck target
+    # (no '.'), surface a clearer error that lists both namespaces so a
+    # typo in a named position doesn't masquerade as a missing labware.
+    try:
+        coord = context.deck.resolve(position)
+    except Exception as exc:
+        if isinstance(position, str) and "." not in position:
+            named = sorted(context.positions.keys()) if context.positions else []
+            raise ProtocolExecutionError(
+                f"move: {position!r} is not a named position "
+                f"({named or 'none defined'}) and is not a resolvable deck "
+                f"target: {exc}"
+            ) from exc
+        raise
     context.logger.info("move: %s -> %s (labware: safe approach)", instrument, position)
     context.board.move_to_labware(instrument, coord)

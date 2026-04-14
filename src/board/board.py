@@ -47,7 +47,8 @@ class Board:
 
         Accounts for the instrument's offset_x, offset_y, and depth so the
         gantry head ends up at the right place for the instrument tip to be
-        at the requested (x, y, z).
+        at the requested (x, y, z). Validates that the target is finite
+        (no NaN/Inf) before commanding the gantry.
 
         Args:
             instrument: Name (key in ``self.instruments``) or instance.
@@ -55,6 +56,7 @@ class Board:
         """
         instr = self._resolve_instrument(instrument)
         x, y, z = self._resolve_position(position)
+        self._validate_finite_xyz(x, y, z, instr.name)
         gantry_x = x - instr.offset_x
         gantry_y = y - instr.offset_y
         gantry_z = z - instr.depth
@@ -95,7 +97,8 @@ class Board:
         """
         instr = self._resolve_instrument(instrument)
         x, y, z = self._resolve_position(labware)
-        self._validate_finite_xyz(x, y, z, instr.name)
+        # Finite-xyz guarding happens inside self.move (below) — no need to
+        # double-validate here.
         approach_z = z + instr.safe_approach_height
 
         current_tip_x, current_tip_y, current_tip_z = self._current_tip_position(instr)

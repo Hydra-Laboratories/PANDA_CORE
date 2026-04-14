@@ -6,6 +6,7 @@ from typing import Any, Dict, TYPE_CHECKING
 
 from ..errors import ProtocolExecutionError
 from ..registry import protocol_command
+from ._movement import approach_and_descend
 
 if TYPE_CHECKING:
     from ..protocol import ProtocolContext
@@ -52,12 +53,6 @@ def measure(
         )
 
     coord = context.deck.resolve(position)
-    # 1. Approach: safely travel to above the labware at safe_approach_height.
-    context.board.move_to_labware(instrument, coord)
-    # 2. Descend: lower to action Z at the same XY.
-    x, y, z = coord if isinstance(coord, tuple) else (coord.x, coord.y, coord.z)
-    action_z = z + instr.measurement_height
-    context.board.move(instrument, (x, y, action_z))
-
     context.logger.info("measure: %s.%s(%s) at %s", instrument, method, method_kwargs, position)
+    approach_and_descend(context, instrument, coord)
     return getattr(instr, method)(**method_kwargs)

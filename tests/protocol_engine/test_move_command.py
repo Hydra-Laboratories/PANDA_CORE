@@ -94,7 +94,9 @@ class TestMoveCommandRouting:
         call_args = ctx.board.move_to_labware.call_args
         assert call_args[0][0] == "filmetrics"
 
-    def test_invalid_target_propagates_error(self):
+    def test_invalid_deck_target_propagates_error(self):
+        """A dotted position (looks like a deck target) that fails to
+        resolve propagates the underlying error unwrapped."""
         from protocol_engine.commands.move import move
 
         ctx = _mock_context()
@@ -102,6 +104,19 @@ class TestMoveCommandRouting:
 
         with pytest.raises(KeyError, match="bad"):
             move(ctx, instrument="pipette", position="bad.A1")
+
+    def test_bare_string_typo_mentions_both_namespaces(self):
+        """A non-dotted string that's neither a named position nor a
+        deck labware key gets a clear error listing both namespaces —
+        catches typos like 'home_postion' vs 'home_position'."""
+        from protocol_engine.commands.move import move
+        from protocol_engine.errors import ProtocolExecutionError
+
+        ctx = _mock_context(positions={"home_position": [0, 0, 80]})
+        ctx.deck.resolve.side_effect = KeyError("Not found")
+
+        with pytest.raises(ProtocolExecutionError, match="home_postion"):
+            move(ctx, instrument="pipette", position="home_postion")
 
 
 # ─── End-to-end: YAML → load → run ──────────────────────────────────────────

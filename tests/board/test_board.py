@@ -393,6 +393,7 @@ class TestBoardMoveToLabware:
         assert gantry.move_to.call_count == 2   # retract + travel
 
     def test_rejects_nan_position_z(self):
+        """NaN in position z is caught (via Board.move's validation)."""
         gantry = _mock_gantry(z=100.0)
         instr = _mock_instrument(measurement_height=0.0, safe_approach_height=0.0)
         board = Board(gantry=gantry, instruments={"probe": instr})
@@ -405,6 +406,16 @@ class TestBoardMoveToLabware:
         board = Board(gantry=gantry, instruments={"probe": instr})
         with pytest.raises(ValueError, match="non-finite"):
             board.move_to_labware("probe", (float("inf"), 20.0, 10.0))
+
+    def test_raw_move_rejects_non_finite_z(self):
+        """Raw Board.move (used for descent in commands) must also guard
+        against NaN/Inf coords — otherwise a bad measurement_height could
+        silently send the gantry to a non-finite Z."""
+        gantry = _mock_gantry(z=100.0)
+        instr = _mock_instrument()
+        board = Board(gantry=gantry, instruments={"probe": instr})
+        with pytest.raises(ValueError, match="non-finite"):
+            board.move("probe", (10.0, 20.0, float("nan")))
 
     def test_wraps_gantry_read_failure(self):
         """If gantry.get_coordinates() raises, surface a clear error."""
