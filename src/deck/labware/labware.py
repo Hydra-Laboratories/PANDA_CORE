@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Coordinate3D(BaseModel):
-    """Simple 3D coordinate representation in deck space (absolute gantry coordinates)."""
+    """Simple 3D coordinate representation in absolute deck-space user coordinates."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -62,6 +62,14 @@ class Labware(BaseModel):
         """Return an absolute deck coordinate for this labware."""
         raise NotImplementedError("Subclasses of Labware must implement get_location().")
 
+    def get_named_target(self, location_id: str) -> Coordinate3D:
+        """Return an actionable target point for a named sub-location."""
+        return self.get_location(location_id)
+
+    def get_default_target(self) -> Coordinate3D:
+        """Return the default actionable target point for this labware."""
+        return self.get_initial_position()
+
     def get_initial_position(self) -> Coordinate3D:
         """
         Return the labware-level initial/anchor position.
@@ -80,3 +88,11 @@ class Labware(BaseModel):
         addressable points without hard-coding concrete labware types.
         """
         raise NotImplementedError("Subclasses of Labware must implement iter_positions().")
+
+    def iter_validation_points(self) -> dict[str, Coordinate3D]:
+        """Return the points that bounds validation should reason about."""
+        return self.iter_positions()
+
+    def get_twin_anchor(self) -> Coordinate3D:
+        """Return the anchor point used by digital-twin/viewer consumers."""
+        return self.get_default_target()

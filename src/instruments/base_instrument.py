@@ -86,6 +86,16 @@ class BaseInstrument(ABC):
     def calibrate(self) -> None:
         pass
 
+    def missing_calibration_fields(self) -> tuple[str, ...]:
+        missing: list[str] = []
+        for field in ("offset_x", "offset_y", "depth"):
+            if getattr(self, field, None) is None:
+                missing.append(field)
+        return tuple(missing)
+
+    def is_calibrated(self) -> bool:
+        return not self.missing_calibration_fields()
+
     def handle_error(self, error: Exception, context: str = "") -> None:
         msg = f"Error in {self.name}{f' ({context})' if context else ''}: {str(error)}"
         self.logger.error(msg)

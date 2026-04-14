@@ -58,7 +58,10 @@ def _format_loader_exception(path: Path, error: Exception) -> str:
 
 
 def load_board_from_yaml(
-    path: str | Path, gantry: Gantry, mock_mode: bool = False,
+    path: str | Path,
+    gantry: Gantry,
+    mock_mode: bool = False,
+    allow_uncalibrated: bool = False,
 ) -> Board:
     """Load a board YAML file and return a Board with instruments.
 
@@ -66,6 +69,9 @@ def load_board_from_yaml(
         path: Path to the board YAML file.
         gantry: The Gantry instance to attach to the Board.
         mock_mode: If True, all instruments are created with offline=True.
+        allow_uncalibrated: If True, preserve missing offset/depth calibration
+            values as ``None`` on the instantiated instruments. Normal execution
+            should keep this False.
 
     Returns:
         Board with all instruments instantiated from the YAML config.
@@ -90,20 +96,50 @@ def load_board_from_yaml(
         type_key = kwargs.pop("type")
         vendor = kwargs.pop("vendor")
         validate_instrument(type_key, vendor)
+        calibration_fields = {
+            "offset_x": kwargs.pop("offset_x"),
+            "offset_y": kwargs.pop("offset_y"),
+            "depth": kwargs.pop("depth"),
+        }
+        missing_calibration = tuple(
+            field for field, value in calibration_fields.items() if value is None
+        )
+        if missing_calibration and not allow_uncalibrated:
+            fields = ", ".join(missing_calibration)
+            raise ValueError(
+                f"Instrument '{name}' is missing calibration fields: {fields}. "
+                "Use calibration mode to load incomplete board YAML, or write "
+                "explicit values before execution."
+            )
+        for field, value in calibration_fields.items():
+            if value is not None:
+                kwargs[field] = value
         if mock_mode:
             kwargs["offline"] = True
         cls = get_instrument_class(type_key)
-        instruments[name] = cls(**kwargs)
+        instrument = cls(**kwargs)
+        for field in missing_calibration:
+            setattr(instrument, field, None)
+        setattr(instrument, "calibration_complete", not missing_calibration)
+        instruments[name] = instrument
 
     return Board(gantry=gantry, instruments=instruments)
 
 
 def load_board_from_yaml_safe(
-    path: str | Path, gantry: Gantry, mock_mode: bool = False,
+    path: str | Path,
+    gantry: Gantry,
+    mock_mode: bool = False,
+    allow_uncalibrated: bool = False,
 ) -> Board:
     """Load board YAML with user-friendly exception formatting."""
     resolved = Path(path)
     try:
-        return load_board_from_yaml(resolved, gantry, mock_mode=mock_mode)
+        return load_board_from_yaml(
+            resolved,
+            gantry,
+            mock_mode=mock_mode,
+            allow_uncalibrated=allow_uncalibrated,
+        )
     except Exception as exc:
         raise BoardLoaderError(_format_loader_exception(resolved, exc)) from exc

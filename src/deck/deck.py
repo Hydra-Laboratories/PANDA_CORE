@@ -25,17 +25,17 @@ class Deck:
 
     def resolve(self, target: str) -> Coordinate3D:
         """
-        Resolve a target string to an absolute deck coordinate.
+        Resolve a target string to an actionable absolute deck coordinate.
 
         Formats:
-            'plate_1.A1'  -> well A1 on plate_1
-            'vial_1'      -> vial center (initial position)
-            'plate_1'     -> plate initial position (A1)
+            'plate_1.A1'  -> named target on plate_1
+            'vial_1'      -> default target for vial_1
+            'plate_1'     -> default target for plate_1
         """
         if "." in target:
             labware_key, location_id = target.split(".", 1)
-            return self._get_labware(labware_key).get_location(location_id)
-        return self._get_labware(target).get_initial_position()
+            return self._get_labware(labware_key).get_named_target(location_id)
+        return self._get_labware(target).get_default_target()
 
     def _get_labware(self, key: str) -> Labware:
         try:

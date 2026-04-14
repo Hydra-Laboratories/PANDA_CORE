@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from board.board import Board
 from deck.deck import Deck
 from deck.labware.labware import Coordinate3D
@@ -227,6 +229,16 @@ class TestValidateGantryPositions:
         board = _make_board(("instr_1", instr))
         violations = validate_gantry_positions(gantry, deck, board)
         assert violations == []
+
+    def test_uncalibrated_instrument_raises_clear_error(self):
+        gantry = _make_gantry()
+        deck = _make_deck(vial_1=_make_vial(x=30.0, y=40.0, z=20.0))
+        instr = _make_instrument(offset_x=5.0, offset_y=0.0, depth=0.0)
+        instr.depth = None
+        board = _make_board(("instr_1", instr))
+
+        with pytest.raises(ValueError, match="uncalibrated"):
+            validate_gantry_positions(gantry, deck, board)
 
     def test_instrument_offset_pushes_gantry_outside_x_max_fails(self):
         # vial at x=299.0, instrument offset_x=-5.0

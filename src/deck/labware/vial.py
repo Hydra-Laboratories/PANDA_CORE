@@ -8,15 +8,21 @@ from .labware import BoundingBoxGeometry, Coordinate3D, Labware
 class Vial(Labware):
     """
     Labware representing a single vial.
+
+    The default actionable target is the vial's top-center:
+    ``x/y`` at the vial centerline, ``z`` at the top interaction surface.
     """
 
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
 
     name: str = Field(..., description="Unique vial name.")
     model_name: str = Field("", description="Vial model identifier.")
-    height_mm: float = Field(..., description="Z position of the vial (absolute WPos).")
+    height_mm: float = Field(..., description="Vial height above its base in millimeters.")
     diameter_mm: float = Field(..., description="Vial outer diameter in millimeters.")
-    location: Coordinate3D = Field(..., description="Absolute XYZ center of this vial.")
+    location: Coordinate3D = Field(
+        ...,
+        description="Absolute XYZ top-center target of this vial in deck space.",
+    )
     capacity_ul: float = Field(..., description="Vial capacity in microliters.")
     working_volume_ul: float = Field(..., description="Working volume per vial in microliters.")
 
@@ -53,11 +59,15 @@ class Vial(Labware):
         raise KeyError(f"Unknown location ID '{location_id}'")
 
     def get_vial_center(self) -> Coordinate3D:
+        """Compatibility accessor for the vial target point (top-center)."""
+        return self.location
+
+    def get_top_center(self) -> Coordinate3D:
         return self.location
 
     def get_initial_position(self) -> Coordinate3D:
         """
-        Initial position for a single vial is its center location.
+        Initial position for a single vial is its default top-center target.
         """
         return self.location
 

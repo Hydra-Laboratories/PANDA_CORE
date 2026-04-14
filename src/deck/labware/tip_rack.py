@@ -17,7 +17,7 @@ class TipRack(HolderLabware):
 
     * ``rows`` / ``columns`` — rack layout (used only for validation).
     * ``z_pickup`` / ``z_drop`` — default pickup and discard Z.
-    * ``tips`` — mapping from tip ID (``"A1"``, ``"A2"``...) to absolute XYZ.
+    * ``tips`` — mapping from tip ID (``"A1"``, ``"A2"``...) to absolute XYZ target points.
     * ``tip_present`` — per-tip boolean flag; ``True`` = loaded, ``False`` =
       empty/consumed. Auto-initializes to all-True from the ``tips`` keys
       when left empty.
@@ -39,7 +39,7 @@ class TipRack(HolderLabware):
     )
     tips: Dict[str, Coordinate3D] = Field(
         ...,
-        description="Mapping from tip ID (e.g. 'A1') to absolute pickup coordinates.",
+        description="Mapping from tip ID (e.g. 'A1') to absolute pickup target coordinates.",
     )
     tip_present: Dict[str, bool] = Field(
         default_factory=dict,

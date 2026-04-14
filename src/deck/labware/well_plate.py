@@ -11,7 +11,8 @@ class WellPlate(Labware):
     """
     Labware representing a multi-well plate (e.g. SBS 96-well).
 
-    Coordinates for each well are expressed as absolute deck coordinates.
+    Coordinates for each well are expressed as absolute deck coordinates whose
+    ``z`` component is the well plate's top interaction surface.
     """
 
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
@@ -21,7 +22,10 @@ class WellPlate(Labware):
     # Geometry — optional metadata, not used for well position computation.
     length_mm: Optional[float] = Field(None, description="Overall plate length in millimeters.")
     width_mm: Optional[float] = Field(None, description="Overall plate width in millimeters.")
-    height_mm: Optional[float] = Field(None, description="Z position of the plate surface (absolute WPos).")
+    height_mm: Optional[float] = Field(
+        None,
+        description="Plate height above its base in millimeters.",
+    )
     rows: int = Field(
         ...,
         gt=0,
@@ -31,7 +35,7 @@ class WellPlate(Labware):
     columns: int = Field(..., gt=0, description="Number of well columns (e.g. 12 for 96-well).")
     wells: Dict[str, Coordinate3D] = Field(
         ...,
-        description="Mapping from well ID (e.g. 'A1') to absolute XYZ centers.",
+        description="Mapping from well ID (e.g. 'A1') to absolute XYZ target points.",
     )
     # Volume — optional metadata.
     capacity_ul: Optional[float] = Field(None, description="Well capacity in microliters.")
@@ -102,7 +106,7 @@ class WellPlate(Labware):
 
     def get_initial_position(self) -> Coordinate3D:
         """
-        Initial position for a well plate: the A1 well.
+        Initial position for a well plate: the default A1 target point.
         """
         # By construction, 'A1' must exist in `wells`.
         return self.get_well_center("A1")

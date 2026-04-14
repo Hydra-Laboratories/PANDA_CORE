@@ -148,6 +148,15 @@ class TestBoardMove:
 
         gantry.move_to.assert_called_once_with(140.0, 70.0, 8.0)
 
+    def test_move_rejects_uncalibrated_instrument(self):
+        gantry = _mock_gantry()
+        instr = _mock_instrument("pipette", offset_x=10.0, offset_y=5.0, depth=2.0)
+        instr.depth = None
+        board = Board(gantry=gantry, instruments={"pipette": instr})
+
+        with pytest.raises(RuntimeError, match="uncalibrated"):
+            board.move("pipette", (100.0, 50.0, 20.0))
+
 
 # ─── object_position() tests ─────────────────────────────────────────────────
 
@@ -206,6 +215,23 @@ class TestBoardObjectPosition:
         board = Board(gantry=_mock_gantry())
         with pytest.raises(KeyError, match="Unknown instrument 'nope'"):
             board.object_position("nope")
+
+    def test_uncalibrated_instrument_position_raises(self):
+        gantry = _mock_gantry(x=100.0, y=50.0, z=10.0)
+        pip = _mock_instrument("pipette", offset_x=10.0, offset_y=5.0)
+        pip.offset_x = None
+        board = Board(gantry=gantry, instruments={"pipette": pip})
+
+        with pytest.raises(RuntimeError, match="uncalibrated"):
+            board.object_position("pipette")
+
+    def test_object_position_allows_missing_depth(self):
+        gantry = _mock_gantry(x=100.0, y=50.0, z=10.0)
+        pip = _mock_instrument("pipette", offset_x=10.0, offset_y=5.0, depth=2.0)
+        pip.depth = None
+        board = Board(gantry=gantry, instruments={"pipette": pip})
+
+        assert board.object_position("pipette") == pytest.approx((110.0, 55.0))
 
 
 # ─── connect/disconnect lifecycle tests ─────────────────────────────────────

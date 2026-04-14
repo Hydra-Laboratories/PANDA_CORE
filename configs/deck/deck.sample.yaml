@@ -18,7 +18,6 @@ labware:
       a2:
         x: 10.0
         y: 19.0
-    height: 15.0
 
   vial_1:
     type: vial
@@ -26,7 +25,6 @@ labware:
     model_name: standard_1_5ml_vial
     height_mm: 66.75
     diameter_mm: 28.0
-    height: 30.0
     location:
       x: 30.0
       y: 40.0

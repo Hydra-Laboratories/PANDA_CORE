@@ -73,6 +73,12 @@ class WellPlateYamlEntry(BaseModel):
             raise ValueError("working_volume_ul must be <= capacity_ul.")
         if self.x_offset_mm == 0 or self.y_offset_mm == 0:
             raise ValueError("x_offset_mm and y_offset_mm must be non-zero.")
+        if self.height is not None:
+            raise ValueError(
+                "Legacy `height` is no longer supported for well plates. "
+                "Set `calibration.a1.z` explicitly or omit it to infer the "
+                "target Z from `height_mm` above deck base."
+            )
         return self
 
 
@@ -97,6 +103,12 @@ class VialYamlEntry(BaseModel):
             raise ValueError("working_volume_ul must be <= capacity_ul.")
         if self.capacity_ul <= 0 or self.working_volume_ul <= 0:
             raise ValueError("capacity_ul and working_volume_ul must be positive.")
+        if self.height is not None:
+            raise ValueError(
+                "Legacy `height` is no longer supported for vials. "
+                "Set `location.z` explicitly or omit it to infer the target Z "
+                "from `height_mm` above deck base."
+            )
         return self
 
 
@@ -210,6 +222,16 @@ class _BaseHolderYamlEntry(BaseModel):
     height_mm: Optional[float] = Field(default=None, gt=0)
     labware_support_height_mm: Optional[float] = Field(default=None, gt=0)
     labware_seat_height_from_bottom_mm: Optional[float] = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def _reject_legacy_height(self) -> "_BaseHolderYamlEntry":
+        if self.height is not None:
+            raise ValueError(
+                "Legacy `height` is no longer supported for holders. "
+                "Set `location.z` explicitly when the holder base is elevated "
+                "above the deck, otherwise omit it and the base defaults to z=0."
+            )
+        return self
 
 
 class TipRackYamlEntry(_BaseHolderYamlEntry):

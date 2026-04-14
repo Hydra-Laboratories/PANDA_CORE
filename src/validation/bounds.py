@@ -34,11 +34,11 @@ def _check_point(
 def _get_all_positions(
     deck: Deck,
 ) -> List[Tuple[str, str, float, float, float]]:
-    """Extract every (labware_key, position_id, x, y, z) from the deck."""
+    """Extract every validation point as (labware_key, position_id, x, y, z)."""
     positions: List[Tuple[str, str, float, float, float]] = []
     for key in deck:
         labware = deck[key]
-        for position_id, coord in labware.iter_positions().items():
+        for position_id, coord in labware.iter_validation_points().items():
             positions.append((key, position_id, coord.x, coord.y, coord.z))
     return positions
 
@@ -83,6 +83,16 @@ def validate_gantry_positions(
     violations: List[BoundsViolation] = []
     volume = gantry.working_volume
     for instr_name, instrument in board.instruments.items():
+        missing = [
+            field for field in ("offset_x", "offset_y", "depth")
+            if getattr(instrument, field, None) is None
+        ]
+        if missing:
+            raise ValueError(
+                f"Instrument '{instr_name}' is uncalibrated; missing "
+                f"{', '.join(missing)}. Gantry-position validation requires "
+                "full XYZ calibration."
+            )
         for lw_key, pos_id, x, y, z in _get_all_positions(deck):
             gx = x - instrument.offset_x
             gy = y - instrument.offset_y

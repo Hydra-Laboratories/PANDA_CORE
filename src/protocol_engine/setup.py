@@ -57,10 +57,7 @@ def setup_protocol(
         SetupValidationError: If any positions violate gantry bounds.
     """
     gantry_config: GantryConfig = load_gantry_from_yaml_safe(gantry_path)
-    deck: Deck = load_deck_from_yaml_safe(
-        deck_path,
-        total_z_height=gantry_config.total_z_height,
-    )
+    deck: Deck = load_deck_from_yaml_safe(deck_path)
 
     if gantry is None:
         gantry = Gantry(offline=True)

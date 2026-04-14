@@ -152,3 +152,17 @@ def test_resolve_vial_with_dot_location_raises():
     deck = _make_deck()
     with pytest.raises(KeyError):
         deck.resolve("vial_1.X")
+
+
+def test_resolve_uses_default_target_contract():
+    """Bare labware names resolve through the explicit default-target accessor."""
+    deck = _make_deck()
+    assert deck.resolve("plate_1") == deck["plate_1"].get_default_target()
+    assert deck.resolve("vial_1") == deck["vial_1"].get_default_target()
+
+
+def test_resolve_uses_named_target_contract():
+    """Named targets resolve through the explicit named-target accessor."""
+    deck = _make_deck()
+    assert deck.resolve("plate_1.A1") == deck["plate_1"].get_named_target("A1")
+    assert deck.resolve("plate_1.B2") == deck["plate_1"].get_named_target("B2")

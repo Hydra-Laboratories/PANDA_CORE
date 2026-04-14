@@ -15,6 +15,7 @@ from deck import (
     WellPlate,
     WellPlateHolder,
 )
+from deck.labware.labware import Labware
 from deck.loader import load_deck_from_yaml
 from gantry.gantry_config import GantryConfig, HomingStrategy, WorkingVolume
 from validation.bounds import validate_deck_positions
@@ -125,7 +126,6 @@ labware:
     location:
       x: 25.0
       y: 35.0
-    height: 10.0
   slide_holder:
     type: well_plate_holder
     name: slide_holder
@@ -146,7 +146,6 @@ labware:
     location:
       x: 70.0
       y: 80.0
-    height: 15.0
     slots:
       vial_1:
         location:
@@ -160,13 +159,13 @@ labware:
         path = handle.name
 
     try:
-        deck = load_deck_from_yaml(path, total_z_height=90.0)
+        deck = load_deck_from_yaml(path)
         assert isinstance(deck["waste"], TipDisposal)
         assert isinstance(deck["slide_holder"], WellPlateHolder)
         assert isinstance(deck["vial_holder"], VialHolder)
-        assert deck["waste"].location.z == pytest.approx(80.0)
+        assert deck["waste"].location.z == pytest.approx(0.0)
         assert deck.resolve("slide_holder.plate") == Coordinate3D(x=51.0, y=61.0, z=12.0)
-        assert deck.resolve("vial_holder.vial_1") == Coordinate3D(x=71.0, y=81.0, z=75.0)
+        assert deck.resolve("vial_holder.vial_1") == Coordinate3D(x=71.0, y=81.0, z=0.0)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -202,7 +201,7 @@ labware:
 
         assert isinstance(holder, VialHolder)
         assert isinstance(holder.contained_labware["vial_1"], Vial)
-        assert deck.resolve("vial_holder.vial_1") == Coordinate3D(x=17.1, y=0.9, z=182.0)
+        assert deck.resolve("vial_holder.vial_1") == Coordinate3D(x=17.1, y=0.9, z=239.0)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -219,6 +218,7 @@ labware:
       z: 183.0
     well_plate:
       model_name: panda_96_wellplate
+      height_mm: 14.1
       rows: 2
       columns: 2
       calibration:
@@ -241,9 +241,9 @@ labware:
 
         assert isinstance(holder, WellPlateHolder)
         assert isinstance(holder.contained_labware["plate"], WellPlate)
-        assert deck.resolve("plate_holder.plate") == Coordinate3D(x=221.75, y=78.5, z=188.0)
-        assert deck.resolve("plate_holder.plate.A1") == Coordinate3D(x=221.75, y=78.5, z=188.0)
-        assert deck.resolve("plate_holder.plate.B2") == Coordinate3D(x=230.75, y=87.5, z=188.0)
+        assert deck.resolve("plate_holder.plate") == Coordinate3D(x=221.75, y=78.5, z=202.1)
+        assert deck.resolve("plate_holder.plate.A1") == Coordinate3D(x=221.75, y=78.5, z=202.1)
+        assert deck.resolve("plate_holder.plate.B2") == Coordinate3D(x=230.75, y=87.5, z=202.1)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -333,3 +333,49 @@ def test_holder_slots_participate_in_bounds_validation():
     assert violations[0].position_id == "vial_1"
     assert violations[0].axis == "x"
     assert violations[0].bound_name == "x_max"
+
+
+def test_holder_uses_child_target_accessors_for_nested_resolution():
+    class TargetedChild(Labware):
+        location: Coordinate3D
+        default_target: Coordinate3D
+        named_target: Coordinate3D
+        validation_target: Coordinate3D
+
+        def get_location(self, location_id: str | None = None) -> Coordinate3D:
+            return self.location
+
+        def get_initial_position(self) -> Coordinate3D:
+            return self.location
+
+        def iter_positions(self) -> dict[str, Coordinate3D]:
+            return {"location": self.location, "named": self.location}
+
+        def iter_validation_points(self) -> dict[str, Coordinate3D]:
+            return {"location": self.location, "named": self.validation_target}
+
+        def get_default_target(self) -> Coordinate3D:
+            return self.default_target
+
+        def get_named_target(self, location_id: str) -> Coordinate3D:
+            if location_id == "named":
+                return self.named_target
+            raise KeyError(location_id)
+
+    holder = WellPlateHolder(
+        name="holder",
+        location=Coordinate3D(x=0.0, y=0.0, z=0.0),
+        contained_labware={
+            "child": TargetedChild(
+                location=Coordinate3D(x=0.0, y=0.0, z=0.0),
+                default_target=Coordinate3D(x=2.0, y=2.0, z=2.0),
+                named_target=Coordinate3D(x=1.0, y=1.0, z=1.0),
+                validation_target=Coordinate3D(x=3.0, y=3.0, z=3.0),
+            )
+        },
+    )
+
+    assert holder.get_location("child") == Coordinate3D(x=2.0, y=2.0, z=2.0)
+    assert holder.get_location("child.named") == Coordinate3D(x=1.0, y=1.0, z=1.0)
+    assert holder.iter_positions()["child"] == Coordinate3D(x=2.0, y=2.0, z=2.0)
+    assert holder.iter_validation_points()["child.named"] == Coordinate3D(x=3.0, y=3.0, z=3.0)

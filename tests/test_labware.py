@@ -197,6 +197,10 @@ def test_vial_dimensions_and_location_lookup():
     )
     assert vial.get_vial_center() == Coordinate3D(x=30.0, y=40.0, z=20.0)
     assert vial.get_initial_position() == Coordinate3D(x=30.0, y=40.0, z=20.0)
+    assert vial.get_default_target() == Coordinate3D(x=30.0, y=40.0, z=20.0)
+    assert vial.get_named_target("standard_vial") == Coordinate3D(x=30.0, y=40.0, z=20.0)
+    assert vial.iter_validation_points() == {"location": Coordinate3D(x=30.0, y=40.0, z=20.0)}
+    assert vial.get_twin_anchor() == Coordinate3D(x=30.0, y=40.0, z=20.0)
 
 
 def test_well_plate_exposes_shared_bounding_box_geometry():
@@ -218,6 +222,10 @@ def test_well_plate_exposes_shared_bounding_box_geometry():
         width_mm=85.43,
         height_mm=14.10,
     )
+    assert plate.get_default_target() == Coordinate3D(x=10.0, y=10.0, z=15.0)
+    assert plate.get_named_target("A1") == Coordinate3D(x=10.0, y=10.0, z=15.0)
+    assert plate.iter_validation_points() == {"A1": Coordinate3D(x=10.0, y=10.0, z=15.0)}
+    assert plate.get_twin_anchor() == Coordinate3D(x=10.0, y=10.0, z=15.0)
 
 
 def test_vial_requires_positive_diameter():

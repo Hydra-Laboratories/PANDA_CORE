@@ -18,7 +18,10 @@ class LabwareSlot(Labware):
 
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
 
-    location: Coordinate3D = Field(..., description="Absolute XYZ location for this slot.")
+    location: Coordinate3D = Field(
+        ...,
+        description="Absolute XYZ slot anchor in deck space.",
+    )
     supported_labware_types: tuple[str, ...] = Field(
         default_factory=tuple,
         description="Optional labware type names that this slot is intended to accept.",
@@ -56,7 +59,10 @@ class HolderLabware(Labware):
 
     name: str = Field(..., description="Unique holder name.")
     model_name: str = Field(..., description="Holder model identifier.")
-    location: Coordinate3D = Field(..., description="Absolute XYZ reference point for this holder.")
+    location: Coordinate3D = Field(
+        ...,
+        description="Absolute XYZ base anchor for this holder in deck space.",
+    )
     length_mm: float = Field(..., description="Bounding-box X dimension in millimeters.")
     width_mm: float = Field(..., description="Bounding-box Y dimension in millimeters.")
     height_mm: float = Field(..., description="Bounding-box Z dimension in millimeters.")
@@ -77,7 +83,7 @@ class HolderLabware(Labware):
     )
     contained_labware: Dict[str, Labware] = Field(
         default_factory=dict,
-        description="Optional nested labware instances whose Z is derived from this holder.",
+        description="Optional nested labware instances whose target Z is derived from this holder.",
     )
 
     @field_validator("name", "model_name")
@@ -136,12 +142,12 @@ class HolderLabware(Labware):
         if "." in location_id:
             child_name, child_location_id = location_id.split(".", 1)
             try:
-                return self.contained_labware[child_name].get_location(child_location_id)
+                return self.contained_labware[child_name].get_named_target(child_location_id)
             except KeyError as exc:
                 raise KeyError(f"Unknown location ID '{location_id}'") from exc
 
         if location_id in self.contained_labware:
-            return self.contained_labware[location_id].get_initial_position()
+            return self.contained_labware[location_id].get_default_target()
 
         try:
             return self.slots[location_id].location
@@ -158,9 +164,20 @@ class HolderLabware(Labware):
         positions = {"location": self.location}
         positions.update({slot_id: slot.location for slot_id, slot in self.slots.items()})
         for child_name, child in self.contained_labware.items():
-            positions[child_name] = child.get_initial_position()
+            positions[child_name] = child.get_default_target()
             for position_id, coord in child.iter_positions().items():
                 if position_id == "location":
                     continue
                 positions[f"{child_name}.{position_id}"] = coord
         return positions
+
+    def iter_validation_points(self) -> dict[str, Coordinate3D]:
+        points = {"location": self.location}
+        points.update({slot_id: slot.location for slot_id, slot in self.slots.items()})
+        for child_name, child in self.contained_labware.items():
+            points[child_name] = child.get_default_target()
+            for position_id, coord in child.iter_validation_points().items():
+                if position_id == "location":
+                    continue
+                points[f"{child_name}.{position_id}"] = coord
+        return points

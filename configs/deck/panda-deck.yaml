@@ -1,0 +1,129 @@
+labware:
+  tip_rack_a:
+    load_name: ursa_tip_rack
+    type: tip_rack
+    name: tip_rack_a
+    model_name: panda_2x15_tip_rack
+  tip_rack_b:
+    load_name: ursa_tip_rack
+    calibration:
+      a1:
+        x: 238.9
+        y: 2.7
+      a2:
+        x: 247.4
+        y: 2.7
+    type: tip_rack
+    name: tip_rack_b
+    model_name: panda_2x15_tip_rack
+  well_plate_holder:
+    type: well_plate_holder
+    name: panda_well_plate_holder
+    location:
+      x: 221.75
+      y: 78.5
+      z: 183
+    well_plate:
+      model_name: panda_96_wellplate
+      rows: 8
+      columns: 12
+      calibration:
+        a1:
+          x: 221.75
+          y: 78.5
+        a2:
+          x: 230.75
+          y: 78.5
+      x_offset_mm: 9
+      y_offset_mm: 9
+    model_name: SlideHolder_Top
+  vial_holder:
+    type: vial_holder
+    name: panda_vial_holder
+    location:
+      x: 17.1
+      y: 132.9
+      z: 164
+    vials:
+      vial_1:
+        model_name: 20ml_vial
+        height_mm: 57
+        diameter_mm: 28
+        location:
+          x: 17.1
+          y: 0.9
+        capacity_ul: 20000
+        working_volume_ul: 20000
+      vial_2:
+        model_name: 20ml_vial
+        height_mm: 57
+        diameter_mm: 28
+        location:
+          x: 17.1
+          y: 33.9
+        capacity_ul: 20000
+        working_volume_ul: 20000
+      vial_3:
+        model_name: 20ml_vial
+        height_mm: 57
+        diameter_mm: 28
+        location:
+          x: 17.1
+          y: 66.9
+        capacity_ul: 20000
+        working_volume_ul: 20000
+      vial_4:
+        model_name: 20ml_vial
+        height_mm: 57
+        diameter_mm: 28
+        location:
+          x: 17.1
+          y: 99.9
+        capacity_ul: 20000
+        working_volume_ul: 20000
+      vial_5:
+        model_name: 20ml_vial
+        height_mm: 57
+        diameter_mm: 28
+        location:
+          x: 17.1
+          y: 132.9
+        capacity_ul: 20000
+        working_volume_ul: 20000
+      vial_6:
+        model_name: 20ml_vial
+        height_mm: 57
+        diameter_mm: 28
+        location:
+          x: 17.1
+          y: 165.9
+        capacity_ul: 20000
+        working_volume_ul: 20000
+      vial_7:
+        model_name: 20ml_vial
+        height_mm: 57
+        diameter_mm: 28
+        location:
+          x: 17.1
+          y: 198.9
+        capacity_ul: 20000
+        working_volume_ul: 20000
+      vial_8:
+        model_name: 20ml_vial
+        height_mm: 57
+        diameter_mm: 28
+        location:
+          x: 17.1
+          y: 231.9
+        capacity_ul: 20000
+        working_volume_ul: 20000
+      vial_9:
+        model_name: 20ml_vial
+        height_mm: 57
+        diameter_mm: 28
+        location:
+          x: 17.1
+          y: 264.9
+        capacity_ul: 20000
+        working_volume_ul: 20000
+    model_name: 9VialHolder20mL_TightFit

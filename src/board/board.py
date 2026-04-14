@@ -55,6 +55,7 @@ class Board:
             position:   (x, y, z) tuple or labware object with x, y, z attrs.
         """
         instr = self._resolve_instrument(instrument)
+        self._require_xyz_calibrated_instrument(instr)
         x, y, z = self._resolve_position(position)
         self._validate_finite_xyz(x, y, z, instr.name)
         gantry_x = x - instr.offset_x
@@ -96,6 +97,7 @@ class Board:
                         accepted for convenience/testing.
         """
         instr = self._resolve_instrument(instrument)
+        self._require_xyz_calibrated_instrument(instr)
         x, y, z = self._resolve_position(labware)
         # Finite-xyz guarding happens inside self.move (below) — no need to
         # double-validate here.
@@ -164,6 +166,7 @@ class Board:
             obj = self._resolve_instrument(obj)
 
         if isinstance(obj, BaseInstrument):
+            self._require_xy_calibrated_instrument(obj)
             coords = self.gantry.get_coordinates()
             return (
                 coords["x"] + obj.offset_x,
@@ -208,6 +211,32 @@ class Board:
                 )
             return self.instruments[instrument]
         return instrument
+
+    @staticmethod
+    def _require_xy_calibrated_instrument(instr: BaseInstrument) -> None:
+        missing = []
+        for field in ("offset_x", "offset_y"):
+            if getattr(instr, field, None) is None:
+                missing.append(field)
+        if missing:
+            raise RuntimeError(
+                f"Instrument {instr.name!r} is uncalibrated; missing "
+                f"{', '.join(missing)}. Load the board in calibration mode or "
+                "write calibration values before execution."
+            )
+
+    @staticmethod
+    def _require_xyz_calibrated_instrument(instr: BaseInstrument) -> None:
+        missing = []
+        for field in ("offset_x", "offset_y", "depth"):
+            if getattr(instr, field, None) is None:
+                missing.append(field)
+        if missing:
+            raise RuntimeError(
+                f"Instrument {instr.name!r} is uncalibrated; missing "
+                f"{', '.join(missing)}. Load the board in calibration mode or "
+                "write calibration values before execution."
+            )
 
     @staticmethod
     def _resolve_position(position: Position) -> tuple[float, float, float]:

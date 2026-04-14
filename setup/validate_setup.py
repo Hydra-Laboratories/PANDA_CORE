@@ -107,10 +107,7 @@ def run_validation(
     # 2. Deck
     out("[2/4] Loading deck config...")
     try:
-        deck = load_deck_from_yaml(
-            deck_path,
-            total_z_height=gantry_config.total_z_height,
-        )
+        deck = load_deck_from_yaml(deck_path)
     except Exception as exc:
         out(f"  ERROR: {exc}")
         out()

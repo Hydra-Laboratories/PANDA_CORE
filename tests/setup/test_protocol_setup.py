@@ -155,7 +155,7 @@ labware:
     location:
       x: 17.1
       y: 132.9
-      z: 20.0
+      z: 5.0
     vials:
       vial_1:
         model_name: 20ml_vial

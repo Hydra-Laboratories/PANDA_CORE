@@ -113,7 +113,7 @@ def test_loaded_vial_has_location_and_volume():
         Path(path).unlink(missing_ok=True)
 
 
-def test_vial_height_uses_total_z_height() -> None:
+def test_vial_z_defaults_to_height_mm_when_location_z_is_omitted() -> None:
     yaml = """
 labware:
   vial_1:
@@ -122,7 +122,6 @@ labware:
     model_name: standard_1_5ml_vial
     height_mm: 66.75
     diameter_mm: 28.0
-    height: 30.0
     location:
       x: 30.0
       y: 40.0
@@ -133,14 +132,14 @@ labware:
         f.write(yaml)
         path = f.name
     try:
-        result = load_deck_from_yaml(path, total_z_height=80.0)
+        result = load_deck_from_yaml(path)
         vial = result["vial_1"]
-        assert vial.location.z == pytest.approx(50.0)
+        assert vial.location.z == pytest.approx(66.75)
     finally:
         Path(path).unlink(missing_ok=True)
 
 
-def test_well_plate_height_uses_total_z_height() -> None:
+def test_well_plate_z_defaults_to_height_mm_when_a1_z_is_omitted() -> None:
     yaml = """
 labware:
   plate_1:
@@ -152,7 +151,6 @@ labware:
     length_mm: 127.71
     width_mm: 85.43
     height_mm: 14.10
-    height: 15.0
     calibration:
       a1: { x: 10.0, y: 10.0 }
       a2: { x: 19.0, y: 10.0 }
@@ -165,10 +163,10 @@ labware:
         f.write(yaml)
         path = f.name
     try:
-        result = load_deck_from_yaml(path, total_z_height=80.0)
+        result = load_deck_from_yaml(path)
         plate = result["plate_1"]
-        assert plate.get_well_center("A1").z == pytest.approx(65.0)
-        assert plate.get_well_center("B2").z == pytest.approx(65.0)
+        assert plate.get_well_center("A1").z == pytest.approx(14.10)
+        assert plate.get_well_center("B2").z == pytest.approx(14.10)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -200,7 +198,7 @@ labware:
         Path(path).unlink(missing_ok=True)
 
 
-def test_height_requires_total_z_height() -> None:
+def test_legacy_height_field_is_rejected() -> None:
     yaml = """
 labware:
   vial_1:
@@ -220,7 +218,7 @@ labware:
         f.write(yaml)
         path = f.name
     try:
-        with pytest.raises(ValueError, match="total_z_height"):
+        with pytest.raises(ValueError, match="Legacy `height`"):
             load_deck_from_yaml(path)
     finally:
         Path(path).unlink(missing_ok=True)

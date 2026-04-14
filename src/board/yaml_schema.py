@@ -24,9 +24,9 @@ class InstrumentYamlEntry(BaseModel):
 
     type: str
     vendor: str
-    offset_x: float = 0.0
-    offset_y: float = 0.0
-    depth: float = 0.0
+    offset_x: Optional[float] = None
+    offset_y: Optional[float] = None
+    depth: Optional[float] = None
     measurement_height: float = 0.0
     safe_approach_height: Optional[float] = None
 

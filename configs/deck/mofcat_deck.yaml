@@ -14,7 +14,6 @@ labware:
       a2:
         x: 17.88
         y: 51.23
-    height: 20.0
     # Override the 200/150 µL template defaults for this 360 µL round-bottom plate.
     capacity_ul: 360.0
     working_volume_ul: 200.0
