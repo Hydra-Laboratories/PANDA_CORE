@@ -34,19 +34,35 @@ def _ctx(instr, well_coord=Coordinate3D(x=10.0, y=20.0, z=30.0)):
     return ProtocolContext(board=board, deck=deck)
 
 
-def test_measure_routes_through_move_to_labware():
-    """The measure command must go through Board.move_to_labware so the
-    instrument's Z offsets are applied consistently with scan/aspirate."""
+def test_measure_approaches_then_descends_then_acts():
+    """measure: approach above labware via move_to_labware, descend to
+    action Z via raw move, then call the instrument method."""
     instr = _mock_instr(measurement_height=3.0)
     coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
     ctx = _ctx(instr, well_coord=coord)
 
     result = measure(ctx, instrument="uvvis", position="plate_1.A1")
 
+    # Step 1: approach.
     ctx.board.move_to_labware.assert_called_once_with("uvvis", coord)
-    ctx.board.move.assert_not_called()
+    # Step 2: descend to action Z = 30 + 3 = 33 at same XY.
+    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, 33.0))
+    # Step 3: act.
     instr.measure.assert_called_once()
     assert result == "spectrum"
+
+
+def test_measure_contact_instrument_descends_below_reference():
+    """Contact instrument with negative measurement_height descends
+    below the labware reference Z."""
+    instr = _mock_instr(measurement_height=-5.0, safe_approach_height=20.0)
+    coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
+    ctx = _ctx(instr, well_coord=coord)
+
+    measure(ctx, instrument="uvvis", position="plate_1.A1")
+
+    # Descent target = 30 + (-5) = 25.
+    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, 25.0))
 
 
 def test_measure_passes_method_kwargs():

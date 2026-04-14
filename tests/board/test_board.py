@@ -265,61 +265,48 @@ class TestBoardDisconnectInstruments:
 
 
 # ─── move_to_labware tests ───────────────────────────────────────────────────
+#
+# move_to_labware ends at the SAFE APPROACH Z — it does NOT descend to
+# the action Z. Commands that need to engage (measure, aspirate, etc.)
+# perform a follow-up raw board.move() to descend. See test_measure_command
+# and test_pipette_commands for descent behavior.
+
 
 class TestBoardMoveToLabware:
 
-    def test_non_contact_high_start_single_move(self):
-        """Non-contact, gantry already above approach Z: only XY travel."""
-        gantry = _mock_gantry(z=100.0)  # high start
+    def test_high_start_single_travel(self):
+        """Gantry already above approach Z: one XY travel move, no retract."""
+        gantry = _mock_gantry(z=100.0)
         instr = _mock_instrument(measurement_height=3.0, safe_approach_height=3.0)
         board = Board(gantry=gantry, instruments={"sensor": instr})
         board.move_to_labware("sensor", _mock_labware(x=100, y=50, z=20))
 
         assert gantry.move_to.call_count == 1
-        # tip target: (100, 50, 20+3=23). gantry depth=0 so same.
+        # tip target: (100, 50, 20 + safe_approach=3 = 23)
         assert gantry.move_to.call_args.args == (100.0, 50.0, 23.0)
 
-    def test_contact_high_start_approach_then_action(self):
-        """Contact instrument starting high: travel at approach, then lower."""
+    def test_contact_high_start_travel_at_approach(self):
+        """Contact instrument starting high: travel at approach Z. No descent."""
         gantry = _mock_gantry(z=100.0)
         instr = _mock_instrument(measurement_height=-5.0, safe_approach_height=20.0)
         board = Board(gantry=gantry, instruments={"pipette": instr})
         board.move_to_labware("pipette", _mock_labware(x=100, y=50, z=30))
 
-        assert gantry.move_to.call_count == 2
-        # Step 1: travel at approach z=30+20=50
-        assert gantry.move_to.call_args_list[0].args == (100.0, 50.0, 50.0)
-        # Step 2: lower to action z=30-5=25
-        assert gantry.move_to.call_args_list[1].args == (100.0, 50.0, 25.0)
+        assert gantry.move_to.call_count == 1
+        assert gantry.move_to.call_args.args == (100.0, 50.0, 50.0)   # approach Z
 
-    def test_contact_low_start_retract_then_travel_then_action(self):
-        """Contact instrument starting at a previous action Z (low): must
-        retract at current XY before traveling to new XY.
+    def test_low_start_retract_then_travel(self):
+        """Gantry at a previous low Z: retract at current XY before XY travel.
         Simulates the scan well-to-well transition."""
-        # Gantry currently at (50, 40, 25) — a previous action Z.
         gantry = _mock_gantry(x=50.0, y=40.0, z=25.0)
         instr = _mock_instrument(measurement_height=-5.0, safe_approach_height=20.0)
         board = Board(gantry=gantry, instruments={"pipette": instr})
         board.move_to_labware("pipette", _mock_labware(x=100, y=50, z=30))
 
-        # Expect 3 moves: retract at (50,40) -> approach at (100,50) -> action at (100,50)
-        assert gantry.move_to.call_count == 3
-        calls = gantry.move_to.call_args_list
-        assert calls[0].args == (50.0, 40.0, 50.0)   # retract at current XY
-        assert calls[1].args == (100.0, 50.0, 50.0)  # travel XY at approach
-        assert calls[2].args == (100.0, 50.0, 25.0)  # lower to action
-
-    def test_non_contact_low_start_retracts_then_travels(self):
-        """Even a non-contact instrument retracts if it starts below approach Z."""
-        gantry = _mock_gantry(x=50.0, y=40.0, z=0.0)
-        instr = _mock_instrument(measurement_height=3.0, safe_approach_height=3.0)
-        board = Board(gantry=gantry, instruments={"sensor": instr})
-        board.move_to_labware("sensor", _mock_labware(x=100, y=50, z=20))
-
-        # Retract at (50,40) to z=23, then travel to (100,50,23). No lower (approach == action).
         assert gantry.move_to.call_count == 2
-        assert gantry.move_to.call_args_list[0].args == (50.0, 40.0, 23.0)
-        assert gantry.move_to.call_args_list[1].args == (100.0, 50.0, 23.0)
+        calls = gantry.move_to.call_args_list
+        assert calls[0].args == (50.0, 40.0, 50.0)    # retract at current XY
+        assert calls[1].args == (100.0, 50.0, 50.0)   # travel at approach Z
 
     def test_applies_instrument_xy_offsets(self):
         gantry = _mock_gantry(z=100.0)
@@ -330,13 +317,9 @@ class TestBoardMoveToLabware:
         board = Board(gantry=gantry, instruments={"probe": instr})
         board.move_to_labware("probe", _mock_labware(x=100, y=50, z=30))
 
-        args_approach = gantry.move_to.call_args_list[0].args
-        args_action = gantry.move_to.call_args_list[1].args
+        args = gantry.move_to.call_args.args
         # Gantry X = labware.x - offset_x; Y likewise.
-        assert args_approach[0] == 90.0 and args_approach[1] == 55.0
-        assert args_action[0] == 90.0 and args_action[1] == 55.0
-        assert args_approach[2] == 45.0
-        assert args_action[2] == 30.0
+        assert args == (90.0, 55.0, 45.0)  # approach z = 30 + 15 = 45
 
     def test_accepts_tuple_position(self):
         gantry = _mock_gantry(z=100.0)
@@ -348,29 +331,23 @@ class TestBoardMoveToLabware:
         assert gantry.move_to.call_args.args == (50.0, 40.0, 12.0)
 
     def test_scan_well_transition_pattern(self):
-        """End-to-end: simulate scan's well-to-well flow.
-        After measuring at well 1 at action z, calling move_to_labware
-        for well 2 should: retract at W1.xy -> travel to W2.xy -> lower."""
-        # Pretend we just finished action at well 1 (100, 50, 25).
-        gantry = _mock_gantry(x=100.0, y=50.0, z=25.0)
+        """End-to-end scan flow: after measuring at W1 at action z, the
+        next move_to_labware for W2 does retract → travel to W2 approach z.
+        (Descent to W2's action z happens in the scan command via board.move.)"""
+        gantry = _mock_gantry(x=100.0, y=50.0, z=25.0)   # at W1 action z
         instr = _mock_instrument(measurement_height=-5.0, safe_approach_height=20.0)
         board = Board(gantry=gantry, instruments={"pipette": instr})
-        # Move to well 2 at (110, 50, 30).
         board.move_to_labware("pipette", _mock_labware(x=110, y=50, z=30))
 
         calls = gantry.move_to.call_args_list
         assert [c.args for c in calls] == [
             (100.0, 50.0, 50.0),   # retract at W1.xy to W2's approach z
             (110.0, 50.0, 50.0),   # travel XY at approach z
-            (110.0, 50.0, 25.0),   # lower to action z
         ]
 
     def test_retract_accounts_for_nonzero_depth_and_offsets(self):
         """When depth != 0 and offsets != 0, the retract's tip XY must
         account for instrument offsets and its tip Z for depth."""
-        # Gantry is at (30, 40, 15). Instrument mounted offset=(5, -3),
-        # depth=10 => tip is at (35, 37, 25). Target is (100, 50, 20) with
-        # approach_height=30 => approach_z=50.
         gantry = _mock_gantry(x=30.0, y=40.0, z=15.0)
         instr = _mock_instrument(
             offset_x=5.0, offset_y=-3.0, depth=10.0,
@@ -380,38 +357,31 @@ class TestBoardMoveToLabware:
         board.move_to_labware("pipette", _mock_labware(x=100, y=50, z=20))
 
         calls = gantry.move_to.call_args_list
-        # Step 1: retract at CURRENT tip XY (35, 37) to approach_z=50.
-        #   Gantry target x = 35 - 5 = 30, y = 37 - (-3) = 40, z = 50 - 10 = 40.
+        # Step 1: retract at CURRENT tip XY (30+5, 40-3 = 35, 37) to approach_z=50.
+        #   Gantry target x = 35-5 = 30, y = 37-(-3) = 40, z = 50-10 = 40.
         assert calls[0].args == (30.0, 40.0, 40.0)
         # Step 2: travel to target XY at approach_z.
-        #   Gantry target x = 100 - 5 = 95, y = 50 - (-3) = 53, z = 40.
+        #   Gantry target x = 100-5 = 95, y = 50-(-3) = 53, z = 40.
         assert calls[1].args == (95.0, 53.0, 40.0)
-        # Step 3: lower to action_z = 20 + (-5) = 15; gantry z = 15 - 10 = 5.
-        assert calls[2].args == (95.0, 53.0, 5.0)
 
     def test_does_not_retract_when_exactly_at_approach_z(self):
-        """Boundary: current_tip_z == approach_z, no retract (within tolerance)."""
-        # Instrument with approach 20 above labware z=30 => approach_z=50.
-        # depth=0, so gantry z=50 == current tip z.
+        """Boundary: current_tip_z == approach_z, no retract."""
         gantry = _mock_gantry(x=100.0, y=50.0, z=50.0)
         instr = _mock_instrument(measurement_height=-5.0, safe_approach_height=20.0)
         board = Board(gantry=gantry, instruments={"pipette": instr})
         board.move_to_labware("pipette", _mock_labware(x=100, y=50, z=30))
 
-        # Only travel + lower (2 moves), no retract.
-        assert gantry.move_to.call_count == 2
-        assert gantry.move_to.call_args_list[0].args == (100.0, 50.0, 50.0)
-        assert gantry.move_to.call_args_list[1].args == (100.0, 50.0, 25.0)
+        assert gantry.move_to.call_count == 1
+        assert gantry.move_to.call_args.args == (100.0, 50.0, 50.0)
 
     def test_does_not_retract_for_submicron_offset(self):
         """Boundary: tip Z below approach by < 1e-4 mm (gantry encoder
         resolution) must not trigger a spurious micro-retract."""
-        # approach_z = 50.0; start at 49.99995 (5e-5 below — within tolerance).
         gantry = _mock_gantry(x=100.0, y=50.0, z=49.99995)
         instr = _mock_instrument(measurement_height=-5.0, safe_approach_height=20.0)
         board = Board(gantry=gantry, instruments={"pipette": instr})
         board.move_to_labware("pipette", _mock_labware(x=100, y=50, z=30))
-        assert gantry.move_to.call_count == 2   # no retract
+        assert gantry.move_to.call_count == 1   # no retract
 
     def test_retracts_when_below_tolerance(self):
         """Boundary: tip Z below approach by 1e-3 mm (above tolerance)
@@ -420,8 +390,7 @@ class TestBoardMoveToLabware:
         instr = _mock_instrument(measurement_height=-5.0, safe_approach_height=20.0)
         board = Board(gantry=gantry, instruments={"pipette": instr})
         board.move_to_labware("pipette", _mock_labware(x=100, y=50, z=30))
-        # Retract happens: 3 moves.
-        assert gantry.move_to.call_count == 3
+        assert gantry.move_to.call_count == 2   # retract + travel
 
     def test_rejects_nan_position_z(self):
         gantry = _mock_gantry(z=100.0)
@@ -443,7 +412,7 @@ class TestBoardMoveToLabware:
         gantry.get_coordinates.side_effect = RuntimeError("serial timeout")
         instr = _mock_instrument(measurement_height=0.0, safe_approach_height=0.0)
         board = Board(gantry=gantry, instruments={"probe": instr})
-        with pytest.raises(RuntimeError, match="failed to read gantry coordinates"):
+        with pytest.raises(RuntimeError, match="read gantry coordinates"):
             board.move_to_labware("probe", _mock_labware(x=10, y=20, z=30))
 
     def test_rejects_gantry_nan_coordinates(self):

@@ -31,6 +31,8 @@ def _mock_context(
         pipette.aspirate.return_value = MagicMock(success=True, volume_ul=100.0)
         pipette.dispense.return_value = MagicMock(success=True, volume_ul=100.0)
         pipette.mix.return_value = MagicMock(success=True, volume_ul=50.0, repetitions=3)
+        # measurement_height is added to labware.z to get the descent target.
+        pipette.measurement_height = 0.0
         board.instruments = {"pipette": pipette}
     else:
         board.instruments = {}

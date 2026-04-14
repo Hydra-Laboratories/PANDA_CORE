@@ -21,10 +21,12 @@ def measure(
 ) -> Any:
     """Measure at a deck position using *instrument*.
 
-    Resolves *position* on the deck and moves the instrument there via
-    ``Board.move_to_labware``, which applies the instrument's
-    ``safe_approach_height`` during XY travel and ``measurement_height``
-    at the target. Then calls the instrument method with any provided kwargs.
+    Three phases:
+      1. **Approach.** ``Board.move_to_labware`` retracts (if below
+         ``safe_approach_height``) and travels XY to above the target.
+      2. **Descend.** Lower straight down to
+         ``labware.z + measurement_height``.
+      3. **Act.** Call the instrument method.
 
     Args:
         context:       Runtime context (board, deck, logger).
@@ -50,9 +52,12 @@ def measure(
         )
 
     coord = context.deck.resolve(position)
-    # move_to_labware handles approach (safe_approach_height) and action
-    # (measurement_height) offsets in a single call.
+    # 1. Approach: safely travel to above the labware at safe_approach_height.
     context.board.move_to_labware(instrument, coord)
+    # 2. Descend: lower to action Z at the same XY.
+    x, y, z = coord if isinstance(coord, tuple) else (coord.x, coord.y, coord.z)
+    action_z = z + instr.measurement_height
+    context.board.move(instrument, (x, y, action_z))
 
     context.logger.info("measure: %s.%s(%s) at %s", instrument, method, method_kwargs, position)
     return getattr(instr, method)(**method_kwargs)

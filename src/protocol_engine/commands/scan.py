@@ -85,7 +85,13 @@ def scan(
             time.sleep(delay_s)
 
         well = plate_obj.get_well_center(well_id)
+        # Approach above the well at safe_approach_height, then descend
+        # to action Z (labware.z + measurement_height). For non-contact
+        # instruments the descend is a no-op at the same Z.
         context.board.move_to_labware(instrument, well)
+        x, y, z = well if isinstance(well, tuple) else (well.x, well.y, well.z)
+        action_z = z + instr.measurement_height
+        context.board.move(instrument, (x, y, action_z))
 
         # Inject gantry if the method accepts it (e.g. ASMI.indentation
         # needs the gantry for Z stepping), then merge with method_kwargs.

@@ -67,80 +67,77 @@ class Board:
     def move_to_labware(
         self,
         instrument: str | BaseInstrument,
-        position: Position,
+        labware: Position,
     ) -> None:
-        """Safely move *instrument* to a labware *position*, applying the
-        instrument's Z offsets.
+        """Safely travel *instrument* to the approach height above a
+        labware target.
 
-        Up to three-step sequence:
-          1. **Retract.** If the instrument tip is currently below
-             ``labware_z + safe_approach_height``, lift to that Z at the
-             *current* XY first. Prevents dragging through labware when
-             transitioning from a previous low-Z action (e.g. scan loop
-             going well-to-well).
-          2. **Travel.** Move to (x, y, labware_z + safe_approach_height).
-          3. **Lower.** Drop to (x, y, labware_z + measurement_height)
-             if that differs from the approach height.
+        Two-step sequence:
+          1. **Retract.** If the tip is currently below
+             ``labware.z + safe_approach_height``, lift at the current
+             XY first so XY travel never drags through labware.
+          2. **Travel.** Move to (labware.x, labware.y,
+             labware.z + safe_approach_height).
 
-        Step 1 is skipped when the instrument is already at or above
-        approach_z (e.g. after a home or a prior travel). Step 3 is
-        skipped when ``safe_approach_height == measurement_height``
-        (non-contact instruments). So a non-contact instrument arriving
-        from above emits a single XY move; a contact instrument between
-        two labware targets emits all three.
+        The instrument ends at approach Z — positioned above the target,
+        not engaged with it. To descend to the action Z, follow up with
+        ``board.move(instrument, (labware.x, labware.y,
+        labware.z + instrument.measurement_height))``. Higher-level
+        commands (``measure``, ``aspirate``, ``scan``, ...) do exactly
+        that: approach → descend → act.
 
         Args:
             instrument: Name or instance.
-            position:   (x, y, z) or labware object whose z is the labware
-                        reference point (e.g. well bottom, vial bottom,
-                        tip engagement Z).
+            labware:    A labware-reference point — anything with x/y/z
+                        attributes (e.g. a ``Coordinate3D`` returned by
+                        ``Deck.resolve()``). ``(x, y, z)`` tuples are
+                        accepted for convenience/testing.
         """
         instr = self._resolve_instrument(instrument)
-        x, y, z = self._resolve_position(position)
+        x, y, z = self._resolve_position(labware)
+        self._validate_finite_xyz(x, y, z, instr.name)
+        approach_z = z + instr.safe_approach_height
+
+        current_tip_x, current_tip_y, current_tip_z = self._current_tip_position(instr)
+        if current_tip_z < approach_z - _Z_TOLERANCE_MM:
+            self.move(instr, (current_tip_x, current_tip_y, approach_z))
+        self.move(instr, (x, y, approach_z))
+
+    def _validate_finite_xyz(self, x: float, y: float, z: float, instr_name: str) -> None:
         for label, value in (("x", x), ("y", y), ("z", z)):
             if not math.isfinite(value):
                 raise ValueError(
-                    f"move_to_labware received non-finite {label}={value} "
-                    f"for instrument {instr.name!r}."
+                    f"non-finite {label}={value} for instrument {instr_name!r}."
                 )
-        approach_z = z + instr.safe_approach_height
-        action_z = z + instr.measurement_height
 
-        # Step 1: retract at current XY if currently below approach Z.
+    def _current_tip_position(
+        self, instr: BaseInstrument,
+    ) -> tuple[float, float, float]:
+        """Read gantry coordinates and convert to instrument tip (x, y, z)."""
         try:
             current = self.gantry.get_coordinates()
         except Exception as exc:
             raise RuntimeError(
-                f"move_to_labware: failed to read gantry coordinates while "
-                f"planning move for instrument {instr.name!r} to "
-                f"({x:.3f}, {y:.3f}, {z:.3f}): {exc}"
+                f"Failed to read gantry coordinates while planning a move "
+                f"for instrument {instr.name!r}: {exc}"
             ) from exc
         try:
-            gantry_x = current["x"]
-            gantry_y = current["y"]
-            gantry_z = current["z"]
+            gantry_x, gantry_y, gantry_z = current["x"], current["y"], current["z"]
         except (KeyError, TypeError) as exc:
             raise RuntimeError(
-                f"move_to_labware: gantry.get_coordinates() returned "
-                f"unexpected shape {current!r} for instrument {instr.name!r}."
+                f"gantry.get_coordinates() returned unexpected shape "
+                f"{current!r} for instrument {instr.name!r}."
             ) from exc
         if not all(math.isfinite(v) for v in (gantry_x, gantry_y, gantry_z)):
             raise RuntimeError(
-                f"move_to_labware: gantry reports non-finite coordinates "
-                f"{current!r} for instrument {instr.name!r}."
+                f"Gantry reports non-finite coordinates {current!r} for "
+                f"instrument {instr.name!r}."
             )
-        current_tip_x = gantry_x + instr.offset_x
-        current_tip_y = gantry_y + instr.offset_y
-        current_tip_z = gantry_z + instr.depth
-        if current_tip_z < approach_z - _Z_TOLERANCE_MM:
-            self.move(instr, (current_tip_x, current_tip_y, approach_z))
-
-        # Step 2: travel XY at approach Z.
-        self.move(instr, (x, y, approach_z))
-
-        # Step 3: lower to action Z (skipped when approach == action).
-        if abs(approach_z - action_z) > _Z_TOLERANCE_MM:
-            self.move(instr, (x, y, action_z))
+        return (
+            gantry_x + instr.offset_x,
+            gantry_y + instr.offset_y,
+            gantry_z + instr.depth,
+        )
 
     def object_position(
         self, obj: str | BaseInstrument | Any,

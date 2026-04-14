@@ -27,6 +27,26 @@ def _get_pipette(context: ProtocolContext):
     return context.board.instruments["pipette"]
 
 
+def _xyz(coord) -> tuple[float, float, float]:
+    """Unpack a Coordinate3D-like object or an (x, y, z) tuple."""
+    if isinstance(coord, tuple):
+        return coord
+    return (coord.x, coord.y, coord.z)
+
+
+def _approach_and_descend(context: ProtocolContext, pipette, coord) -> None:
+    """Safely travel above a labware target then descend to action Z.
+
+    1. ``move_to_labware`` — retract (if below approach) + XY travel,
+       ending at ``labware.z + safe_approach_height``.
+    2. Straight-down raw move to ``labware.z + measurement_height``.
+    """
+    context.board.move_to_labware("pipette", coord)
+    x, y, z = _xyz(coord)
+    action_z = z + pipette.measurement_height
+    context.board.move("pipette", (x, y, action_z))
+
+
 def _parse_position(position: str) -> tuple[str, Optional[str]]:
     """Split ``"plate_1.A1"`` into ``("plate_1", "A1")`` or ``"vial_1"`` into ``("vial_1", None)``."""
     parts = position.split(".", 1)
@@ -65,7 +85,7 @@ def aspirate(
     """Move pipette to *position*, then aspirate."""
     coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
-    context.board.move_to_labware("pipette", coord)
+    _approach_and_descend(context, pipette, coord)
     return pipette.aspirate(volume_ul, speed)
 
 
@@ -82,7 +102,7 @@ def dispense(
     """
     coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
-    context.board.move_to_labware("pipette", coord)
+    _approach_and_descend(context, pipette, coord)
     return pipette.dispense(volume_ul, speed)
 
 
@@ -95,7 +115,7 @@ def blowout(
     """Move pipette to *position*, then blowout."""
     coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
-    context.board.move_to_labware("pipette", coord)
+    _approach_and_descend(context, pipette, coord)
     pipette.blowout(speed)
 
 
@@ -110,7 +130,7 @@ def mix(
     """Move pipette to *position*, then mix."""
     coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
-    context.board.move_to_labware("pipette", coord)
+    _approach_and_descend(context, pipette, coord)
     return pipette.mix(volume_ul, repetitions, speed)
 
 
@@ -123,7 +143,7 @@ def pick_up_tip(
     """Move pipette to *position*, then pick up a tip."""
     coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
-    context.board.move_to_labware("pipette", coord)
+    _approach_and_descend(context, pipette, coord)
     pipette.pick_up_tip(speed)
 
 
@@ -139,9 +159,9 @@ def transfer(
     source_coord = context.deck.resolve(source)
     dest_coord = context.deck.resolve(destination)
     pipette = _get_pipette(context)
-    context.board.move_to_labware("pipette", source_coord)
+    _approach_and_descend(context, pipette, source_coord)
     pipette.aspirate(volume_ul, speed)
-    context.board.move_to_labware("pipette", dest_coord)
+    _approach_and_descend(context, pipette, dest_coord)
     pipette.dispense(volume_ul, speed)
 
     source_key, _ = _parse_position(source)
@@ -158,7 +178,7 @@ def drop_tip(
     """Move pipette to *position*, then drop the tip."""
     coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
-    context.board.move_to_labware("pipette", coord)
+    _approach_and_descend(context, pipette, coord)
     pipette.drop_tip(speed)
 
 
