@@ -9,50 +9,45 @@ from typing import Any
 
 import yaml
 
-from board.board import Board
-from board.loader import load_board_from_yaml_safe
-from board.yaml_schema import BoardYamlSchema
-from deck.deck import Deck
-from deck.labware.definitions import registry as definition_registry
-from deck.labware.tip_rack import TipRack
-from deck.labware.vial import Vial
-from deck.labware.vial_holder import VialHolder
-from deck.labware.well_plate import WellPlate
-from deck.labware.well_plate_holder import WellPlateHolder
-from deck.loader import _resolve_load_names, _resolve_plate_orientation, load_deck_from_yaml_safe
-from deck.yaml_schema import (
-    DeckYamlSchema,
+from board import Board, BoardYamlSchema, load_board_from_yaml_safe
+from deck import (
+    Deck,
     NestedVialYamlEntry,
     NestedWellPlateYamlEntry,
+    PlateOrientation,
+    TipRack,
     TipRackYamlEntry,
+    Vial,
+    VialHolder,
     VialHolderYamlEntry,
     VialYamlEntry,
+    WellPlate,
+    WellPlateHolder,
     WellPlateHolderYamlEntry,
     WellPlateYamlEntry,
+    load_deck_from_yaml_safe,
+    load_deck_render_schema,
+    resolve_definition_asset_path,
+    resolve_plate_orientation,
 )
-from gantry.gantry_config import GantryConfig
-from gantry.loader import load_gantry_from_yaml_safe
-from gantry.motion_planning import (
+from gantry import (
     DEFAULT_FEED_RATE,
     DEFAULT_USER_MAX_Z_HEIGHT,
     DEFAULT_USER_SAFE_Z_HEIGHT,
+    GantryConfig,
     MotionPose,
     MotionSegmentPlan,
     coerce_motion_pose,
+    load_gantry_from_yaml_safe,
     plan_safe_move_segments,
     resolve_gantry_target,
     resolve_instrument_tip_pose,
 )
-from protocol_engine.loader import load_protocol_from_yaml_safe
-from protocol_engine.protocol import Protocol, ProtocolContext, ProtocolStep
-from validation.bounds import validate_deck_positions, validate_gantry_positions
-from validation.errors import SetupValidationError
+from protocol_engine import Protocol, ProtocolContext, ProtocolStep, load_protocol_from_yaml_safe
+from validation import SetupValidationError, validate_deck_positions, validate_gantry_positions
 
 
 _SUPPORTED_PHASE_ONE_COMMANDS = {"move", "scan"}
-_DEFINITIONS_DIR = Path(definition_registry.__file__).resolve().parent
-
-
 def _load_yaml(path: str | Path) -> dict[str, Any]:
     raw = yaml.safe_load(Path(path).read_text()) or {}
     if not isinstance(raw, dict):
@@ -336,15 +331,10 @@ def _install_action_wrappers(protocol: Protocol, board: TracingBoard) -> None:
 def _resolve_asset_source(load_name: str | None) -> Path | None:
     if not load_name:
         return None
-    entry = definition_registry.load_registry().get("labware", {}).get(load_name)
-    if entry is None:
+    try:
+        return resolve_definition_asset_path(load_name)
+    except ValueError:
         return None
-    config_dir = _DEFINITIONS_DIR / Path(entry["config"]).parent
-    glb_candidates = sorted(config_dir.glob("*.glb"))
-    if not glb_candidates:
-        return None
-    preferred = [path for path in glb_candidates if "-key" not in path.stem.lower()]
-    return (preferred or glb_candidates)[0]
 
 
 def _select_render_kind(
@@ -388,7 +378,7 @@ def _well_plate_render_meta(
     entry: WellPlateYamlEntry | NestedWellPlateYamlEntry,
     labware: WellPlate,
 ) -> dict[str, Any]:
-    orientation = _resolve_plate_orientation(entry)
+    orientation: PlateOrientation = resolve_plate_orientation(entry)
     return {
         "rows": entry.rows,
         "columns": entry.columns,
@@ -411,7 +401,7 @@ def _tip_rack_render_meta(
     entry: TipRackYamlEntry,
     labware: TipRack,
 ) -> dict[str, Any]:
-    orientation = _resolve_plate_orientation(entry)
+    orientation: PlateOrientation = resolve_plate_orientation(entry)
     return {
         "rows": entry.rows,
         "columns": entry.columns,
@@ -465,6 +455,16 @@ def _scene_item_payload(
             "height_mm": getattr(entry, "height_mm", None),
         }
     elif isinstance(entry, (WellPlateHolderYamlEntry, VialHolderYamlEntry)):
+        item["render_meta"] = {
+            "location": _coord_dict(getattr(labware, "location", labware.get_initial_position())),
+            "labware_support_height_mm": getattr(labware, "labware_support_height_mm", None),
+            "labware_seat_height_from_bottom_mm": getattr(
+                labware,
+                "labware_seat_height_from_bottom_mm",
+                None,
+            ),
+        }
+    elif getattr(entry, "type", None) == "tip_disposal":
         item["render_meta"] = {
             "location": _coord_dict(getattr(labware, "location", labware.get_initial_position())),
         }
@@ -659,7 +659,7 @@ def export_bundle(
 
     board_schema = BoardYamlSchema.model_validate(_load_yaml(board_path))
     deck_original = _load_yaml(deck_path)
-    deck_resolved_schema = DeckYamlSchema.model_validate(_resolve_load_names(deck_original))
+    deck_resolved_schema = load_deck_render_schema(deck_path)
 
     context = ProtocolContext(
         board=tracing_board,

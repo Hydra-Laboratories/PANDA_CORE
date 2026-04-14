@@ -1,0 +1,21 @@
+[project]
+name = "cubos-digital-twin"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "cubos @ git+https://github.com/Ursa-Laboratories/CubOS.git@main",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "setuptools",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["digital_twin", "digital_twin.*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

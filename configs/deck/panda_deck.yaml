@@ -39,6 +39,9 @@ labware:
       model_name: panda_96_wellplate
       rows: 8
       columns: 12
+      length_mm: 127.76
+      width_mm: 85.47
+      height_mm: 14.35
       calibration:
         a1:
           x: 292.0

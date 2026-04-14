@@ -41,14 +41,14 @@ npm run build
 
 ## Exporting A New Bundle
 
-From the repo root:
+From the `digital-twin/` package root, using a CubOS checkout one directory up:
 
 ```bash
-PYTHONPATH=src:. python -m digital_twin \
-  --gantry configs/gantry/cubos_xl.yaml \
-  --deck configs/deck/panda_deck.yaml \
-  --board configs/board/asmi_board.yaml \
-  --protocol configs/protocol/asmi_panda_deck_test.yaml \
+python -m digital_twin \
+  --gantry ../configs/gantry/cubos_xl.yaml \
+  --deck ../configs/deck/panda_deck.yaml \
+  --board ../configs/board/asmi_board.yaml \
+  --protocol ../configs/protocol/asmi_panda_deck_test.yaml \
   --skip-validation \
-  --out apps/digital-twin-viewer/public/examples/asmi-panda-deck.json
+  --out viewer/public/examples/asmi-panda-deck.json
 ```

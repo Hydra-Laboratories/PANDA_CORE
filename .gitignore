@@ -57,6 +57,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+.vite/
 
 # Translations
 *.mo
@@ -181,5 +182,3 @@ PANDA-BEAR/
 .codex/skills/.system/**
 !.codex/prompts/
 !.codex/prompts/**
-cubos @ git+https://github.com/Ursa-Laboratories/CubOS.git@main
-cubos @ git+https://github.com/Ursa-Laboratories/CubOS.git@main

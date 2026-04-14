@@ -24,11 +24,18 @@ docs = [
 [tool.setuptools.packages.find]
 where = ["src", "."]
 include = ["board", "board.*", "data", "data.*", "deck", "deck.*",
-           "digital_twin", "digital_twin.*",
            "gantry", "gantry.*", "instruments", "instruments.*",
            "protocol_engine", "protocol_engine.*", "validation", "validation.*"]
 
 [tool.setuptools.package-data]
+"deck" = [
+    "labware/definitions/registry.yaml",
+    "labware/definitions/**/*.yaml",
+    "labware/definitions/**/*.glb",
+    "labware/definitions/**/*.png",
+    "labware/definitions/**/*.stl",
+    "labware/definitions/**/*.step",
+]
 "instruments" = ["registry.yaml"]
 "gantry.gantry_driver" = ["*.json"]
 

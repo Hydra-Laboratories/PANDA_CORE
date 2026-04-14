@@ -15,8 +15,17 @@ from .labware import (
     generate_wells_from_offsets,
 )
 from .loader import load_deck_from_yaml, load_deck_from_yaml_safe
+from .rendering import (
+    PlateOrientation,
+    load_deck_render_schema,
+    load_deck_yaml_with_definitions,
+    resolve_definition_asset_path,
+    resolve_plate_orientation,
+)
 from .yaml_schema import (
     DeckYamlSchema,
+    NestedVialYamlEntry,
+    NestedWellPlateYamlEntry,
     TipDisposalYamlEntry,
     TipRackYamlEntry,
     VialHolderYamlEntry,
@@ -41,6 +50,8 @@ __all__ = [
     "generate_wells_from_offsets",
     "DeckLoaderError",
     "DeckYamlSchema",
+    "NestedVialYamlEntry",
+    "NestedWellPlateYamlEntry",
     "TipDisposalYamlEntry",
     "TipRackYamlEntry",
     "VialHolderYamlEntry",
@@ -49,4 +60,9 @@ __all__ = [
     "VialYamlEntry",
     "load_deck_from_yaml",
     "load_deck_from_yaml_safe",
+    "PlateOrientation",
+    "load_deck_render_schema",
+    "load_deck_yaml_with_definitions",
+    "resolve_definition_asset_path",
+    "resolve_plate_orientation",
 ]

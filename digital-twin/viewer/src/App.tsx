@@ -51,13 +51,18 @@ function deckBoxPose(item: SceneDeckItem): { center: Pose; size: [number, number
   const fallbackPoint = item.primary_position;
   const points = item.points.length > 0 ? item.points.map((point) => point.position) : [fallbackPoint];
   const center = poseCenter(points);
-  const [length, height, width] = [
+  const renderMeta = item.render_meta as {
+    location?: Pose;
+    labware_support_height_mm?: number;
+    labware_seat_height_from_bottom_mm?: number;
+  };
+  let [length, height, width] = [
     item.dimensions.length_mm ?? poseSpread(points, 10)[0],
     item.dimensions.height_mm ?? 6,
     item.dimensions.width_mm ?? poseSpread(points, 10)[2],
   ];
   const topAnchored = item.render_kind === "well_plate" || item.render_kind === "tip_rack";
-  const anchorLocation = (item.render_meta as { location?: Pose }).location;
+  const anchorLocation = renderMeta.location;
   const childPoints = item.points
     .filter((point) => point.id !== "location")
     .map((point) => point.position);
@@ -68,6 +73,10 @@ function deckBoxPose(item: SceneDeckItem): { center: Pose; size: [number, number
       points.some((point) => point.x > anchorLocation.x || point.y > anchorLocation.y));
 
   if ((item.type === "vial_holder" || item.type === "well_plate_holder") && anchorLocation) {
+    height = Math.min(
+      height,
+      renderMeta.labware_seat_height_from_bottom_mm ?? renderMeta.labware_support_height_mm ?? 8,
+    );
     const childCenter = childPoints.length > 0 ? poseCenter(childPoints) : center;
     return {
       center: {
