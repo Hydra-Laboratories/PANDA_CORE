@@ -27,10 +27,10 @@ From inside this package:
 
 ```bash
 python -m digital_twin \
-  --gantry ../configs/gantry/cubos_xl.yaml \
-  --deck ../configs/deck/two_instrument_deck.yaml \
-  --board ../configs/board/two_instrument_board.yaml \
-  --protocol ../configs/protocol/two_instrument_visualization_test.yaml \
+  --gantry examples/configs/gantry/cubos_xl.yaml \
+  --deck examples/configs/deck/two_instrument_deck.yaml \
+  --board examples/configs/board/two_instrument_board.yaml \
+  --protocol examples/configs/protocol/two_instrument_visualization_test.yaml \
   --out viewer/public/examples/two-instrument-cubos-xl.json
 ```
 

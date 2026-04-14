@@ -5,14 +5,15 @@ from digital_twin.exporter import export_bundle, export_bundle_to_path
 
 
 ROOT = Path(__file__).resolve().parents[2]
+EXAMPLES = ROOT / "digital-twin" / "examples" / "configs"
 
 
 def test_export_bundle_builds_expected_move_trace():
     bundle = export_bundle(
         gantry_path=ROOT / "configs/gantry/cubos.yaml",
-        deck_path=ROOT / "configs/deck/mofcat_deck.yaml",
-        board_path=ROOT / "configs/board/mock_mofcat_board.yaml",
-        protocol_path=ROOT / "configs/protocol/move.yaml",
+        deck_path=EXAMPLES / "deck/mofcat_deck.yaml",
+        board_path=EXAMPLES / "board/mock_mofcat_board.yaml",
+        protocol_path=EXAMPLES / "protocol/move.yaml",
     )
 
     assert bundle["summary"]["step_count"] == 1
@@ -47,10 +48,10 @@ instruments:
     )
 
     bundle = export_bundle(
-        gantry_path=ROOT / "configs/gantry/cubos.yaml",
-        deck_path=ROOT / "configs/deck/mofcat_deck.yaml",
+        gantry_path=EXAMPLES / "gantry/cubos.yaml",
+        deck_path=EXAMPLES / "deck/mofcat_deck.yaml",
         board_path=board_path,
-        protocol_path=ROOT / "configs/protocol/move.yaml",
+        protocol_path=EXAMPLES / "protocol/move.yaml",
     )
 
     final_event = bundle["timeline"][-1]
@@ -70,10 +71,10 @@ instruments:
 def test_export_bundle_to_path_writes_json(tmp_path):
     output_path = tmp_path / "bundle.json"
     export_bundle_to_path(
-        gantry_path=ROOT / "configs/gantry/cubos.yaml",
-        deck_path=ROOT / "configs/deck/mofcat_deck.yaml",
-        board_path=ROOT / "configs/board/mock_mofcat_board.yaml",
-        protocol_path=ROOT / "configs/protocol/move.yaml",
+        gantry_path=EXAMPLES / "gantry/cubos.yaml",
+        deck_path=EXAMPLES / "deck/mofcat_deck.yaml",
+        board_path=EXAMPLES / "board/mock_mofcat_board.yaml",
+        protocol_path=EXAMPLES / "protocol/move.yaml",
         output_path=output_path,
     )
 
@@ -83,10 +84,10 @@ def test_export_bundle_to_path_writes_json(tmp_path):
 
 def test_export_bundle_supports_scan_protocol():
     bundle = export_bundle(
-        gantry_path=ROOT / "configs/gantry/cubos.yaml",
-        deck_path=ROOT / "configs/deck/mofcat_deck.yaml",
-        board_path=ROOT / "configs/board/mock_mofcat_board.yaml",
-        protocol_path=ROOT / "configs/protocol/cubos_scan_test.yaml",
+        gantry_path=EXAMPLES / "gantry/cubos.yaml",
+        deck_path=EXAMPLES / "deck/mofcat_deck.yaml",
+        board_path=EXAMPLES / "board/mock_mofcat_board.yaml",
+        protocol_path=EXAMPLES / "protocol/cubos_scan_test.yaml",
     )
 
     motion_events = [event for event in bundle["timeline"] if event["type"] == "motion"]
@@ -103,10 +104,10 @@ def test_export_bundle_supports_scan_protocol():
 
 def test_export_bundle_can_skip_validation_for_visualization_combo():
     bundle = export_bundle(
-        gantry_path=ROOT / "configs/gantry/cubos_xl.yaml",
-        deck_path=ROOT / "configs/deck/panda_deck.yaml",
-        board_path=ROOT / "configs/board/asmi_board.yaml",
-        protocol_path=ROOT / "configs/protocol/asmi_panda_deck_test.yaml",
+        gantry_path=EXAMPLES / "gantry/cubos_xl.yaml",
+        deck_path=EXAMPLES / "deck/panda_deck.yaml",
+        board_path=EXAMPLES / "board/asmi_board.yaml",
+        protocol_path=EXAMPLES / "protocol/asmi_panda_deck_test.yaml",
         skip_validation=True,
     )
 
@@ -117,10 +118,10 @@ def test_export_bundle_can_skip_validation_for_visualization_combo():
 
 def test_export_bundle_supports_two_instrument_visualization_protocol():
     bundle = export_bundle(
-        gantry_path=ROOT / "configs/gantry/cubos_xl.yaml",
-        deck_path=ROOT / "configs/deck/two_instrument_deck.yaml",
-        board_path=ROOT / "configs/board/two_instrument_board.yaml",
-        protocol_path=ROOT / "configs/protocol/two_instrument_visualization_test.yaml",
+        gantry_path=EXAMPLES / "gantry/cubos_xl.yaml",
+        deck_path=EXAMPLES / "deck/two_instrument_deck.yaml",
+        board_path=EXAMPLES / "board/two_instrument_board.yaml",
+        protocol_path=EXAMPLES / "protocol/two_instrument_visualization_test.yaml",
     )
 
     motion_events = [event for event in bundle["timeline"] if event["type"] == "motion"]

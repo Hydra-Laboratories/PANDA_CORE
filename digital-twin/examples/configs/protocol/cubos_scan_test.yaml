@@ -1,0 +1,13 @@
+# Digital twin scan test protocol.
+# Keeps the initial move from the simple replay, then scans the entire plate
+# so the viewer can replay a multi-target protocol trace.
+
+protocol:
+  - move:
+      instrument: uvvis
+      position: plate_1.A1
+
+  - scan:
+      plate: plate_1
+      instrument: uvvis
+      method: measure

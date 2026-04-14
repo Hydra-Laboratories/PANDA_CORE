@@ -1,0 +1,8 @@
+# Visualization-only ASMI + panda_deck test protocol.
+# This is intentionally simple: move the ASMI instrument to the nested plate A1
+# so the digital twin can show the board against the PANDA deck geometry.
+
+protocol:
+  - move:
+      instrument: asmi
+      position: well_plate_holder.plate.A1

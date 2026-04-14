@@ -920,6 +920,8 @@
   "summary": {
     "step_count": 1,
     "timeline_event_count": 2,
-    "total_display_duration_s": 3.475776351737447
+    "total_display_duration_s": 3.475776351737447,
+    "validation_skipped": false,
+    "validation_violation_count": 0
   }
 }

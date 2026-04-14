@@ -1,0 +1,10 @@
+# MOFcat board configuration — instruments only.
+
+instruments:
+  uvvis:
+      type: uvvis_ccs
+      vendor: thorlabs
+      offset_x: 0.0
+      offset_y: 0.0
+      depth: 0.0
+      measurement_height: 3.0

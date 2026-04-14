@@ -11320,6 +11320,8 @@
   "summary": {
     "step_count": 2,
     "timeline_event_count": 384,
-    "total_display_duration_s": 430.10150867422135
+    "total_display_duration_s": 430.10150867422135,
+    "validation_skipped": false,
+    "validation_violation_count": 0
   }
 }

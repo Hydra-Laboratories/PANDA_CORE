@@ -1,0 +1,25 @@
+# CubOS-XL — Genmitsu 3018 PRO (large gantry)
+# Positive-space XY after xy_hard_limits homing. Z positive (down from home).
+
+serial_port: /dev/ttyUSB0
+cnc:
+  homing_strategy: xy_hard_limits
+  total_z_height: 90.0
+  y_axis_motion: head
+
+working_volume:
+  x_min: 0.0
+  x_max: 400.0
+  y_min: 0.0
+  y_max: 300.0
+  z_min: 0.0
+  z_max: 80.0
+
+grbl_settings:
+  homing_enable: true
+  steps_per_mm_x: 800.0
+  steps_per_mm_y: 800.0
+  steps_per_mm_z: 800.0
+  max_travel_x: 400.0
+  max_travel_y: 300.0
+  max_travel_z: 80.0

@@ -1,0 +1,144 @@
+# Panda deck configuration.
+# XY layout follows annotated sketch (origin bottom-left, X to ~400, Y to ~300):
+# - Vial holder left edge X≈36, footprint ~36 mm in X (holder length_mm).
+# - ~72 mm from vial-holder right edge to tip rack A left edge (includes disposal gap ~40).
+# - ~104 mm from tip rack A right edge to tip rack B left edge (rack length in X ~66 mm).
+# Tip / plate calibration uses definition pitches (8.5 mm tips, 9 mm SBS wells).
+# Z values are prior mechanical defaults; re-teach if the gantry changes.
+
+labware:
+  tip_rack_a:
+    load_name: ursa_tip_rack
+    # A1 ≈ left-front tip; A2 = A1 + one column along +X (must match x_offset_mm 8.5).
+    calibration:
+      a1: { x: 144.0, y: 22.0 }
+      a2: { x: 152.5, y: 22.0 }
+    # Real deck sits near the gantry bed; use a plausible pickup plane within
+    # cubos_xl's 0..80 mm user-space Z range.
+    z_pickup: 35.0
+    z_drop: 28.0
+
+  tip_rack_b:
+    load_name: ursa_tip_rack
+    # Rack B: rack A X-span (~66 mm) + 104 mm gap from sketch.
+    calibration:
+      a1: { x: 314.0, y: 22.0 }
+      a2: { x: 322.5, y: 22.0 }
+    z_pickup: 35.0
+    z_drop: 28.0
+
+  well_plate_holder:
+    type: well_plate_holder
+    name: panda_well_plate_holder
+    # Holder body sits on the deck surface; nested plate wells are absolute XY.
+    location:
+      x: 305.0
+      y: 210.0
+      z: 0.0
+    well_plate:
+      model_name: panda_96_wellplate
+      rows: 8
+      columns: 12
+      length_mm: 127.76
+      width_mm: 85.47
+      height_mm: 14.35
+      calibration:
+        a1:
+          x: 292.0
+          y: 188.0
+        a2:
+          x: 301.0
+          y: 188.0
+      x_offset_mm: 9.0
+      y_offset_mm: 9.0
+
+  vial_holder:
+    type: vial_holder
+    name: panda_vial_holder
+    # Long axis along Y; column centerline ≈ 36 + half holder width (~18 mm).
+    location:
+      x: 54.0
+      y: 150.0
+      z: 0.0
+    vials:
+      vial_1:
+        model_name: 20ml_vial
+        height_mm: 57.0
+        diameter_mm: 28.0
+        location:
+          x: 54.0
+          y: 20.0
+        capacity_ul: 20000.0
+        working_volume_ul: 20000.0
+      vial_2:
+        model_name: 20ml_vial
+        height_mm: 57.0
+        diameter_mm: 28.0
+        location:
+          x: 54.0
+          y: 53.0
+        capacity_ul: 20000.0
+        working_volume_ul: 20000.0
+      vial_3:
+        model_name: 20ml_vial
+        height_mm: 57.0
+        diameter_mm: 28.0
+        location:
+          x: 54.0
+          y: 86.0
+        capacity_ul: 20000.0
+        working_volume_ul: 20000.0
+      vial_4:
+        model_name: 20ml_vial
+        height_mm: 57.0
+        diameter_mm: 28.0
+        location:
+          x: 54.0
+          y: 119.0
+        capacity_ul: 20000.0
+        working_volume_ul: 20000.0
+      vial_5:
+        model_name: 20ml_vial
+        height_mm: 57.0
+        diameter_mm: 28.0
+        location:
+          x: 54.0
+          y: 152.0
+        capacity_ul: 20000.0
+        working_volume_ul: 20000.0
+      vial_6:
+        model_name: 20ml_vial
+        height_mm: 57.0
+        diameter_mm: 28.0
+        location:
+          x: 54.0
+          y: 185.0
+        capacity_ul: 20000.0
+        working_volume_ul: 20000.0
+      vial_7:
+        model_name: 20ml_vial
+        height_mm: 57.0
+        diameter_mm: 28.0
+        location:
+          x: 54.0
+          y: 218.0
+        capacity_ul: 20000.0
+        working_volume_ul: 20000.0
+      vial_8:
+        model_name: 20ml_vial
+        height_mm: 57.0
+        diameter_mm: 28.0
+        location:
+          x: 54.0
+          y: 251.0
+        capacity_ul: 20000.0
+        working_volume_ul: 20000.0
+      vial_9:
+        model_name: 20ml_vial
+        height_mm: 57.0
+        diameter_mm: 28.0
+        location:
+          x: 54.0
+          y: 284.0
+        capacity_ul: 20000.0
+        working_volume_ul: 20000.0
