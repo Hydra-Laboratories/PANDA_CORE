@@ -14,6 +14,27 @@ class BaseInstrument(ABC):
     All instruments accept an ``offline`` flag. When True, connect/disconnect
     are no-ops, health_check returns True, and instrument-specific methods
     return synthetic data without touching hardware.
+
+    Z-offset convention
+    -------------------
+    Coordinates use the gantry's user-space convention: larger Z = further
+    above the deck (away from labware surfaces). Both offsets are measured
+    relative to the same labware reference z. They are applied at different
+    phases of motion:
+
+    * ``measurement_height`` — signed Z offset from the labware reference
+      during the measurement/action. Positive = above the reference;
+      negative = below. Non-contact instruments (uvvis, filmetrics,
+      uv_curing) use a small positive value (probe clearance above sample).
+      Contact instruments (pipette, asmi, potentiostat) use 0 (touch) or
+      negative (dip into the sample). Applied by each *engaging* command
+      (measure/scan/aspirate/etc.) when it descends after approach.
+    * ``safe_approach_height`` — signed Z offset during XY travel, also
+      relative to the labware reference z. Must be >= ``measurement_height``
+      (enforced in __init__) so the instrument never travels *below* its
+      own action Z. Defaults to ``measurement_height`` (correct for
+      non-contact tools); contact instruments should set a larger positive
+      value explicitly. Applied by ``Board.move_to_labware``.
     """
 
     def __init__(
@@ -23,13 +44,27 @@ class BaseInstrument(ABC):
         offset_y: float = 0.0,
         depth: float = 0.0,
         measurement_height: float = 0.0,
+        safe_approach_height: Optional[float] = None,
         offline: bool = False,
     ):
+        resolved_safe = (
+            safe_approach_height if safe_approach_height is not None else measurement_height
+        )
+        if resolved_safe < measurement_height:
+            raise ValueError(
+                f"safe_approach_height ({resolved_safe}) must be >= "
+                f"measurement_height ({measurement_height}) for "
+                f"{self.__class__.__name__}. Otherwise Board.move_to_labware "
+                f"would travel XY below the action Z and the 'lower' step "
+                f"would move the instrument upward — defeating the retract-"
+                f"travel-lower safety guarantee."
+            )
         self.name = name or self.__class__.__name__
         self.offset_x = offset_x
         self.offset_y = offset_y
         self.depth = depth
         self.measurement_height = measurement_height
+        self.safe_approach_height = resolved_safe
         self._offline = offline
         self.logger = logging.getLogger(f"{__name__}.{self.name}")
 

@@ -31,6 +31,8 @@ def _mock_context(
         pipette.aspirate.return_value = MagicMock(success=True, volume_ul=100.0)
         pipette.dispense.return_value = MagicMock(success=True, volume_ul=100.0)
         pipette.mix.return_value = MagicMock(success=True, volume_ul=50.0, repetitions=3)
+        # measurement_height is added to labware.z to get the descent target.
+        pipette.measurement_height = 0.0
         board.instruments = {"pipette": pipette}
     else:
         board.instruments = {}
@@ -95,7 +97,7 @@ class TestAspirateCommand:
 
         ctx = _mock_context()
         call_order = []
-        ctx.board.move.side_effect = lambda *a, **kw: call_order.append("move")
+        ctx.board.move_to_labware.side_effect = lambda *a, **kw: call_order.append("move")
         _get_pipette(ctx).aspirate.side_effect = lambda *a: call_order.append("aspirate")
 
         aspirate(ctx, position="plate_1.A1", volume_ul=100.0)
@@ -121,7 +123,32 @@ class TestAspirateCommand:
         coord = Coordinate3D(x=10.0, y=20.0, z=75.0)
         ctx = _mock_context(resolve_return=coord)
         aspirate(ctx, position="plate_1.A1", volume_ul=100.0)
-        ctx.board.move.assert_called_once_with("pipette", coord)
+        ctx.board.move_to_labware.assert_called_once_with("pipette", coord)
+
+    def test_descends_to_action_z_after_approach(self):
+        """aspirate: descent raw-move must target labware.z + measurement_height."""
+        from protocol_engine.commands.pipette import aspirate
+
+        coord = Coordinate3D(x=10.0, y=20.0, z=75.0)
+        ctx = _mock_context(resolve_return=coord)
+        # Contact pipette dips 5mm below the labware reference.
+        _get_pipette(ctx).measurement_height = -5.0
+        aspirate(ctx, position="plate_1.A1", volume_ul=100.0)
+        # Descent targets (10, 20, 75 + (-5) = 70).
+        ctx.board.move.assert_called_once_with("pipette", (10.0, 20.0, 70.0))
+
+    def test_approach_then_descend_then_aspirate(self):
+        """Ordering: approach (move_to_labware) -> descent (move) -> aspirate."""
+        from protocol_engine.commands.pipette import aspirate
+
+        ctx = _mock_context()
+        order = []
+        ctx.board.move_to_labware.side_effect = lambda *a, **k: order.append("approach")
+        ctx.board.move.side_effect = lambda *a, **k: order.append("descent")
+        _get_pipette(ctx).aspirate.side_effect = lambda *a: order.append("aspirate")
+
+        aspirate(ctx, position="plate_1.A1", volume_ul=100.0)
+        assert order == ["approach", "descent", "aspirate"]
 
     def test_raises_when_no_pipette(self):
         from protocol_engine.commands.pipette import aspirate
@@ -148,7 +175,7 @@ class TestDispenseCommand:
 
         ctx = _mock_context()
         call_order = []
-        ctx.board.move.side_effect = lambda *a, **kw: call_order.append("move")
+        ctx.board.move_to_labware.side_effect = lambda *a, **kw: call_order.append("move")
         _get_pipette(ctx).dispense.side_effect = lambda *a: call_order.append("dispense")
 
         dispense(ctx, position="plate_1.A1", volume_ul=100.0)
@@ -193,7 +220,7 @@ class TestBlowoutCommand:
 
         ctx = _mock_context()
         call_order = []
-        ctx.board.move.side_effect = lambda *a, **kw: call_order.append("move")
+        ctx.board.move_to_labware.side_effect = lambda *a, **kw: call_order.append("move")
         _get_pipette(ctx).blowout.side_effect = lambda *a: call_order.append("blowout")
 
         blowout(ctx, position="plate_1.A1")
@@ -238,7 +265,7 @@ class TestMixCommand:
 
         ctx = _mock_context()
         call_order = []
-        ctx.board.move.side_effect = lambda *a, **kw: call_order.append("move")
+        ctx.board.move_to_labware.side_effect = lambda *a, **kw: call_order.append("move")
         _get_pipette(ctx).mix.side_effect = lambda *a: call_order.append("mix")
 
         mix(ctx, position="plate_1.A1", volume_ul=50.0)
@@ -283,7 +310,7 @@ class TestPickUpTipCommand:
 
         ctx = _mock_context()
         call_order = []
-        ctx.board.move.side_effect = lambda *a, **kw: call_order.append("move")
+        ctx.board.move_to_labware.side_effect = lambda *a, **kw: call_order.append("move")
         _get_pipette(ctx).pick_up_tip.side_effect = lambda *a: call_order.append("pick_up_tip")
 
         pick_up_tip(ctx, position="tiprack_1.A1")
@@ -328,7 +355,7 @@ class TestDropTipCommand:
 
         ctx = _mock_context()
         call_order = []
-        ctx.board.move.side_effect = lambda *a, **kw: call_order.append("move")
+        ctx.board.move_to_labware.side_effect = lambda *a, **kw: call_order.append("move")
         _get_pipette(ctx).drop_tip.side_effect = lambda *a: call_order.append("drop_tip")
 
         drop_tip(ctx, position="waste_1")
@@ -403,7 +430,7 @@ class TestTransferCommand:
         ctx = _mock_context_multi_resolve()
         pip = ctx.board.instruments["pipette"]
         call_order = []
-        ctx.board.move.side_effect = lambda *a, **kw: call_order.append(("move", a[1]))
+        ctx.board.move_to_labware.side_effect = lambda *a, **kw: call_order.append(("move", a[1]))
         pip.aspirate.side_effect = lambda *a: call_order.append("aspirate")
         pip.dispense.side_effect = lambda *a: call_order.append("dispense")
 

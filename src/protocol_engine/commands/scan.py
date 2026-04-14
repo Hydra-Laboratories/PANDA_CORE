@@ -14,6 +14,7 @@ from deck.labware.well_plate import WellPlate
 from ..errors import ProtocolExecutionError
 from ..measurements import normalize_measurement
 from ..registry import protocol_command
+from ._movement import approach_and_descend
 
 if TYPE_CHECKING:
     from ..protocol import ProtocolContext
@@ -38,8 +39,9 @@ def scan(
     """Scan every well on *plate* using *instrument*'s *method*.
 
     Iterates wells in row-major order (A1, A2, ..., B1, B2, ...).
-    For each well, moves the instrument into position (applying
-    measurement_height offset) then calls the method with any
+    For each well, uses :func:`approach_and_descend` to safely travel
+    above the well (at ``safe_approach_height``) and descend to the
+    action Z (``measurement_height``), then calls the method with any
     provided keyword arguments.
 
     When a ``DataStore`` is configured on *context*, each measurement
@@ -84,8 +86,7 @@ def scan(
             time.sleep(delay_s)
 
         well = plate_obj.get_well_center(well_id)
-        target = (well.x, well.y, well.z - instr.measurement_height)
-        context.board.move(instrument, target)
+        approach_and_descend(context, instrument, well)
 
         # Inject gantry if the method accepts it (e.g. ASMI.indentation
         # needs the gantry for Z stepping), then merge with method_kwargs.

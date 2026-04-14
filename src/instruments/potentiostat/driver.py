@@ -77,6 +77,7 @@ class Potentiostat(BaseInstrument):
         offset_y: float = 0.0,
         depth: float = 0.0,
         measurement_height: float = 0.0,
+        safe_approach_height: Optional[float] = None,
         offline: bool = False,
         **kwargs: Any,
     ):
@@ -86,6 +87,7 @@ class Potentiostat(BaseInstrument):
             offset_y=offset_y,
             depth=depth,
             measurement_height=measurement_height,
+            safe_approach_height=safe_approach_height,
             offline=offline,
         )
         if channel < 0:

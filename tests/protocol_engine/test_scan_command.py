@@ -124,7 +124,7 @@ class TestScanCommand:
 
         scan(ctx, plate="plate_1", instrument="uvvis", method="measure")
 
-        assert ctx.board.move.call_count == 4
+        assert ctx.board.move_to_labware.call_count == 4
 
     def test_visits_wells_in_row_major_order(self):
         from protocol_engine.commands.scan import scan
@@ -136,12 +136,14 @@ class TestScanCommand:
         scan(ctx, plate="plate_2", instrument="uvvis", method="measure")
 
         # Row-major: A1, A2, A3, B1, B2, B3
-        move_calls = ctx.board.move.call_args_list
+        move_calls = ctx.board.move_to_labware.call_args_list
         positions = [c.args[1] for c in move_calls]
-        xs = [p[0] for p in positions]
+        xs = [p.x for p in positions]
         assert xs == [0.0, 10.0, 20.0, 0.0, 10.0, 20.0]
 
-    def test_applies_measurement_height_offset(self):
+    def test_passes_raw_well_coord_to_move_to_labware(self):
+        # scan delegates safe approach to Board.move_to_labware; descent
+        # to action Z happens in scan's subsequent raw board.move call.
         from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()  # wells at z=75.0
@@ -150,10 +152,46 @@ class TestScanCommand:
 
         scan(ctx, plate="plate_1", instrument="uvvis", method="measure")
 
-        # target z = well.z - measurement_height = 75.0 - 3.0 = 72.0
-        move_calls = ctx.board.move.call_args_list
-        zs = [c.args[1][2] for c in move_calls]
-        assert zs == [72.0, 72.0, 72.0, 72.0]
+        move_calls = ctx.board.move_to_labware.call_args_list
+        zs = [c.args[1].z for c in move_calls]
+        # Raw well z — offset is applied inside move_to_labware.
+        assert zs == [75.0, 75.0, 75.0, 75.0]
+
+    def test_descends_to_action_z_after_approach_per_well(self):
+        """scan must emit the descent raw-move per well at
+        well.z + measurement_height. A regression dropping this line
+        would leave the instrument floating at safe_approach_height."""
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x2_plate()  # wells at z=75.0
+        sensor = _make_sensor(measurement_height=3.0)
+        ctx = _mock_context(plate=plate, sensor=sensor)
+
+        scan(ctx, plate="plate_1", instrument="uvvis", method="measure")
+
+        # 4 wells => 4 descent calls.
+        assert ctx.board.move.call_count == 4
+        descent_zs = [c.args[1][2] for c in ctx.board.move.call_args_list]
+        # action_z = well.z + measurement_height = 75 + 3 = 78.
+        assert descent_zs == [78.0, 78.0, 78.0, 78.0]
+
+    def test_approach_then_descend_then_method_per_well(self):
+        """Per-well call order: move_to_labware -> move (descent) -> method."""
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x2_plate()
+        sensor = _make_sensor(measurement_height=3.0)
+        ctx = _mock_context(plate=plate, sensor=sensor)
+        # Track call order via a shared list.
+        order = []
+        ctx.board.move_to_labware.side_effect = lambda *a, **k: order.append("approach")
+        ctx.board.move.side_effect = lambda *a, **k: order.append("descent")
+        sensor.measure = lambda *a, **k: (order.append("measure") or "ok")
+
+        scan(ctx, plate="plate_1", instrument="uvvis", method="measure")
+
+        # Four wells; per-well sequence repeats.
+        assert order == ["approach", "descent", "measure"] * 4
 
     def test_returns_dict_of_results_per_well(self):
         from protocol_engine.commands.scan import scan
@@ -242,7 +280,7 @@ class TestScanCommand:
 
         scan(ctx, plate="plate_1", instrument="uvvis", method="measure")
 
-        for c in ctx.board.move.call_args_list:
+        for c in ctx.board.move_to_labware.call_args_list:
             assert c.args[0] == "uvvis"
 
     def test_logs_normalized_instrument_measurement(self):
