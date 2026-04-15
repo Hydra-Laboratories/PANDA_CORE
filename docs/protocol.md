@@ -33,6 +33,7 @@ protocol:
         force_limit: 10.0
         measurement_height: -73.0
         baseline_samples: 10
+        measure_with_return: false  # true = down + return (up) sampling
 
   # Return to safe Z after scan
   - move:
