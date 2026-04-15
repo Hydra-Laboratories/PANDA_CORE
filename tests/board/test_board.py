@@ -148,6 +148,32 @@ class TestBoardMove:
 
         gantry.move_to.assert_called_once_with(140.0, 70.0, 8.0, travel_z=None)
 
+    def test_move_forwards_travel_z_minus_depth_to_gantry(self):
+        """travel_z is an instrument-tip Z; gantry must receive it
+        translated into gantry-frame by subtracting instrument depth —
+        the same transform we apply to target z."""
+        gantry = _mock_gantry()
+        instr = _mock_instrument("pipette", offset_x=0.0, offset_y=0.0, depth=4.0)
+        board = Board(gantry=gantry, instruments={"pipette": instr})
+
+        board.move("pipette", (50.0, 25.0, 10.0), travel_z=30.0)
+
+        # gantry_z = tip_z - depth: target 10-4=6, travel 30-4=26.
+        gantry.move_to.assert_called_once_with(50.0, 25.0, 6.0, travel_z=26.0)
+
+    def test_move_rejects_non_finite_travel_z(self):
+        """travel_z flows straight through to the gantry/mill as raw
+        G-code; an NaN/Inf here would emit `G01 Znan` to GRBL. Guard
+        at the board boundary."""
+        gantry = _mock_gantry()
+        instr = _mock_instrument("probe")
+        board = Board(gantry=gantry, instruments={"probe": instr})
+
+        with pytest.raises(ValueError, match="non-finite travel_z"):
+            board.move("probe", (10.0, 20.0, 5.0), travel_z=float("nan"))
+        with pytest.raises(ValueError, match="non-finite travel_z"):
+            board.move("probe", (10.0, 20.0, 5.0), travel_z=float("inf"))
+
 
 # ─── object_position() tests ─────────────────────────────────────────────────
 

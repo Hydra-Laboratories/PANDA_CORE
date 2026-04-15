@@ -46,13 +46,11 @@ class MockMill(RealMill):
     gcode_parameters(): Simulate getting G-code parameters.
     gcode_parser_state(): Simulate getting G-code parser state.
     rinse_electrode(): Simulate rinsing the electrode.
-    move_to_safe_position(): Simulate moving to a safe position.
     move_center_to_position(x_coord, y_coord, z_coord): Simulate moving to a specified position.
     current_coordinates(instrument): Return the tracked current coordinates.
     move_pipette_to_position(x_coord, y_coord, z_coord): Simulate moving the pipette to a specified position.
     move_electrode_to_position(x_coord, y_coord, z_coord): Simulate moving the electrode to a specified position.
     update_offset(offset_type, offset_x, offset_y, offset_z): Simulate updating offsets in the config.
-    safe_move(x_coord, y_coord, z_coord, instrument): Simulate a safe move with horizontal and vertical movements.
     """
 
     def __init__(self):
@@ -60,7 +58,6 @@ class MockMill(RealMill):
         self.logger_location = Path(__file__).parent / "mock_logs"
         self.ser_mill: MockSerialToMill = self.connect_to_mill()
         self.working_volume: Coordinates = Coordinates(x=415.0, y=300.0, z=200.0)
-        self.safe_floor_height = 10.0
 
         self.change_logging_level("DEBUG")
 

@@ -107,10 +107,11 @@ class TestWposEnforcement(unittest.TestCase):
 
         mill.move_to_position(x_coordinate=-10.0, y_coordinate=-10.0, z_coordinate=0.0)
 
-        xy_commands = [c for c in commands_sent if "X" in c and "Y" in c]
-        self.assertTrue(len(xy_commands) > 0)
-        self.assertIn("X-10.0", xy_commands[0])
-        self.assertIn("Y-10.0", xy_commands[0])
+        # X and Y are always emitted on separate lines — no diagonal.
+        x_commands = [c for c in commands_sent if "X-10.0" in c and "Y" not in c]
+        y_commands = [c for c in commands_sent if "Y-10.0" in c and "X" not in c]
+        self.assertEqual(len(x_commands), 1)
+        self.assertEqual(len(y_commands), 1)
 
 
 if __name__ == '__main__':

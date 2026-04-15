@@ -175,6 +175,25 @@ class TestScanCommand:
         # action_z = well.z + measurement_height = 75 + 3 = 78.
         assert descent_zs == [78.0, 78.0, 78.0, 78.0]
 
+    def test_descent_move_does_not_pass_travel_z(self):
+        """Regression guard: the raw descent after move_to_labware must
+        NOT pass a travel_z. If it did, the gantry would lift to
+        travel_z before descending to action z — reintroducing the
+        original bug where the tip detoured up instead of going
+        straight down from safe_approach_height to measurement_height."""
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x2_plate()
+        sensor = _make_sensor(measurement_height=3.0, safe_approach_height=10.0)
+        ctx = _mock_context(plate=plate, sensor=sensor)
+
+        scan(ctx, plate="plate_1", instrument="uvvis", method="measure")
+
+        for call in ctx.board.move.call_args_list:
+            assert call.kwargs.get("travel_z") is None, (
+                f"descent move must not pass travel_z; got {call.kwargs!r}"
+            )
+
     def test_approach_then_descend_then_method_per_well(self):
         """Per-well call order: move_to_labware -> move (descent) -> method."""
         from protocol_engine.commands.scan import scan

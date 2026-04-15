@@ -150,6 +150,13 @@ class Gantry:
         this labware" without the mill baking in a machine-wide retract.
         """
         if self._offline:
+            if travel_z is not None:
+                # Dry runs only record the final tip pose. Log the transit
+                # height so offline protocol validation can still reason
+                # about approach path (e.g. assert it stays above labware).
+                self.logger.debug(
+                    "Offline move to (%s, %s, %s) via travel_z=%s", x, y, z, travel_z,
+                )
             self._offline_coords = {"x": x, "y": y, "z": z}
             return
         assert self._mill is not None

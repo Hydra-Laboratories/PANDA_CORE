@@ -78,7 +78,6 @@ class Mill:
         active_connection (bool): True if the connection to the mill is active, False otherwise.
         instrument_manager (InstrumentManager): The instrument manager for the mill.
         working_volume (Coordinates): The working volume of the mill.
-        safe_z_height (float): The safe Z height for clearance moves.
         logger_location (Path): The location of the logger.
         logger (Logger): The logger for the mill.
 
@@ -126,7 +125,6 @@ class Mill:
         self.active_connection = False
         self.instrument_manager: InstrumentManager = InstrumentManager()
         self.working_volume: Coordinates = self.read_working_volume()
-        self.safe_z_height = -10.0  # TODO: set the safe floor height to the max height of any active object on the mill + the pipette length
         self.command_logger = set_up_command_logger(self.logger_location)
         self.interactive_mode = False
         self._wco: Optional[Coordinates] = None
@@ -1106,8 +1104,8 @@ class Mill:
         protocol commands) own their own "safe approach" height instead of
         the mill baking in a machine-wide retract.
 
-        When ``travel_z`` is None, the mill issues a direct move — no Z
-        detour — component-wise below ``safe_z_height`` or diagonal above.
+        When ``travel_z`` is None, the mill issues a direct axis-by-axis
+        move (X, then Y, then Z) — no Z detour, no diagonal interpolation.
 
         Args:
             x_coordinate (float): X coordinate.
@@ -1208,24 +1206,22 @@ class Mill:
         current_coordinates: Coordinates,
         target_coordinates: Coordinates,
     ):
-        """Direct move from current to target.
+        """Direct move from current to target, axis-by-axis.
 
-        Above ``safe_z_height`` the mill combines XY into one diagonal
-        command then descends; below it, each axis moves independently so
-        a low tip can't diagonal into a collision on the way up.
+        Emits one G-code per changed axis in X-then-Y-then-Z order.
+        The mill never commands simultaneous multi-axis (diagonal)
+        motion — combining axes in a single G01 would couple their
+        motion into a straight interpolation that could graze
+        obstacles the caller didn't plan for.
         """
         f = f" F{DEFAULT_FEED_RATE}"
         commands = []
-        if current_coordinates.z >= self.safe_z_height:
-            commands.append(f"G01 X{target_coordinates.x} Y{target_coordinates.y}{f}")
+        if target_coordinates.x != current_coordinates.x:
+            commands.append(f"G01 X{target_coordinates.x}{f}")
+        if target_coordinates.y != current_coordinates.y:
+            commands.append(f"G01 Y{target_coordinates.y}{f}")
+        if target_coordinates.z != current_coordinates.z:
             commands.append(f"G01 Z{target_coordinates.z}{f}")
-        else:
-            if target_coordinates.x != current_coordinates.x:
-                commands.append(f"G01 X{target_coordinates.x}{f}")
-            if target_coordinates.y != current_coordinates.y:
-                commands.append(f"G01 Y{target_coordinates.y}{f}")
-            if target_coordinates.z != current_coordinates.z:
-                commands.append(f"G01 Z{target_coordinates.z}{f}")
         return commands
 
     def _generate_transit_commands(
@@ -1234,22 +1230,22 @@ class Mill:
         target_coordinates: Coordinates,
         travel_z: float,
     ):
-        """Transit via ``travel_z``: lift → XY at travel_z → descend.
+        """Transit via ``travel_z``, axis-by-axis: lift → X → Y → descend.
 
         Each step is emitted only when it would produce actual motion,
-        so a move already at ``travel_z`` skips the lift, a same-XY move
-        skips the XY step, and a final Z matching ``travel_z`` skips the
-        descent.
+        so a move already at ``travel_z`` skips the lift, a same-X
+        (or same-Y) move skips that axis, and a final Z matching
+        ``travel_z`` skips the descent. X and Y always move in
+        separate G-codes — no diagonal.
         """
         f = f" F{DEFAULT_FEED_RATE}"
         commands = []
         if current_coordinates.z != travel_z:
             commands.append(f"G01 Z{travel_z}{f}")
-        if (
-            target_coordinates.x != current_coordinates.x
-            or target_coordinates.y != current_coordinates.y
-        ):
-            commands.append(f"G01 X{target_coordinates.x} Y{target_coordinates.y}{f}")
+        if target_coordinates.x != current_coordinates.x:
+            commands.append(f"G01 X{target_coordinates.x}{f}")
+        if target_coordinates.y != current_coordinates.y:
+            commands.append(f"G01 Y{target_coordinates.y}{f}")
         if target_coordinates.z != travel_z:
             commands.append(f"G01 Z{target_coordinates.z}{f}")
         return commands

@@ -54,10 +54,11 @@ class BaseInstrument(ABC):
             raise ValueError(
                 f"safe_approach_height ({resolved_safe}) must be >= "
                 f"measurement_height ({measurement_height}) for "
-                f"{self.__class__.__name__}. Otherwise Board.move_to_labware "
-                f"would travel XY below the action Z and the 'lower' step "
-                f"would move the instrument upward — defeating the retract-"
-                f"travel-lower safety guarantee."
+                f"{self.__class__.__name__}. Board.move_to_labware travels "
+                f"XY at safe_approach_height and then descends to "
+                f"measurement_height; if the travel height sits below the "
+                f"action height, that 'descent' would lift the instrument "
+                f"instead — defeating the approach-above-then-descend contract."
             )
         self.name = name or self.__class__.__name__
         self.offset_x = offset_x

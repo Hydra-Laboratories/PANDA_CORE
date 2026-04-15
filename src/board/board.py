@@ -59,6 +59,10 @@ class Board:
         instr = self._resolve_instrument(instrument)
         x, y, z = self._resolve_position(position)
         self._validate_finite_xyz(x, y, z, instr.name)
+        if travel_z is not None and not math.isfinite(travel_z):
+            raise ValueError(
+                f"non-finite travel_z={travel_z} for instrument {instr.name!r}."
+            )
         gantry_x = x - instr.offset_x
         gantry_y = y - instr.offset_y
         gantry_z = z - instr.depth
