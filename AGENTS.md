@@ -19,9 +19,10 @@ This repository contains code to control a CNC router (mill) using a Python-base
 ## Usage Guide for Agents
 
 1.  **Connecting**: Always use the context manager `with Mill() as mill:` to ensure proper connection and cleanup.
-2.  **Moving**: Use `mill.move_to_position(x, y, z)` for safe moves. The driver handles validation against the working volume (negative coordinates mostly).
-    - **Coordinates**: The gantry typically operates in negative space relative to Home (0,0,0). e.g., X goes from 0 to -415.
-    - **Current XYZ convention**: In the high-level `src/gantry` wrapper, `X` and `Y` are passed to GRBL unchanged, while `Z` is sign-flipped at the wrapper boundary. A user-facing move `(x, y, z)` becomes machine `(x, y, -z)`, and reported machine coordinates are exposed back to callers as `(x, y, -z_machine)`.
+2.  **Moving**: Use `mill.move_to_position(x, y, z)` for safe moves. At the repo/user level, always think and communicate in positive `X`, `Y`, and `Z`.
+    - **Coordinates**: The physical/workcell convention is positive `X`, positive `Y`, positive `Z`. Do not pre-flip signs in calling code to match raw CNC coordinates.
+    - **Current XYZ convention**: In the high-level `src/gantry` wrapper, we keep user-facing `X/Y/Z` positive. The underlying boundary code translates `Z` to negative machine `Z` before sending commands to the controller, similar to CNC mode. We do not manually compensate for that translation in higher-level code.
+    - **TODO**: In a later PR, redefine `Z` from the base deck reference instead of the gantry head/top reference.
 3.  **Offsets**: Instruments have offsets managed by `InstrumentManager`.
 
 ### Instruments (`src/instruments`)
@@ -120,7 +121,8 @@ A modular system for executing experiment sequences defined in code or YAML.
 ### Gantry Config (`src/gantry`)
 Gantry YAML loader and domain model for CNC gantry working volume and homing strategy.
 
-- **Coordinate convention**: `X` and `Y` are user-facing positive-space and are sent to the controller unchanged. `Z` uses the opposite sign across the `Gantry` wrapper boundary: user-facing `z` is transformed to machine `-z`, and machine `z` is exposed back to callers as `-z_machine`.
+- **Coordinate convention**: At the repo/user level we work in positive `X`, `Y`, and `Z`. The underlying `Gantry` boundary code currently translates user-facing `Z` to machine `-Z` before sending commands to the controller, and converts machine `Z` back on reads. Do not manually apply that translation in higher-level code.
+- **TODO**: In a later PR, redefine `Z` from the base deck reference instead of the gantry head/top reference.
 - **`yaml_schema.py`**: `GantryYamlSchema` with strict Pydantic validation (working volume bounds, homing strategy, serial port, and `cnc.total_z_height`).
 - **`gantry_config.py`**: `GantryConfig` and `WorkingVolume` frozen dataclasses. `WorkingVolume.contains(x, y, z)` checks if a point is within bounds (inclusive). `GantryConfig.total_z_height` is the top-reference height used for labware height conversion. `HomingStrategy` enum: `STANDARD`, `XY_HARD_LIMITS`, `MANUAL_ORIGIN`.
 - **`loader.py`**: `load_gantry_from_yaml(path)` and `load_gantry_from_yaml_safe(path)`.

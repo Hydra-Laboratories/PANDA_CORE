@@ -12,6 +12,18 @@ Four YAML files define a runnable experiment:
 Defines the controller serial port, homing strategy, working volume, optional
 GRBL expectations, and `cnc.total_z_height`.
 
+Coordinate convention:
+
+- User-facing coordinates are always treated as positive `X`, `Y`, and `Z`.
+- Callers should think in the lab/workcell coordinate system, not raw CNC
+  machine coordinates.
+- The underlying gantry boundary code currently translates user-facing `Z`
+  values to negative machine `Z` before sending them to the controller, similar
+  to CNC mode. Callers should not manually negate `Z`; that translation stays
+  internal.
+- TODO: in a later PR, redefine `Z` from the base deck reference instead of
+  the gantry head/top reference.
+
 ```yaml
 serial_port: /dev/ttyUSB0
 cnc:
@@ -132,6 +144,16 @@ Interactive jog test:
 ```bash
 python setup/hello_world.py
 ```
+
+Manual-origin homing:
+
+```bash
+python setup/home_manual.py
+```
+
+This uses the same user-facing positive `X/Y/Z` convention. The script and
+high-level gantry wrapper handle any controller-specific `Z` translation
+internally.
 
 Validate a setup:
 
