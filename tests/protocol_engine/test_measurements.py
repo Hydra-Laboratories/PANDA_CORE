@@ -79,7 +79,9 @@ class TestNormalizeMeasurement:
 
         assert measurement.measurement_type == MeasurementType.ASMI_INDENTATION
         assert measurement.payload["z_positions_mm"] == [-73.01, -73.02]
-        assert "directions" not in measurement.payload
+        # Legacy untagged payloads default to "down" so the normalized
+        # schema always exposes directions.
+        assert measurement.payload["directions"] == ["down", "down"]
         assert measurement.metadata["measure_with_return"] is False
 
     def test_normalize_asmi_indentation_with_return_mode(self):

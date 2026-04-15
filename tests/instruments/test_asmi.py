@@ -123,11 +123,12 @@ class TestASMIOffline(unittest.TestCase):
         self.assertAlmostEqual(up_z[-1], -10.0, places=6)
 
     def test_indentation_offline_return_no_float_drift(self):
-        """Return loop must terminate even when step_size doesn't divide the range evenly."""
+        """Descent must reach z_limit and return must hit measurement_height exactly,
+        even when step_size doesn't divide the range evenly."""
         from gantry.gantry import Gantry
         gantry = Gantry(offline=True)
 
-        # 0.03 does not evenly divide 2.0 (66.66 steps).
+        # 0.03 does not evenly divide 2.0 (66.67 steps → ceil to 67).
         result = self.asmi.indentation(
             gantry,
             z_limit=-12.0,
@@ -136,8 +137,30 @@ class TestASMIOffline(unittest.TestCase):
             measure_with_return=True,
         )
 
+        down_z = [s["z_mm"] for s in result["measurements"] if s["direction"] == "down"]
         up_z = [s["z_mm"] for s in result["measurements"] if s["direction"] == "up"]
+        self.assertAlmostEqual(down_z[-1], -12.0, places=6)
         self.assertAlmostEqual(up_z[-1], -10.0, places=6)
+
+    def test_indentation_offline_step_larger_than_span_takes_one_step(self):
+        """When step_size exceeds the span, one clamped step must still occur."""
+        from gantry.gantry import Gantry
+        gantry = Gantry(offline=True)
+
+        result = self.asmi.indentation(
+            gantry,
+            z_limit=-10.05,
+            measurement_height=-10.0,
+            step_size=0.5,
+            measure_with_return=True,
+        )
+
+        down_z = [s["z_mm"] for s in result["measurements"] if s["direction"] == "down"]
+        up_z = [s["z_mm"] for s in result["measurements"] if s["direction"] == "up"]
+        self.assertEqual(len(down_z), 1)
+        self.assertAlmostEqual(down_z[0], -10.05, places=6)
+        self.assertEqual(len(up_z), 1)
+        self.assertAlmostEqual(up_z[0], -10.0, places=6)
 
 
 class _FakeOnlineGantry:

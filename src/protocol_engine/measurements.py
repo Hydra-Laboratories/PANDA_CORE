@@ -131,23 +131,24 @@ def normalize_measurement(
 
     if isinstance(raw_result, dict) and "measurements" in raw_result:
         steps = raw_result["measurements"]
-        has_direction = any("direction" in s for s in steps)
+        # Warn when direction tags are partial — mid-run corruption signal.
+        # Current ASMI driver always tags; missing entries default to "down"
+        # for legacy/partial payloads, and directions is always emitted so
+        # downstream consumers see a stable schema.
+        has_any_direction = any("direction" in s for s in steps)
+        has_all_directions = all("direction" in s for s in steps) if steps else True
+        if has_any_direction and not has_all_directions:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Partial 'direction' tags in ASMI indentation steps; "
+                "defaulting missing entries to 'down'",
+            )
         payload = {
             "z_positions_mm": [s["z_mm"] for s in steps],
             "raw_forces_n": [s["raw_force_n"] for s in steps],
             "corrected_forces_n": [s["corrected_force_n"] for s in steps],
+            "directions": [s.get("direction", "down") for s in steps],
         }
-        if has_direction:
-            # Default missing entries to "down" (legacy pre-dual-sweep payloads)
-            # but warn so callers can detect mid-run corruption where only
-            # part of a return sweep was tagged.
-            if not all("direction" in s for s in steps):
-                import logging
-                logging.getLogger(__name__).warning(
-                    "Partial 'direction' tags in ASMI indentation steps; "
-                    "defaulting missing entries to 'down'",
-                )
-            payload["directions"] = [s.get("direction", "down") for s in steps]
         return InstrumentMeasurement(
             measurement_type=MeasurementType.ASMI_INDENTATION,
             payload=payload,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import statistics
 import time
 from typing import Optional
@@ -19,13 +20,16 @@ _STEP_COUNT_SAFETY_MARGIN = 10
 def _step_count_bound(z_upper: float, z_lower: float, step_size: float) -> int:
     """Upper bound on steps needed to cross [z_lower, z_upper] at step_size.
 
-    Used as a loop-iteration cap to guarantee termination if hardware stalls
-    or rounding otherwise prevents the geometric exit condition from firing.
+    Ceil-based so that a non-integer number of steps still reaches the
+    clamped endpoint. Used as a loop-iteration cap to guarantee termination
+    if hardware stalls or rounding otherwise prevents the geometric exit
+    condition from firing, and — in offline mode — as the actual step count.
     """
     if step_size <= 0:
         raise ValueError(f"step_size must be positive, got {step_size}")
     span = abs(z_upper - z_lower)
-    return int(span / step_size) + _STEP_COUNT_SAFETY_MARGIN
+    raw_steps = math.ceil(span / step_size) if span > 0 else 0
+    return raw_steps + _STEP_COUNT_SAFETY_MARGIN
 
 
 class ASMI(BaseInstrument):
