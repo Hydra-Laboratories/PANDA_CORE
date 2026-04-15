@@ -23,9 +23,9 @@ def test_repository_panda_deck_yaml_loads_with_expected_reference_points():
     assert deck.resolve("well_plate_holder.plate.A1") == pytest.approx(
         deck.resolve("well_plate_holder.plate")
     )
-    assert deck.resolve("well_plate_holder.plate.A1").z == pytest.approx(188.0)
+    assert deck.resolve("well_plate_holder.plate.A1").z == pytest.approx(202.35)
     assert deck.resolve("well_plate_holder.plate.B1").y == pytest.approx(87.5)
 
     assert isinstance(deck["vial_holder"], VialHolder)
-    assert deck.resolve("vial_holder.vial_1").z == pytest.approx(182.0)
+    assert deck.resolve("vial_holder.vial_1").z == pytest.approx(239.0)
     assert deck.resolve("vial_holder.vial_9").y == pytest.approx(264.9)

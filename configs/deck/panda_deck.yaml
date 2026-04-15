@@ -25,6 +25,7 @@ labware:
       z: 183.0
     well_plate:
       model_name: panda_96_wellplate
+      height_mm: 14.35
       rows: 8
       columns: 12
       calibration:
