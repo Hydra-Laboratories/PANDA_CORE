@@ -22,14 +22,27 @@ class TestGantry(unittest.TestCase):
         mock_mill.connect_to_mill.assert_called_with(port=None)
 
     @patch("gantry.gantry.Mill")
-    def test_move_delegates_to_safe_move(self, mock_mill_cls):
+    def test_move_delegates_to_move_to_position(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
         gantry = Gantry(config=self.config)
         gantry.move_to(10, 20, 30)
-        mock_mill.safe_move.assert_called_with(
-            x_coord=-10.0,
-            y_coord=-20.0,
-            z_coord=-30.0,
+        mock_mill.move_to_position.assert_called_with(
+            x_coordinate=-10.0,
+            y_coordinate=-20.0,
+            z_coordinate=-30.0,
+            travel_z=None,
+        )
+
+    @patch("gantry.gantry.Mill")
+    def test_move_with_travel_z_passes_through_translated(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        gantry = Gantry(config=self.config)
+        gantry.move_to(10, 20, 30, travel_z=50)
+        mock_mill.move_to_position.assert_called_with(
+            x_coordinate=-10.0,
+            y_coordinate=-20.0,
+            z_coordinate=-30.0,
+            travel_z=-50.0,
         )
 
     @patch("gantry.gantry.Mill")
@@ -136,7 +149,7 @@ class TestGantry(unittest.TestCase):
     @patch("gantry.gantry.Mill")
     def test_move_to_raises_on_command_error(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
-        mock_mill.safe_move.side_effect = CommandExecutionError("move failed")
+        mock_mill.move_to_position.side_effect = CommandExecutionError("move failed")
         gantry = Gantry(config=self.config)
         with self.assertRaises(CommandExecutionError):
             gantry.move_to(10, 20, 30)
@@ -144,7 +157,7 @@ class TestGantry(unittest.TestCase):
     @patch("gantry.gantry.Mill")
     def test_move_to_does_not_catch_unexpected_errors(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
-        mock_mill.safe_move.side_effect = RuntimeError("unexpected")
+        mock_mill.move_to_position.side_effect = RuntimeError("unexpected")
         gantry = Gantry(config=self.config)
         with self.assertRaises(RuntimeError):
             gantry.move_to(10, 20, 30)

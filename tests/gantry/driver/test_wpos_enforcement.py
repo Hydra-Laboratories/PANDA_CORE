@@ -95,8 +95,8 @@ class TestWposEnforcement(unittest.TestCase):
         self.assertEqual(float(match.group(2)), -200.0)
         self.assertEqual(float(match.group(3)), -80.0)
 
-    def test_safe_move_uses_wpos_internally(self):
-        """Verify safe_move's internal current_coordinates call gets WPos."""
+    def test_move_to_position_uses_wpos_internally(self):
+        """Verify move_to_position's internal current_coordinates call gets WPos."""
         mill = self._make_mill()
         mill.config["$10"] = "0"
         mill.ser_mill.write = MagicMock()
@@ -105,7 +105,7 @@ class TestWposEnforcement(unittest.TestCase):
         commands_sent = []
         mill.execute_command = lambda cmd: commands_sent.append(cmd) or "ok"
 
-        mill.safe_move(x_coord=-10.0, y_coord=-10.0, z_coord=0.0)
+        mill.move_to_position(x_coordinate=-10.0, y_coordinate=-10.0, z_coordinate=0.0)
 
         xy_commands = [c for c in commands_sent if "X" in c and "Y" in c]
         self.assertTrue(len(xy_commands) > 0)

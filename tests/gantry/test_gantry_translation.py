@@ -26,10 +26,11 @@ def _config() -> dict:
 def test_move_to_translates_user_to_machine_coordinates(mock_mill_cls) -> None:
     gantry = Gantry(config=_config())
     gantry.move_to(150.0, 100.0, 40.0)
-    mock_mill_cls.return_value.safe_move.assert_called_once_with(
-        x_coord=-150.0,
-        y_coord=-100.0,
-        z_coord=-40.0,
+    mock_mill_cls.return_value.move_to_position.assert_called_once_with(
+        x_coordinate=-150.0,
+        y_coordinate=-100.0,
+        z_coordinate=-40.0,
+        travel_z=None,
     )
 
 
@@ -70,10 +71,24 @@ def test_zero_home_coordinates_stay_zero(mock_mill_cls) -> None:
 def test_boundary_translation(mock_mill_cls) -> None:
     gantry = Gantry(config=_config())
     gantry.move_to(300.0, 200.0, 80.0)
-    mock_mill_cls.return_value.safe_move.assert_called_once_with(
-        x_coord=-300.0,
-        y_coord=-200.0,
-        z_coord=-80.0,
+    mock_mill_cls.return_value.move_to_position.assert_called_once_with(
+        x_coordinate=-300.0,
+        y_coordinate=-200.0,
+        z_coordinate=-80.0,
+        travel_z=None,
+    )
+
+
+@patch("gantry.gantry.Mill")
+def test_travel_z_translates_to_machine_space(mock_mill_cls) -> None:
+    """travel_z is given in user space; mill receives machine space."""
+    gantry = Gantry(config=_config())
+    gantry.move_to(150.0, 100.0, 40.0, travel_z=70.0)
+    mock_mill_cls.return_value.move_to_position.assert_called_once_with(
+        x_coordinate=-150.0,
+        y_coordinate=-100.0,
+        z_coordinate=-40.0,
+        travel_z=-70.0,
     )
 
 

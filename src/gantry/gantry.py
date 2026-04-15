@@ -134,18 +134,37 @@ class Gantry:
             self.logger.error("Error homing gantry: %s", exc)
             raise
 
-    def move_to(self, x: float, y: float, z: float) -> None:
-        """Move to absolute user-space coordinates."""
+    def move_to(
+        self,
+        x: float,
+        y: float,
+        z: float,
+        travel_z: Optional[float] = None,
+    ) -> None:
+        """Move to absolute user-space coordinates.
+
+        ``travel_z`` (user space), if given, becomes the Z during XY
+        travel: the gantry lifts/lowers to it at the current XY before
+        moving XY, then descends/ascends to the target Z. This is how
+        higher layers (Board, protocol commands) express "travel above
+        this labware" without the mill baking in a machine-wide retract.
+        """
         if self._offline:
             self._offline_coords = {"x": x, "y": y, "z": z}
             return
         assert self._mill is not None
         try:
             machine_x, machine_y, machine_z = to_machine_coordinates(x, y, z)
-            self._mill.safe_move(
-                x_coord=machine_x,
-                y_coord=machine_y,
-                z_coord=machine_z,
+            machine_travel_z = (
+                to_machine_coordinates(0.0, 0.0, travel_z)[2]
+                if travel_z is not None
+                else None
+            )
+            self._mill.move_to_position(
+                x_coordinate=machine_x,
+                y_coordinate=machine_y,
+                z_coordinate=machine_z,
+                travel_z=machine_travel_z,
             )
         except (
             MillConnectionError,
@@ -279,13 +298,6 @@ class Gantry:
         assert self._mill is not None
         if self._mill.ser_mill is not None:
             self._mill.ser_mill.timeout = timeout
-
-    def set_safe_z(self, z: float) -> None:
-        """Set the clearance height used by Mill.safe_move for XY travel."""
-        if self._offline:
-            return
-        assert self._mill is not None
-        self._mill.max_z_height = z
 
     def zero_coordinates(self) -> None:
         """Zero the work coordinate system at the current position."""

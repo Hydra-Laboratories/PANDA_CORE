@@ -42,7 +42,6 @@ class TestCNCDriverLogic(unittest.TestCase):
         """Test generation of G-code commands."""
         # Setup mock mill with basic config
         mill = Mill()
-        mill.max_z_height = 0.0
         mill.safe_z_height = -5.0
         
         # Test 1: Simple XY move (current Z is safe)
@@ -73,6 +72,50 @@ class TestCNCDriverLogic(unittest.TestCase):
         self.assertIn("G01 X10.0 F2000", commands_unsafe)
         self.assertIn("G01 Y10.0 F2000", commands_unsafe)
         self.assertNotIn("G01 X10.0 Y10.0", commands_unsafe)
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_generate_transit_commands_lifts_traverses_descends(
+        self, mock_cmd_logger, mock_mill_logger, mock_serial,
+    ):
+        """Transit: lift to travel_z, XY travel, descend to target z.
+
+        Models an inter-well scan move: start low at well_i, hop over to
+        well_j at safe-approach height, end there. The mill must emit
+        three G-code lines in that order.
+        """
+        mill = Mill()
+        mill.safe_z_height = -10.0
+
+        current = Coordinates(-100.0, -50.0, -78.0)  # machine space, at well_i action z
+        target = Coordinates(-110.0, -50.0, -85.0)   # well_j at approach z
+        commands = mill._generate_transit_commands(current, target, travel_z=-85.0)
+
+        self.assertEqual(commands, [
+            "G01 Z-85.0 F2000",         # lift to travel_z at well_i.xy
+            "G01 X-110.0 Y-50.0 F2000", # XY travel at travel_z
+            # target.z == travel_z, final descent skipped.
+        ])
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_generate_transit_commands_skips_lift_when_already_at_travel_z(
+        self, mock_cmd_logger, mock_mill_logger, mock_serial,
+    ):
+        """Already at travel_z: no lift, just XY then descent to target."""
+        mill = Mill()
+        mill.safe_z_height = -10.0
+
+        current = Coordinates(-100.0, -50.0, -85.0)
+        target = Coordinates(-110.0, -50.0, -90.0)
+        commands = mill._generate_transit_commands(current, target, travel_z=-85.0)
+
+        self.assertEqual(commands, [
+            "G01 X-110.0 Y-50.0 F2000",
+            "G01 Z-90.0 F2000",
+        ])
 
     @patch('gantry.gantry_driver.driver.serial.Serial')
     @patch('gantry.gantry_driver.driver.set_up_mill_logger')
