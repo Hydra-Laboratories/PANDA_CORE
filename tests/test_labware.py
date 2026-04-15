@@ -195,7 +195,8 @@ def test_vial_dimensions_and_location_lookup():
         width_mm=28.0,
         height_mm=66.75,
     )
-    assert vial.get_vial_center() == Coordinate3D(x=30.0, y=40.0, z=20.0)
+    assert vial.get_bottom_center() == Coordinate3D(x=30.0, y=40.0, z=20.0)
+    assert vial.get_top_center() == Coordinate3D(x=30.0, y=40.0, z=20.0 + 66.75)
     assert vial.get_initial_position() == Coordinate3D(x=30.0, y=40.0, z=20.0)
 
 

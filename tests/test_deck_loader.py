@@ -105,7 +105,7 @@ def test_loaded_vial_has_location_and_volume():
     try:
         result = load_deck_from_yaml(path)
         vial = result["vial_1"]
-        assert vial.get_vial_center().x == pytest.approx(-30.0)
+        assert vial.get_bottom_center().x == pytest.approx(-30.0)
         assert vial.model_name == "standard_1_5ml_vial"
         assert vial.capacity_ul == pytest.approx(1500.0)
         assert vial.working_volume_ul == pytest.approx(1200.0)

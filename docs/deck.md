@@ -108,13 +108,42 @@ Top-level `a1` is still accepted for backward compatibility, but new deck files 
   `well_plate`; tip positions are derived from `a1`/`a2` + pitch offsets
   rather than listed explicitly. Tracks per-tip occupancy via
   `tip_present`.
-- **`vial`** — single vial with a `location`. Referenced by labware key
-  (e.g. `vial_1`).
-- **`vial_holder`** — physical rack that seats multiple vials at fixed
-  offsets. Holds nested `Vial` instances at the seat height above the
-  holder anchor.
-- **`well_plate_holder`** — physical fixture that seats a well plate at a
-  fixed z above the holder anchor. Holds one nested `WellPlate`.
+- **`vial`** — single vial with a `location` (bottom-center X/Y/Z).
+  Referenced by labware key (e.g. `vial_1`). `Vial.get_bottom_center()` and
+  `Vial.get_top_center()` return the seat-surface and rim coordinates.
+- **`vial_holder`** — physical rack that seats multiple vials.
+  Each contained vial is defined once as a top-level `vial` entry with an
+  explicit `z`, then the holder references it by name:
+
+    ```yaml
+    vial_holder:
+      type: vial_holder
+      name: reagent_vials
+      location: { x: 17.1, y: 132.9, z: 164.0 }
+      vials: [vial_1, vial_2, vial_3]
+    ```
+
+    The loader populates `VialHolder.vials: Dict[str, Vial]` (keyed by vial
+    name) and sets the back-reference `Vial.holder` on each contained vial.
+    It also validates that each vial's `location.z` equals
+    `holder.location.z + holder.labware_seat_height_from_bottom_mm`, raising
+    a `DeckLoaderError` on drift. Use `VialHolder.get_vial_top_z(name)` to
+    get the absolute deck Z of the rim of a held vial.
+- **`well_plate_holder`** — physical fixture that seats a well plate.
+  The contained plate is a top-level `well_plate` entry referenced by name:
+
+    ```yaml
+    well_plate_holder:
+      type: well_plate_holder
+      name: panda_well_plate_holder
+      location: { x: 221.75, y: 78.5, z: 183.0 }
+      well_plate: panda_plate
+    ```
+
+    The loader populates `WellPlateHolder.well_plate: Optional[WellPlate]`,
+    sets `WellPlate.holder`, and applies the same z-drift validation.
+    Use `WellPlateHolder.get_plate_top_z()` for the absolute deck Z of the
+    top surface of the held plate.
 - **`tip_disposal`** — bounding-box fixture for used-tip disposal.
 
 ## Adding a new definition

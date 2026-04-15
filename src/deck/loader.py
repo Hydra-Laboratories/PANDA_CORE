@@ -26,8 +26,6 @@ from .labware.well_plate_holder import WellPlateHolder
 from .errors import DeckLoaderError
 from .yaml_schema import (
     DeckYamlSchema,
-    NestedVialYamlEntry,
-    NestedWellPlateYamlEntry,
     TipDisposalYamlEntry,
     TipRackYamlEntry,
     VialHolderYamlEntry,
@@ -141,6 +139,10 @@ def _resolve_load_names(raw: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(labware, dict):
         return raw
 
+    # Cache the supported-definitions list once per call; get_supported_
+    # definitions re-reads registry.yaml from disk each invocation.
+    supported = get_supported_definitions()
+
     expanded: Dict[str, Dict[str, Any]] = {}
     for deck_key, entry in labware.items():
         if not isinstance(entry, dict) or "load_name" not in entry:
@@ -148,16 +150,17 @@ def _resolve_load_names(raw: Dict[str, Any]) -> Dict[str, Any]:
             continue
 
         load_name = entry["load_name"]
-        try:
-            base = load_definition_config(load_name)
-        except (ValueError, FileNotFoundError) as exc:
+        if load_name not in supported:
             raise DeckLoaderError(
                 f"❌ Unknown `load_name: '{load_name}'` in deck entry "
                 f"'{deck_key}'.\n"
-                f"How to fix: use one of {get_supported_definitions()}, or "
-                f"add a new folder + registry entry under "
-                f"`src/deck/labware/definitions/`."
-            ) from exc
+                f"How to fix: use one of {supported}, or add a new folder + "
+                f"registry entry under `src/deck/labware/definitions/`."
+            )
+        # Malformed definition configs / missing files propagate with their
+        # native message; they indicate a definition-package bug, not a
+        # user-facing "unknown name" situation.
+        base = load_definition_config(load_name)
 
         # Shallow merge: user fields override config fields. Drop load_name.
         merged: Dict[str, Any] = dict(base)
@@ -362,79 +365,131 @@ def _build_holder(
         context=f"{entry.type} '{entry.name}'",
     )
     kwargs = _entry_kwargs_for_model(entry, model_class)
+    # The YAML layer represents holder→labware references as name strings
+    # (List[str] / Optional[str]), but the typed Python fields
+    # (Dict[str, Vial] / Optional[WellPlate]) are resolved in pass 2 of
+    # the loader. Drop these name-valued keys here so they don't reach the
+    # typed constructor. A deliberate per-type check: if a future holder
+    # grows a new reference field, the loader must be updated.
+    if isinstance(entry, VialHolderYamlEntry):
+        kwargs.pop("vials", None)
+    if isinstance(entry, WellPlateHolderYamlEntry):
+        kwargs.pop("well_plate", None)
     kwargs["location"] = _point_to_coord(entry.location, z_value=resolved_z)
     kwargs["slots"] = _build_holder_slots(entry.slots, default_z=resolved_z)
-    holder = model_class(**kwargs)
+    return model_class(**kwargs)
 
-    seat_height = getattr(holder, "labware_seat_height_from_bottom_mm", None)
-    contained_labware: Dict[str, Labware] = {}
-    if seat_height is not None:
-        contained_z = holder.location.z + seat_height
-        if isinstance(entry, VialHolderYamlEntry):
-            contained_labware = {
-                vial_key: _build_nested_vial(
-                    vial_key,
-                    vial_entry,
-                    resolved_z=contained_z,
-                )
-                for vial_key, vial_entry in entry.vials.items()
-            }
-        elif isinstance(entry, WellPlateHolderYamlEntry) and entry.well_plate is not None:
-            contained_labware["plate"] = _build_nested_well_plate(
-                "plate",
-                entry.well_plate,
-                resolved_z=contained_z,
+
+def _resolve_vial_holder_references(
+    deck_key: str,
+    entry: VialHolderYamlEntry,
+    holder: "VialHolder",
+    labware: Dict[str, Labware],
+    claimed: Dict[str, str],
+) -> None:
+    """Resolve vial_holder.vials name refs and assign the typed dict.
+
+    Existence, correct-type, and cross-holder single-ownership checks run
+    here because they require the full deck inventory. The drift check,
+    back-reference assignment, and orphan back-reference clearing all happen
+    inside ``VialHolder``'s own validator when ``vials`` is assigned below.
+    ``VialHolder.contained_labware`` is derived from ``vials`` via
+    ``_iter_contained_labware``; no separate mirror write is needed.
+    """
+    resolved: Dict[str, Vial] = {}
+    for vial_name in entry.vials:
+        if vial_name not in labware:
+            raise DeckLoaderError(
+                f"❌ vial_holder '{deck_key}' references unknown vial '{vial_name}'.\n"
+                f"How to fix: define a top-level labware entry of type: vial with name '{vial_name}'."
             )
+        target = labware[vial_name]
+        if not isinstance(target, Vial):
+            raise DeckLoaderError(
+                f"❌ vial_holder '{deck_key}' references '{vial_name}', "
+                f"which is not a vial (got {type(target).__name__}).\n"
+                f"How to fix: only vial labware may be listed under vial_holder.vials."
+            )
+        if vial_name in claimed:
+            raise DeckLoaderError(
+                f"❌ vial '{vial_name}' is referenced by both "
+                f"'{claimed[vial_name]}' and '{deck_key}'.\n"
+                f"How to fix: each vial may belong to at most one holder."
+            )
+        claimed[vial_name] = deck_key
+        resolved[vial_name] = target
 
-    holder.contained_labware = contained_labware
-    return holder
+    try:
+        holder.vials = resolved
+    except ValueError as exc:
+        # Let the holder validator's message speak for itself — it already
+        # names the specific invariant (drift, slot_count, seat-height,
+        # name mismatch) that failed, each with its own actionable detail.
+        raise DeckLoaderError(f"❌ vial_holder '{deck_key}': {exc}") from exc
 
 
-def _build_nested_vial(
-    vial_key: str,
-    entry: NestedVialYamlEntry,
-    *,
-    resolved_z: float,
-) -> Vial:
-    return Vial(
-        name=entry.name or vial_key,
-        model_name=entry.model_name,
-        height_mm=entry.height_mm,
-        diameter_mm=entry.diameter_mm,
-        location=Coordinate3D(
-            x=entry.location.x,
-            y=entry.location.y,
-            z=resolved_z,
-        ),
-        capacity_ul=entry.capacity_ul,
-        working_volume_ul=entry.working_volume_ul,
-    )
+def _resolve_well_plate_holder_reference(
+    deck_key: str,
+    entry: WellPlateHolderYamlEntry,
+    holder: "WellPlateHolder",
+    labware: Dict[str, Labware],
+    claimed: Dict[str, str],
+) -> None:
+    """Resolve well_plate_holder.well_plate name ref and assign the typed field.
 
+    Existence, correct-type, single-ownership, and "height_mm must be set"
+    checks run here to surface YAML-specific "How to fix" guidance. The
+    z-drift check and back-reference management happen inside
+    ``WellPlateHolder``'s validator when ``well_plate`` is assigned below;
+    the height_mm check is repeated there as a defence-in-depth guarantee
+    for programmatic callers that construct the holder directly.
+    ``contained_labware`` is derived via ``_iter_contained_labware``.
+    """
+    if entry.well_plate is None:
+        return
 
-def _build_nested_well_plate(
-    plate_key: str,
-    entry: NestedWellPlateYamlEntry,
-    *,
-    resolved_z: float,
-) -> WellPlate:
-    return WellPlate(
-        name=entry.name or plate_key,
-        model_name=entry.model_name,
-        length_mm=entry.length_mm,
-        width_mm=entry.width_mm,
-        height_mm=entry.height_mm,
-        rows=entry.rows,
-        columns=entry.columns,
-        wells=_derive_wells_from_calibration(entry, resolved_z=resolved_z),
-        capacity_ul=entry.capacity_ul,
-        working_volume_ul=entry.working_volume_ul,
-    )
+    plate_name = entry.well_plate
+    if plate_name not in labware:
+        raise DeckLoaderError(
+            f"❌ well_plate_holder '{deck_key}' references unknown well_plate '{plate_name}'.\n"
+            f"How to fix: define a top-level labware entry of type: well_plate with name '{plate_name}'."
+        )
+    target = labware[plate_name]
+    if not isinstance(target, WellPlate):
+        raise DeckLoaderError(
+            f"❌ well_plate_holder '{deck_key}' references '{plate_name}', "
+            f"which is not a well_plate (got {type(target).__name__}).\n"
+            f"How to fix: only well_plate labware may be assigned to well_plate_holder.well_plate."
+        )
+    if plate_name in claimed:
+        raise DeckLoaderError(
+            f"❌ well_plate '{plate_name}' is referenced by both "
+            f"'{claimed[plate_name]}' and '{deck_key}'.\n"
+            f"How to fix: each well plate may belong to at most one holder."
+        )
+    if target.height_mm is None:
+        raise DeckLoaderError(
+            f"❌ well_plate '{plate_name}' is held by '{deck_key}' but has no "
+            "height_mm; top-Z calculations will fail at runtime.\n"
+            "How to fix: set `height_mm` on the well_plate YAML entry."
+        )
+
+    claimed[plate_name] = deck_key
+    try:
+        holder.well_plate = target
+    except ValueError as exc:
+        raise DeckLoaderError(f"❌ well_plate_holder '{deck_key}': {exc}") from exc
 
 
 def _build_deck_from_raw(raw: dict[str, Any], *, total_z_height: float | None = None) -> Deck:
     raw = _resolve_load_names(raw)
     schema = DeckYamlSchema.model_validate(raw)
     labware: Dict[str, Labware] = {}
+
+    # Pass 1: build non-holder labware plus holders that don't reference
+    # other labware by name (tip_rack, tip_disposal, wall). Vial/plate
+    # holders are deferred so their referenced vials/plates exist first.
+    deferred_holders: list[tuple[str, Any]] = []
     for name, entry in schema.labware.items():
         if isinstance(entry, WellPlateYamlEntry):
             labware[name] = _build_well_plate(entry, total_z_height=total_z_height)
@@ -462,20 +517,40 @@ def _build_deck_from_raw(raw: dict[str, Any], *, total_z_height: float | None = 
                     z=entry.corner_2.z if entry.corner_2.z is not None else 0.0,
                 ),
             )
-        elif isinstance(entry, WellPlateHolderYamlEntry):
-            labware[name] = _build_holder(
-                entry,
-                total_z_height=total_z_height,
-                model_class=WellPlateHolder,
-            )
-        elif isinstance(entry, VialHolderYamlEntry):
-            labware[name] = _build_holder(
-                entry,
-                total_z_height=total_z_height,
-                model_class=VialHolder,
-            )
+        elif isinstance(entry, (VialHolderYamlEntry, WellPlateHolderYamlEntry)):
+            if isinstance(entry, VialHolderYamlEntry):
+                holder = _build_holder(
+                    entry,
+                    total_z_height=total_z_height,
+                    model_class=VialHolder,
+                )
+            else:
+                holder = _build_holder(
+                    entry,
+                    total_z_height=total_z_height,
+                    model_class=WellPlateHolder,
+                )
+            labware[name] = holder
+            deferred_holders.append((name, entry))
         else:
-            raise TypeError(f"Unsupported deck labware entry type: {type(entry).__name__}")
+            raise DeckLoaderError(
+                f"❌ Internal loader error: unsupported deck labware entry type "
+                f"'{type(entry).__name__}'. This indicates a schema/loader mismatch; "
+                "please file a bug."
+            )
+
+    # Pass 2: resolve holder→labware references by name.
+    claimed: Dict[str, str] = {}
+    for deck_key, entry in deferred_holders:
+        holder = labware[deck_key]
+        # Pass 1 dispatch already constructed each deferred holder via
+        # model_class=VialHolder / WellPlateHolder, so the runtime types
+        # below are guaranteed — no defensive isinstance re-check needed.
+        if isinstance(entry, VialHolderYamlEntry):
+            _resolve_vial_holder_references(deck_key, entry, holder, labware, claimed)
+        else:
+            _resolve_well_plate_holder_reference(deck_key, entry, holder, labware, claimed)
+
     return Deck(labware)
 
 
@@ -501,11 +576,21 @@ def load_deck_from_yaml_safe(
     """
     Load deck YAML with user-friendly exception formatting.
 
+    Already-formatted :class:`DeckLoaderError`s are re-raised untouched so the
+    caller sees the resolver's "How to fix" guidance directly. Pydantic
+    validation errors, YAML parse errors, and ``FileNotFoundError`` (the
+    user-actionable "wrong path" case) are wrapped with a concise message.
+    Other OS errors (``PermissionError``, ``IsADirectoryError``, etc.) and
+    unexpected programming bugs are left to propagate with their native
+    tracebacks, which are more useful than a generic envelope.
+
     Raises:
         DeckLoaderError: concise, actionable message intended for CLI/UX output.
     """
     resolved_path = Path(path)
     try:
         return load_deck_from_yaml(resolved_path, total_z_height=total_z_height)
-    except Exception as exc:
+    except DeckLoaderError:
+        raise
+    except (ValidationError, yaml.YAMLError, FileNotFoundError) as exc:
         raise DeckLoaderError(_format_loader_exception(resolved_path, exc)) from exc

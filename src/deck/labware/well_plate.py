@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from .labware import BoundingBoxGeometry, Coordinate3D, Labware
+
+if TYPE_CHECKING:
+    from .well_plate_holder import WellPlateHolder
 
 
 class WellPlate(Labware):
@@ -21,7 +24,10 @@ class WellPlate(Labware):
     # Geometry — optional metadata, not used for well position computation.
     length_mm: Optional[float] = Field(None, description="Overall plate length in millimeters.")
     width_mm: Optional[float] = Field(None, description="Overall plate width in millimeters.")
-    height_mm: Optional[float] = Field(None, description="Z position of the plate surface (absolute WPos).")
+    height_mm: Optional[float] = Field(
+        None,
+        description="Overall plate thickness in millimeters (bottom surface to top surface).",
+    )
     rows: int = Field(
         ...,
         gt=0,
@@ -36,6 +42,12 @@ class WellPlate(Labware):
     # Volume — optional metadata.
     capacity_ul: Optional[float] = Field(None, description="Well capacity in microliters.")
     working_volume_ul: Optional[float] = Field(None, description="Working volume per well in microliters.")
+    holder: Optional["WellPlateHolder"] = Field(
+        default=None,
+        exclude=True,
+        repr=False,
+        description="WellPlateHolder that contains this plate; populated by the deck loader.",
+    )
 
     @field_validator("name")
     def _validate_non_empty_text(cls, value: str) -> str:
@@ -54,7 +66,7 @@ class WellPlate(Labware):
             raise ValueError("working_volume_ul must be <= capacity_ul.")
         return self
 
-    @field_validator("length_mm", "width_mm")
+    @field_validator("length_mm", "width_mm", "height_mm")
     def _validate_positive_dimension(cls, value: Optional[float], info):  # type: ignore[override]
         if value is not None and value <= 0:
             raise ValueError(f"{info.field_name} must be positive.")

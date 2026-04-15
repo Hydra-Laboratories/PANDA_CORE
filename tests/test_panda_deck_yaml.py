@@ -20,12 +20,18 @@ def test_repository_panda_deck_yaml_loads_with_expected_reference_points():
     assert deck.resolve("tip_rack_a.O2").x == pytest.approx(120.4)
 
     assert isinstance(deck["well_plate_holder"], WellPlateHolder)
-    assert deck.resolve("well_plate_holder.plate.A1") == pytest.approx(
-        deck.resolve("well_plate_holder.plate")
+    assert deck.resolve("well_plate_holder.panda_plate.A1") == pytest.approx(
+        deck.resolve("well_plate_holder.panda_plate")
     )
-    assert deck.resolve("well_plate_holder.plate.A1").z == pytest.approx(188.0)
-    assert deck.resolve("well_plate_holder.plate.B1").y == pytest.approx(87.5)
+    assert deck.resolve("well_plate_holder.panda_plate.A1").z == pytest.approx(188.0)
+    assert deck.resolve("well_plate_holder.panda_plate.B1").y == pytest.approx(87.5)
+    # Typed accessors + top-Z helper reflect the new design.
+    assert deck["well_plate_holder"].well_plate is deck["panda_plate"]
+    assert deck["panda_plate"].holder is deck["well_plate_holder"]
 
     assert isinstance(deck["vial_holder"], VialHolder)
     assert deck.resolve("vial_holder.vial_1").z == pytest.approx(182.0)
     assert deck.resolve("vial_holder.vial_9").y == pytest.approx(264.9)
+    assert deck["vial_holder"].vials["vial_1"] is deck["vial_1"]
+    assert deck["vial_1"].holder is deck["vial_holder"]
+    assert deck["vial_holder"].get_vial_top_z("vial_1") == pytest.approx(182.0 + 57.0)
