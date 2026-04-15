@@ -1,7 +1,7 @@
 """Coordinate translation helpers for the gantry boundary.
 
-X/Y use the same sign convention on both sides of the boundary.
-Z remains inverted between user-facing and machine-facing coordinates.
+X/Y use the same sign convention on both sides of the boundary, while Z
+remains inverted between user-facing and machine-facing coordinates.
 """
 
 from __future__ import annotations

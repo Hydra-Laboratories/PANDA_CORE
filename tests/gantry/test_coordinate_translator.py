@@ -12,11 +12,11 @@ from gantry.coordinate_translator import (
 from gantry.gantry_driver.instruments import Coordinates
 
 
-def test_to_user_coordinates_preserves_all_tuple_axes() -> None:
+def test_to_user_coordinates_preserves_xy_and_flips_z() -> None:
     assert to_user_coordinates(150.0, 100.0, -40.0) == (150.0, 100.0, 40.0)
 
 
-def test_to_machine_coordinates_preserves_all_tuple_axes() -> None:
+def test_to_machine_coordinates_preserves_xy_and_flips_z() -> None:
     assert to_machine_coordinates(150.0, 100.0, 40.0) == (150.0, 100.0, -40.0)
 
 

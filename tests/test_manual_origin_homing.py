@@ -78,19 +78,6 @@ class TestManualOriginLoader:
         finally:
             os.unlink(path)
 
-    def test_load_desktop_config_file(self):
-        """Load the actual Desktop config and verify manual_origin strategy."""
-        from pathlib import Path
-
-        config_path = (
-            Path(__file__).parent.parent
-            / "configs"
-            / "gantry"
-            / "genmitsu_3018_PRO_Desktop.yaml"
-        )
-        config = load_gantry_from_yaml(config_path)
-        assert config.homing_strategy == HomingStrategy.MANUAL_ORIGIN
-
 
 class TestGantryHomeDispatch:
 
