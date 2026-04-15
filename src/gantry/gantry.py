@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 class Gantry:
     """High-level gantry wrapper around the low-level Mill driver.
 
-    User-facing coordinates are positive-space XYZ. The underlying GRBL
-    controller still operates in negative machine space, so this wrapper
-    handles translation at the boundary.
+    X/Y coordinates are passed to the controller unchanged. Z remains
+    inverted at the boundary so higher-level code can keep the existing
+    vertical convention without depending directly on the low-level driver.
     """
 
     def __init__(
@@ -135,7 +135,7 @@ class Gantry:
             raise
 
     def move_to(self, x: float, y: float, z: float) -> None:
-        """Move to absolute user-space coordinates."""
+        """Move to absolute gantry coordinates."""
         if self._offline:
             self._offline_coords = {"x": x, "y": y, "z": z}
             return
@@ -165,7 +165,7 @@ class Gantry:
         z: float = 0,
         feed_rate: float = 2000,
     ) -> None:
-        """Jog by a relative user-space offset."""
+        """Jog by a relative gantry offset."""
         if self._offline:
             self._offline_coords = {
                 "x": self._offline_coords["x"] + x,
@@ -175,7 +175,7 @@ class Gantry:
             return
         assert self._mill is not None
         try:
-            self._mill.jog(x=-x, y=-y, z=-z, feed_rate=feed_rate)
+            self._mill.jog(x=x, y=y, z=-z, feed_rate=feed_rate)
         except (MillConnectionError, CommandExecutionError) as exc:
             self.logger.error("Jog error: %s", exc)
             raise
@@ -225,7 +225,7 @@ class Gantry:
             raise
 
     def get_status(self) -> str:
-        """Return the current status string translated to user-space coords."""
+        """Return the current status string with normalized coordinates."""
         if self._offline:
             return "Idle"
         assert self._mill is not None
@@ -247,7 +247,7 @@ class Gantry:
             raise
 
     def get_coordinates(self) -> Dict[str, float]:
-        """Return current user-space coordinates as a dict."""
+        """Return current gantry coordinates as a dict."""
         if self._offline:
             return dict(self._offline_coords)
         assert self._mill is not None

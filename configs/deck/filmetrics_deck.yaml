@@ -11,10 +11,14 @@ labware:
     length_mm: 127.71
     width_mm: 85.43
     height_mm: 14.10
+    x_offset_mm: -9.0
+    y_offset_mm: -9.0
     calibration:
       a1:
-        x: 10.0
-        y: 10.0
+        x: 261.0
+        y: 122.0
+        z: 20.0
       a2:
-        x: 10.0
-        y: 19.0
+        x: 261.0
+        y: 113.0
+        z: 20.0

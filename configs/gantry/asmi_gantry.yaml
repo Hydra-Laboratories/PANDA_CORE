@@ -1,6 +1,6 @@
 # ASMI gantry configuration.
 # Genmitsu 3018 PRO with ASMI indenter mounted.
-# After homing + G92 zero, all coordinates are negative from home.
+# After homing + G92 zero, coordinates increase positively from home.
 
 serial_port: /dev/ttyUSB0
 cnc:

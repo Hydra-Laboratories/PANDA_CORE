@@ -21,6 +21,7 @@ This repository contains code to control a CNC router (mill) using a Python-base
 1.  **Connecting**: Always use the context manager `with Mill() as mill:` to ensure proper connection and cleanup.
 2.  **Moving**: Use `mill.move_to_position(x, y, z)` for safe moves. The driver handles validation against the working volume (negative coordinates mostly).
     - **Coordinates**: The gantry typically operates in negative space relative to Home (0,0,0). e.g., X goes from 0 to -415.
+    - **Current XYZ convention**: In the high-level `src/gantry` wrapper, `X` and `Y` are passed to GRBL unchanged, while `Z` is sign-flipped at the wrapper boundary. A user-facing move `(x, y, z)` becomes machine `(x, y, -z)`, and reported machine coordinates are exposed back to callers as `(x, y, -z_machine)`.
 3.  **Offsets**: Instruments have offsets managed by `InstrumentManager`.
 
 ### Instruments (`src/instruments`)
@@ -119,7 +120,7 @@ A modular system for executing experiment sequences defined in code or YAML.
 ### Gantry Config (`src/gantry`)
 Gantry YAML loader and domain model for CNC gantry working volume and homing strategy.
 
-- **Coordinate convention**: All user-facing XYZ coordinates are positive-space. The `Gantry` wrapper translates user-space `(+)` coordinates to machine-space `(-)` GRBL coordinates internally.
+- **Coordinate convention**: `X` and `Y` are user-facing positive-space and are sent to the controller unchanged. `Z` uses the opposite sign across the `Gantry` wrapper boundary: user-facing `z` is transformed to machine `-z`, and machine `z` is exposed back to callers as `-z_machine`.
 - **`yaml_schema.py`**: `GantryYamlSchema` with strict Pydantic validation (working volume bounds, homing strategy, serial port, and `cnc.total_z_height`).
 - **`gantry_config.py`**: `GantryConfig` and `WorkingVolume` frozen dataclasses. `WorkingVolume.contains(x, y, z)` checks if a point is within bounds (inclusive). `GantryConfig.total_z_height` is the top-reference height used for labware height conversion. `HomingStrategy` enum: `STANDARD`, `XY_HARD_LIMITS`, `MANUAL_ORIGIN`.
 - **`loader.py`**: `load_gantry_from_yaml(path)` and `load_gantry_from_yaml_safe(path)`.

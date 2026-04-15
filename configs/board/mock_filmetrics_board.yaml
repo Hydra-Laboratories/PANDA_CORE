@@ -2,7 +2,7 @@
 
 instruments:
   uvvis:
-      type: uvvis_ccs
+      type: uvvis_ccs # USING MOCK UVVIS AS MOCK FILMETRICS
       offline: true
       vendor: thorlabs
       offset_x: 0.0

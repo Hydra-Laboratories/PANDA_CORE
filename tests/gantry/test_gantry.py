@@ -27,8 +27,8 @@ class TestGantry(unittest.TestCase):
         gantry = Gantry(config=self.config)
         gantry.move_to(10, 20, 30)
         mock_mill.safe_move.assert_called_with(
-            x_coord=-10.0,
-            y_coord=-20.0,
+            x_coord=10.0,
+            y_coord=20.0,
             z_coord=-30.0,
         )
 

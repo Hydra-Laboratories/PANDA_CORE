@@ -1,4 +1,4 @@
-"""Tests for Gantry user/machine translation boundary."""
+"""Tests for Gantry coordinate pass-through behavior."""
 
 from __future__ import annotations
 
@@ -23,21 +23,21 @@ def _config() -> dict:
 
 
 @patch("gantry.gantry.Mill")
-def test_move_to_translates_user_to_machine_coordinates(mock_mill_cls) -> None:
+def test_move_to_passes_coordinates_through(mock_mill_cls) -> None:
     gantry = Gantry(config=_config())
     gantry.move_to(150.0, 100.0, 40.0)
     mock_mill_cls.return_value.safe_move.assert_called_once_with(
-        x_coord=-150.0,
-        y_coord=-100.0,
+        x_coord=150.0,
+        y_coord=100.0,
         z_coord=-40.0,
     )
 
 
 @patch("gantry.gantry.Mill")
-def test_get_coordinates_translates_machine_to_user(mock_mill_cls) -> None:
+def test_get_coordinates_passes_machine_coordinates_through(mock_mill_cls) -> None:
     mock_mill_cls.return_value.current_coordinates.return_value = SimpleNamespace(
-        x=-150.0,
-        y=-100.0,
+        x=150.0,
+        y=100.0,
         z=-40.0,
     )
     gantry = Gantry(config=_config())
@@ -46,9 +46,9 @@ def test_get_coordinates_translates_machine_to_user(mock_mill_cls) -> None:
 
 
 @patch("gantry.gantry.Mill")
-def test_get_status_translates_visible_coordinates(mock_mill_cls) -> None:
+def test_get_status_preserves_visible_coordinates(mock_mill_cls) -> None:
     mock_mill_cls.return_value.current_status.return_value = (
-        "<Idle|MPos:-150.000,-100.000,-40.000|Bf:15,127|FS:0,0>"
+        "<Idle|MPos:150.000,100.000,-40.000|Bf:15,127|FS:0,0>"
     )
     gantry = Gantry(config=_config())
     status = gantry.get_status()
@@ -71,18 +71,18 @@ def test_boundary_translation(mock_mill_cls) -> None:
     gantry = Gantry(config=_config())
     gantry.move_to(300.0, 200.0, 80.0)
     mock_mill_cls.return_value.safe_move.assert_called_once_with(
-        x_coord=-300.0,
-        y_coord=-200.0,
+        x_coord=300.0,
+        y_coord=200.0,
         z_coord=-80.0,
     )
 
 
 @patch("gantry.gantry.Mill")
-def test_jog_negates_user_coordinates(mock_mill_cls) -> None:
+def test_jog_preserves_user_coordinates(mock_mill_cls) -> None:
     gantry = Gantry(config=_config())
     gantry.jog(x=5.0, y=3.0, z=1.0)
     mock_mill_cls.return_value.jog.assert_called_once_with(
-        x=-5.0, y=-3.0, z=-1.0, feed_rate=2000,
+        x=5.0, y=3.0, z=-1.0, feed_rate=2000,
     )
 
 

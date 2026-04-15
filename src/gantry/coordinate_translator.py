@@ -1,7 +1,7 @@
-"""Coordinate translation between user and machine spaces.
+"""Coordinate translation helpers for the gantry boundary.
 
-User-facing coordinates are positive-down XYZ.
-Machine-facing (GRBL) coordinates are negative-space XYZ.
+X/Y use the same sign convention on both sides of the boundary.
+Z remains inverted between user-facing and machine-facing coordinates.
 """
 
 from __future__ import annotations
@@ -19,11 +19,18 @@ _STATUS_COORD_PATTERN = re.compile(
 )
 
 
-def _negate(value: float) -> float:
-    translated = -float(value)
-    if abs(translated) < 1e-12:
+def _normalize(value: float) -> float:
+    normalized = float(value)
+    if abs(normalized) < 1e-12:
         return 0.0
-    return translated
+    return normalized
+
+
+def _negate(value: float) -> float:
+    negated = -float(value)
+    if abs(negated) < 1e-12:
+        return 0.0
+    return negated
 
 
 def _format_like(original_token: str, value: float) -> str:
@@ -52,10 +59,14 @@ def to_user_coordinates(
 ) -> tuple[float, float, float] | Coordinates:
     """Translate machine-space coordinates to user-space coordinates."""
     if isinstance(x_or_coords, Coordinates):
-        return Coordinates(_negate(x_or_coords.x), _negate(x_or_coords.y), _negate(x_or_coords.z))
+        return Coordinates(
+            _normalize(x_or_coords.x),
+            _normalize(x_or_coords.y),
+            _negate(x_or_coords.z),
+        )
     if y is None or z is None:
         raise TypeError("Expected x, y, z floats when not passing a Coordinates object.")
-    return (_negate(x_or_coords), _negate(y), _negate(z))
+    return (_normalize(x_or_coords), _normalize(y), _negate(z))
 
 
 @overload
@@ -74,15 +85,23 @@ def to_machine_coordinates(
     z: float | None = None,
 ) -> tuple[float, float, float] | Coordinates:
     """Translate user-space coordinates to machine-space coordinates."""
-    return to_user_coordinates(x_or_coords, y, z)
+    if isinstance(x_or_coords, Coordinates):
+        return Coordinates(
+            _normalize(x_or_coords.x),
+            _normalize(x_or_coords.y),
+            _negate(x_or_coords.z),
+        )
+    if y is None or z is None:
+        raise TypeError("Expected x, y, z floats when not passing a Coordinates object.")
+    return (_normalize(x_or_coords), _normalize(y), _negate(z))
 
 
 def translate_status_string(status: str) -> str:
-    """Translate WPos/MPos fields in a GRBL status line to user-space values."""
+    """Normalize WPos/MPos fields in a GRBL status line."""
 
     def _replace(match: re.Match[str]) -> str:
-        tx = _format_like(match.group("x"), _negate(float(match.group("x"))))
-        ty = _format_like(match.group("y"), _negate(float(match.group("y"))))
+        tx = _format_like(match.group("x"), _normalize(float(match.group("x"))))
+        ty = _format_like(match.group("y"), _normalize(float(match.group("y"))))
         tz = _format_like(match.group("z"), _negate(float(match.group("z"))))
         return f"{match.group('label')}{tx},{ty},{tz}"
 
