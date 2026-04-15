@@ -12,7 +12,7 @@ rows: 15
 columns: 2
 length_mm: 66.0
 width_mm: 138.0
-height_mm: 22.0
+height_mm: 21.0
 z_pickup: 191.0
 z_drop: 174.8
 calibration:
