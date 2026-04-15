@@ -146,9 +146,22 @@ class TestSetupProtocol:
             )
             assert "vial_1" in context.deck
 
-    def test_setup_accepts_nested_holder_yaml_positions(self):
+    def test_setup_accepts_holder_yaml_positions(self):
+        # vial_1.z = holder.z (20.0) + seat_height (18.0) = 38.0
         deck_yaml = """\
 labware:
+  vial_1:
+    type: vial
+    name: vial_1
+    model_name: 20ml_vial
+    height_mm: 57.0
+    diameter_mm: 28.0
+    location:
+      x: 17.1
+      y: 0.9
+      z: 38.0
+    capacity_ul: 20000.0
+    working_volume_ul: 12000.0
   vial_holder:
     type: vial_holder
     name: panda_vial_holder
@@ -157,15 +170,7 @@ labware:
       y: 132.9
       z: 20.0
     vials:
-      vial_1:
-        model_name: 20ml_vial
-        height_mm: 57.0
-        diameter_mm: 28.0
-        location:
-          x: 17.1
-          y: 0.9
-        capacity_ul: 20000.0
-        working_volume_ul: 12000.0
+      - vial_1
 """
         protocol_yaml = """\
 protocol:
@@ -179,6 +184,8 @@ protocol:
             )
 
             assert "vial_holder" in context.deck
+            assert "vial_1" in context.deck
+            assert context.deck["vial_holder"].vials["vial_1"] is context.deck["vial_1"]
 
     def test_context_has_gantry_config(self):
         with _TempYamlFiles() as f:

@@ -1,129 +1,142 @@
 # Panda deck configuration.
-# Tip coordinates are preserved exactly from `panda.json`.
-# Nested holder children omit z; their experiment z is derived from the holder seat height.
+#
+# Each vial / well plate is defined once at the top level with an explicit z.
+# Holders reference their contained labware by name. The deck loader enforces
+# that each referenced vial/plate's location.z equals
+# holder.location.z + labware_seat_height_from_bottom_mm.
 
 labware:
   tip_rack_a:
     load_name: ursa_tip_rack
-    # ursa_tip_rack's default calibration is already anchored at
-    # (111.9, 2.7) — nothing to override for this rack.
+    # Uses ursa_tip_rack's default calibration.
 
   tip_rack_b:
     load_name: ursa_tip_rack
-    # Second tip rack sits 127 mm further along x; re-anchor calibration.
+    # Second tip rack sits one column further along x; re-anchor calibration.
     calibration:
       a1: { x: 238.9, y: 2.7 }
       a2: { x: 247.4, y: 2.7 }
 
+  panda_plate:
+    type: well_plate
+    name: panda_plate
+    model_name: panda_96_wellplate
+    rows: 8
+    columns: 12
+    height_mm: 14.35
+    calibration:
+      a1: { x: 221.75, y: 78.5, z: 188.0 }
+      a2: { x: 230.75, y: 78.5, z: 188.0 }
+    x_offset_mm: 9.0
+    y_offset_mm: 9.0
+
   well_plate_holder:
     type: well_plate_holder
     name: panda_well_plate_holder
-    # Reference point currently aligned to the contained plate A1 XY.
-    location:
-      x: 221.75
-      y: 78.5
-      z: 183.0
-    well_plate:
-      model_name: panda_96_wellplate
-      rows: 8
-      columns: 12
-      calibration:
-        a1:
-          x: 221.75
-          y: 78.5
-        a2:
-          x: 230.75
-          y: 78.5
-      x_offset_mm: 9.0
-      y_offset_mm: 9.0
+    location: { x: 221.75, y: 78.5, z: 183.0 }
+    well_plate: panda_plate
+
+  vial_1:
+    type: vial
+    name: vial_1
+    model_name: 20ml_vial
+    height_mm: 57.0
+    diameter_mm: 28.0
+    location: { x: 17.1, y: 0.9, z: 182.0 }
+    capacity_ul: 20000.0
+    working_volume_ul: 20000.0
+
+  vial_2:
+    type: vial
+    name: vial_2
+    model_name: 20ml_vial
+    height_mm: 57.0
+    diameter_mm: 28.0
+    location: { x: 17.1, y: 33.9, z: 182.0 }
+    capacity_ul: 20000.0
+    working_volume_ul: 20000.0
+
+  vial_3:
+    type: vial
+    name: vial_3
+    model_name: 20ml_vial
+    height_mm: 57.0
+    diameter_mm: 28.0
+    location: { x: 17.1, y: 66.9, z: 182.0 }
+    capacity_ul: 20000.0
+    working_volume_ul: 20000.0
+
+  vial_4:
+    type: vial
+    name: vial_4
+    model_name: 20ml_vial
+    height_mm: 57.0
+    diameter_mm: 28.0
+    location: { x: 17.1, y: 99.9, z: 182.0 }
+    capacity_ul: 20000.0
+    working_volume_ul: 20000.0
+
+  vial_5:
+    type: vial
+    name: vial_5
+    model_name: 20ml_vial
+    height_mm: 57.0
+    diameter_mm: 28.0
+    location: { x: 17.1, y: 132.9, z: 182.0 }
+    capacity_ul: 20000.0
+    working_volume_ul: 20000.0
+
+  vial_6:
+    type: vial
+    name: vial_6
+    model_name: 20ml_vial
+    height_mm: 57.0
+    diameter_mm: 28.0
+    location: { x: 17.1, y: 165.9, z: 182.0 }
+    capacity_ul: 20000.0
+    working_volume_ul: 20000.0
+
+  vial_7:
+    type: vial
+    name: vial_7
+    model_name: 20ml_vial
+    height_mm: 57.0
+    diameter_mm: 28.0
+    location: { x: 17.1, y: 198.9, z: 182.0 }
+    capacity_ul: 20000.0
+    working_volume_ul: 20000.0
+
+  vial_8:
+    type: vial
+    name: vial_8
+    model_name: 20ml_vial
+    height_mm: 57.0
+    diameter_mm: 28.0
+    location: { x: 17.1, y: 231.9, z: 182.0 }
+    capacity_ul: 20000.0
+    working_volume_ul: 20000.0
+
+  vial_9:
+    type: vial
+    name: vial_9
+    model_name: 20ml_vial
+    height_mm: 57.0
+    diameter_mm: 28.0
+    location: { x: 17.1, y: 264.9, z: 182.0 }
+    capacity_ul: 20000.0
+    working_volume_ul: 20000.0
 
   vial_holder:
     type: vial_holder
     name: panda_vial_holder
-    # Reference point currently aligned to the longitudinal center of the holder.
-    location:
-      x: 17.1
-      y: 132.9
-      z: 164.0
+    location: { x: 17.1, y: 132.9, z: 164.0 }
     vials:
-      vial_1:
-        model_name: 20ml_vial
-        height_mm: 57.0
-        diameter_mm: 28.0
-        location:
-          x: 17.1
-          y: 0.9
-        capacity_ul: 20000.0
-        working_volume_ul: 20000.0
-      vial_2:
-        model_name: 20ml_vial
-        height_mm: 57.0
-        diameter_mm: 28.0
-        location:
-          x: 17.1
-          y: 33.9
-        capacity_ul: 20000.0
-        working_volume_ul: 20000.0
-      vial_3:
-        model_name: 20ml_vial
-        height_mm: 57.0
-        diameter_mm: 28.0
-        location:
-          x: 17.1
-          y: 66.9
-        capacity_ul: 20000.0
-        working_volume_ul: 20000.0
-      vial_4:
-        model_name: 20ml_vial
-        height_mm: 57.0
-        diameter_mm: 28.0
-        location:
-          x: 17.1
-          y: 99.9
-        capacity_ul: 20000.0
-        working_volume_ul: 20000.0
-      vial_5:
-        model_name: 20ml_vial
-        height_mm: 57.0
-        diameter_mm: 28.0
-        location:
-          x: 17.1
-          y: 132.9
-        capacity_ul: 20000.0
-        working_volume_ul: 20000.0
-      vial_6:
-        model_name: 20ml_vial
-        height_mm: 57.0
-        diameter_mm: 28.0
-        location:
-          x: 17.1
-          y: 165.9
-        capacity_ul: 20000.0
-        working_volume_ul: 20000.0
-      vial_7:
-        model_name: 20ml_vial
-        height_mm: 57.0
-        diameter_mm: 28.0
-        location:
-          x: 17.1
-          y: 198.9
-        capacity_ul: 20000.0
-        working_volume_ul: 20000.0
-      vial_8:
-        model_name: 20ml_vial
-        height_mm: 57.0
-        diameter_mm: 28.0
-        location:
-          x: 17.1
-          y: 231.9
-        capacity_ul: 20000.0
-        working_volume_ul: 20000.0
-      vial_9:
-        model_name: 20ml_vial
-        height_mm: 57.0
-        diameter_mm: 28.0
-        location:
-          x: 17.1
-          y: 264.9
-        capacity_ul: 20000.0
-        working_volume_ul: 20000.0
+      - vial_1
+      - vial_2
+      - vial_3
+      - vial_4
+      - vial_5
+      - vial_6
+      - vial_7
+      - vial_8
+      - vial_9

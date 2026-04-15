@@ -7,6 +7,12 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 from .labware import BoundingBoxGeometry, Coordinate3D, Labware
 
 
+# 1 µm: well below any real-world gantry positioning precision. Any drift
+# larger than this between a held labware's z and the holder's seat surface
+# indicates a configuration bug, not floating-point rounding.
+_SEAT_Z_TOLERANCE_MM = 1e-6
+
+
 class LabwareSlot(Labware):
     """
     Addressable placement point inside a holder.
@@ -75,10 +81,24 @@ class HolderLabware(Labware):
         default_factory=dict,
         description="Optional addressable placement slots defined inside the holder.",
     )
-    contained_labware: Dict[str, Labware] = Field(
-        default_factory=dict,
-        description="Optional nested labware instances whose Z is derived from this holder.",
-    )
+
+    @property
+    def contained_labware(self) -> Dict[str, Labware]:
+        """Nested labware, keyed by labware name.
+
+        Derived from each subclass's typed field (e.g. ``VialHolder.vials``)
+        so the two views cannot drift apart. Subclasses override
+        :meth:`_iter_contained_labware` to contribute their children.
+        """
+        return dict(self._iter_contained_labware())
+
+    def _iter_contained_labware(self) -> Dict[str, Labware]:
+        """Return this holder's contained labware by name.
+
+        Default is empty; subclasses that actually carry nested labware
+        (``VialHolder``, ``WellPlateHolder``) override this.
+        """
+        return {}
 
     @field_validator("name", "model_name")
     def _validate_non_empty_text(cls, value: str) -> str:
@@ -103,13 +123,6 @@ class HolderLabware(Labware):
                 raise ValueError("Holder slot names must be non-empty strings.")
         return value
 
-    @field_validator("contained_labware")
-    def _validate_contained_labware_names(cls, value: Dict[str, Labware]) -> Dict[str, Labware]:
-        for child_name in value:
-            if not child_name.strip():
-                raise ValueError("Contained labware names must be non-empty strings.")
-        return value
-
     @model_validator(mode="after")
     def _validate_labware_support_geometry(self) -> "HolderLabware":
         if self.labware_support_height_mm is not None and self.labware_support_height_mm > self.height_mm:
@@ -122,10 +135,21 @@ class HolderLabware(Labware):
             raise ValueError(
                 "labware_seat_height_from_bottom_mm must be <= labware_support_height_mm."
             )
-        self.geometry = BoundingBoxGeometry(
-            length_mm=self.length_mm,
-            width_mm=self.width_mm,
-            height_mm=self.height_mm,
+        # HolderLabware itself does NOT set validate_assignment=True, but its
+        # subclasses (VialHolder, WellPlateHolder) do. When those subclasses
+        # are constructed, this inherited validator runs under their config;
+        # a plain `self.geometry = ...` assignment would re-trigger the
+        # validator chain and recurse forever. object.__setattr__ bypasses
+        # __setattr__-level validation, which is safe here because the value
+        # is internally computed from already-validated fields.
+        object.__setattr__(
+            self,
+            "geometry",
+            BoundingBoxGeometry(
+                length_mm=self.length_mm,
+                width_mm=self.width_mm,
+                height_mm=self.height_mm,
+            ),
         )
         return self
 

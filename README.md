@@ -37,20 +37,25 @@ Included examples:
 ### 2. Deck (`configs/deck/*.yaml`)
 
 Defines physical labware on the deck. Well plates use two-point calibration
-(`calibration.a1` + `calibration.a2`); vials use a single fixed location.
-Holder fixtures are also supported for collision-aware deck modeling and future
-nesting workflows: `tip_holder`, `tip_disposal`, `well_plate_holder`, and
-`vial_holder`. Exact-position `tip_rack` entries are also supported for pipette
-pickup targets. Holders can define nested contained labware so holder seat
-height contributes directly to experiment Z generation. At runtime, all labware
-now expose shared base-level `geometry` metadata; for current deck models this
-is represented as a bounding box.
+(`calibration.a1` + `calibration.a2`); vials use a single fixed location
+(`location.z` is the bottom-center Z of the vial).
+
+Holder fixtures (`tip_disposal`, `well_plate_holder`, `vial_holder`) model
+collision envelopes and carry references to the labware they hold. Each vial
+or well plate is defined **once at the top level** with an explicit z; the
+holder references it by name. The holder enforces that each referenced
+vial/plate's z matches `holder.location.z + labware_seat_height_from_bottom_mm`
+and raises a clear error on drift.
+
+Exact-position `tip_rack` entries are also supported for pipette pickup
+targets. At runtime, all labware expose shared base-level `geometry` metadata
+(currently a bounding box).
 
 ```yaml
 labware:
-  plate:
+  asmi_plate:
     type: well_plate
-    name: asmi_96_well
+    name: asmi_plate
     model_name: asmi_96_well
     rows: 8
     columns: 12
@@ -60,24 +65,39 @@ labware:
     x_offset_mm: 9.0
     y_offset_mm: 9.0
 
+  # Each vial's location.z must equal
+  # holder.location.z + holder.labware_seat_height_from_bottom_mm.
+  # The holder validator enforces this; mismatches raise at load time.
+  vial_1:
+    type: vial
+    name: vial_1
+    model_name: 20ml_vial
+    height_mm: 57.0
+    diameter_mm: 28.0
+    location: { x: 17.1, y: 0.9, z: 182.0 }
+    capacity_ul: 20000.0
+    working_volume_ul: 18000.0
+
   vial_holder:
     type: vial_holder
     name: reagent_vials
-    location: { x: 180.0, y: 60.0 }
-    height: 20.0
-    vials:
-      vial_1:
-        location: { x: 180.0, y: 60.0 }
-        model_name: 20ml_vial
-        height_mm: 57.0
-        diameter_mm: 28.0
-        capacity_ul: 20000.0
-        working_volume_ul: 18000.0
+    location: { x: 17.1, y: 132.9, z: 164.0 }
+    vials: [vial_1]
 ```
+
+Python API:
+
+- `VialHolder.vials` is `Dict[str, Vial]`, keyed by vial name.
+- `WellPlateHolder.well_plate` is `Optional[WellPlate]`.
+- `VialHolder.get_vial_top_z(name)` and `WellPlateHolder.get_plate_top_z()`
+  return the absolute deck Z of the top of the held labware.
+- `Vial.get_bottom_center()` / `Vial.get_top_center()` return the seated
+  surface and rim coordinates.
+- Each contained labware carries a non-serialized `.holder` back-reference.
 
 Included examples:
 
-- `configs/deck/panda_deck.yaml` — YAML deck config derived from `panda.json`, with two 2x15 tip racks, a nested well plate holder, and a nested vial holder. Contained vial / plate Z positions are generated from holder seat heights.
+- `configs/deck/panda_deck.yaml` — YAML deck config derived from `panda.json`, with two 2x15 tip racks, a well plate holder, and a 9-vial holder referencing nine top-level vial entries.
 
 ### 3. Board (`configs/board/*.yaml`)
 
