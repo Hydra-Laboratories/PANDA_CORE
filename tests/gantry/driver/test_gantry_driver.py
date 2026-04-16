@@ -195,7 +195,6 @@ class TestCNCDriverLogic(unittest.TestCase):
         with patch.object(Mill, 'locate_mill_over_serial', return_value=(mock_serial_instance, '/dev/test')):
             mill = Mill()
             mill.read_mill_config = MagicMock()
-            mill.write_mill_config_file = MagicMock()
             mill.read_working_volume = MagicMock()
             mill.check_for_alarm_state = MagicMock()
             mill.clear_buffers = MagicMock()
@@ -206,6 +205,22 @@ class TestCNCDriverLogic(unittest.TestCase):
             
             self.assertTrue(mill.active_connection)
             self.assertEqual(mill.ser_mill, mock_serial_instance)
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_grbl_settings_reads_live_controller(self, mock_cmd_logger, mock_mill_logger, mock_serial):
+        """Test that grbl_settings issues a live $$ read."""
+        mill = Mill()
+        mill.ser_mill = MagicMock()
+        mill.ser_mill.is_open = True
+        mill.execute_command = MagicMock(return_value={"$130": "400.000"})
+
+        settings = mill.grbl_settings()
+
+        mill.execute_command.assert_called_once_with("$$")
+        self.assertEqual(settings["$130"], "400.000")
+        self.assertEqual(mill.config["$130"], "400.000")
 
     @patch('gantry.gantry_driver.driver.serial.Serial')
     @patch('gantry.gantry_driver.driver.set_up_mill_logger')
