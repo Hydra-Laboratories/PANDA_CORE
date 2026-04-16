@@ -11,11 +11,11 @@ labware:
       a1:
         x: 49.7
         y: 236.8
-        z: 50.0 # z_initial (z_safe)
+        z: 50.0 # well-top Z (positive-down: 50 mm below home)
       a2:
         x: 58.7
         y: 236.8
-        z: 50.0 # z_initial (z_safe)
+        z: 50.0 # well-top Z (positive-down: 50 mm below home)
     # Override: ASMI deck orientation walks columns in -x direction.
     x_offset_mm: 9.0
     # y_offset_mm inherits the 9.0 default from sbs_96_wellplate.

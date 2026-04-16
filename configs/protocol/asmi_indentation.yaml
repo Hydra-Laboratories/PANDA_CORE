@@ -2,16 +2,21 @@
 # Scans the well plate, performing step-by-step indentation at each well.
 # Uses CubOS protocol engine.
 #
+# Coordinate convention (positive-down): user-space Z is 0 at the gantry's
+# home position and grows toward the deck. "Above" = smaller z; "below" =
+# larger z. Indentation steps descend by INCREASING z, capped at z_limit.
+#
 # Flow per well (handled by scan + indentation method):
-#   1. Move to well XY (deck Z + measurement_height offset)
-#   2. Descend to measurement_height, take baseline force readings
-#   3. Step toward z_limit, reading force at each step
-#   4. Stop on force_limit or z_limit
+#   1. Move to well XY at safe_approach_height above labware
+#   2. Descend to measurement_height (absolute z to start the indent)
+#   3. Step z toward z_limit (increasing), reading force at each step
+#   4. Stop on force_limit or z_limit (whichever comes first)
 #
 # Protocol-level flow:
 #   home → scan all wells → move safe_z → home
 
 positions:
+  # Park 50 mm below home, well clear of any labware on the deck.
   safe_z: [0.0, 0.0, 50.0]
 
 protocol:
@@ -24,10 +29,13 @@ protocol:
       instrument: asmi
       method: indentation
       method_kwargs:
+        # Absolute Zs (not offsets). measurement_height is where the
+        # indent starts; z_limit is the deepest the tip is allowed to
+        # reach (must be > measurement_height in positive-down space).
+        measurement_height: 73.0
         z_limit: 83.0
         step_size: 0.01
         force_limit: 10.0
-        measurement_height: 73.0
         baseline_samples: 10
         measure_with_return: false
 
