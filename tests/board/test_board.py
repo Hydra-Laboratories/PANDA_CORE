@@ -148,6 +148,20 @@ class TestBoardMove:
 
         gantry.move_to.assert_called_once_with(140.0, 70.0, 8.0)
 
+    def test_move_translates_safe_approach_z_with_instrument_depth(self):
+        gantry = _mock_gantry()
+        instr = _mock_instrument("pipette", offset_x=10.0, offset_y=5.0, depth=2.0)
+        board = Board(gantry=gantry, instruments={"pipette": instr})
+
+        board.move("pipette", (100.0, 50.0, 20.0), safe_approach_z=30.0)
+
+        gantry.move_to.assert_called_once_with(
+            90.0,
+            45.0,
+            18.0,
+            safe_approach_z=28.0,
+        )
+
 
 # ─── object_position() tests ─────────────────────────────────────────────────
 

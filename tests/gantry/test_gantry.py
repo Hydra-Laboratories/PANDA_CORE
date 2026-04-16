@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from gantry.gantry import Gantry
 from gantry.gantry_driver.exceptions import (
@@ -30,6 +30,28 @@ class TestGantry(unittest.TestCase):
             x_coord=-10.0,
             y_coord=-20.0,
             z_coord=-30.0,
+        )
+
+    @patch("gantry.gantry.Mill")
+    def test_move_with_safe_approach_sequences_retract_travel_and_descent(
+        self, mock_mill_cls
+    ):
+        mock_mill = mock_mill_cls.return_value
+        mock_mill.current_coordinates.return_value.x = -5.0
+        mock_mill.current_coordinates.return_value.y = -6.0
+        mock_mill.current_coordinates.return_value.z = -7.0
+        gantry = Gantry(config=self.config)
+
+        gantry.move_to(10, 20, 30, safe_approach_z=25)
+
+        mock_mill.safe_move.assert_not_called()
+        self.assertEqual(
+            mock_mill.move_to_position.call_args_list,
+            [
+                call(x_coordinate=-5.0, y_coordinate=-6.0, z_coordinate=-25.0),
+                call(x_coordinate=-10.0, y_coordinate=-20.0, z_coordinate=-25.0),
+                call(x_coordinate=-10.0, y_coordinate=-20.0, z_coordinate=-30.0),
+            ],
         )
 
     @patch("gantry.gantry.Mill")

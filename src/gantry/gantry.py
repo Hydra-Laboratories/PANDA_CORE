@@ -134,13 +134,33 @@ class Gantry:
             self.logger.error("Error homing gantry: %s", exc)
             raise
 
-    def move_to(self, x: float, y: float, z: float) -> None:
-        """Move to absolute user-space coordinates."""
+    def move_to(
+        self,
+        x: float,
+        y: float,
+        z: float,
+        safe_approach_z: float | None = None,
+    ) -> None:
+        """Move to absolute user-space coordinates.
+
+        When ``safe_approach_z`` is provided, XY travel is routed through
+        that user-space Z height instead of the mill's default max-Z safe
+        move behavior.
+        """
         if self._offline:
             self._offline_coords = {"x": x, "y": y, "z": z}
             return
         assert self._mill is not None
         try:
+            if safe_approach_z is not None:
+                self._move_to_with_safe_approach(
+                    x=x,
+                    y=y,
+                    z=z,
+                    safe_approach_z=safe_approach_z,
+                )
+                return
+
             machine_x, machine_y, machine_z = to_machine_coordinates(x, y, z)
             self._mill.safe_move(
                 x_coord=machine_x,
@@ -157,6 +177,49 @@ class Gantry:
                 "Error moving gantry to (%s, %s, %s): %s", x, y, z, exc
             )
             raise
+
+    def _move_to_with_safe_approach(
+        self,
+        x: float,
+        y: float,
+        z: float,
+        safe_approach_z: float,
+    ) -> None:
+        """Move via a caller-provided user-space approach Z."""
+        assert self._mill is not None
+        current = self.get_coordinates()
+        target_machine_x, target_machine_y, target_machine_z = to_machine_coordinates(
+            x, y, z
+        )
+        xy_changed = current["x"] != x or current["y"] != y
+
+        if xy_changed and current["z"] < safe_approach_z:
+            current_machine_x, current_machine_y, approach_machine_z = (
+                to_machine_coordinates(
+                    current["x"],
+                    current["y"],
+                    safe_approach_z,
+                )
+            )
+            self._mill.move_to_position(
+                x_coordinate=current_machine_x,
+                y_coordinate=current_machine_y,
+                z_coordinate=approach_machine_z,
+            )
+
+        if xy_changed:
+            _, _, approach_machine_z = to_machine_coordinates(x, y, safe_approach_z)
+            self._mill.move_to_position(
+                x_coordinate=target_machine_x,
+                y_coordinate=target_machine_y,
+                z_coordinate=approach_machine_z,
+            )
+
+        self._mill.move_to_position(
+            x_coordinate=target_machine_x,
+            y_coordinate=target_machine_y,
+            z_coordinate=target_machine_z,
+        )
 
     def jog(
         self,

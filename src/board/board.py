@@ -42,6 +42,7 @@ class Board:
         self,
         instrument: str | BaseInstrument,
         position: Position,
+        safe_approach_z: float | None = None,
     ) -> None:
         """Move the gantry so that *instrument* arrives at *position*.
 
@@ -53,6 +54,10 @@ class Board:
         Args:
             instrument: Name (key in ``self.instruments``) or instance.
             position:   (x, y, z) tuple or labware object with x, y, z attrs.
+            safe_approach_z:
+                        Optional instrument-space Z height to use during XY
+                        travel. When set, it is translated into gantry space
+                        using the instrument depth before commanding the move.
         """
         instr = self._resolve_instrument(instrument)
         x, y, z = self._resolve_position(position)
@@ -60,11 +65,23 @@ class Board:
         gantry_x = x - instr.offset_x
         gantry_y = y - instr.offset_y
         gantry_z = z - instr.depth
+        gantry_safe_approach_z = (
+            None if safe_approach_z is None else safe_approach_z - instr.depth
+        )
         self.logger.info(
             "Moving %s to (%.3f, %.3f, %.3f) → gantry (%.3f, %.3f, %.3f)",
             instr.name, x, y, z, gantry_x, gantry_y, gantry_z,
         )
-        self.gantry.move_to(gantry_x, gantry_y, gantry_z)
+        if gantry_safe_approach_z is None:
+            self.gantry.move_to(gantry_x, gantry_y, gantry_z)
+            return
+
+        self.gantry.move_to(
+            gantry_x,
+            gantry_y,
+            gantry_z,
+            safe_approach_z=gantry_safe_approach_z,
+        )
 
     def move_to_labware(
         self,
