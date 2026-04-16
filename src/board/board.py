@@ -13,12 +13,6 @@ if TYPE_CHECKING:
 # (e.g. a labware object sitting at a fixed deck location).
 Position = Any
 
-# Tolerance for Z-offset comparisons in Board.move_to_labware. The gantry's
-# physical encoder resolution is ~1e-4 mm (0.1 μm), so sub-0.1 μm differences
-# are dominated by numerical noise, not real motion. A tighter tolerance
-# (e.g. 1e-9) would fire spurious retract/lower moves on floating-point drift.
-_Z_TOLERANCE_MM = 1e-4
-
 
 class Board:
     """Physical board layout: a gantry and the instruments mounted on it.
@@ -42,6 +36,7 @@ class Board:
         self,
         instrument: str | BaseInstrument,
         position: Position,
+        travel_z: float | None = None,
     ) -> None:
         """Move the gantry so that *instrument* arrives at *position*.
 
@@ -50,43 +45,49 @@ class Board:
         at the requested (x, y, z). Validates that the target is finite
         (no NaN/Inf) before commanding the gantry.
 
+        ``travel_z``, if given, is an instrument-tip Z held during XY
+        travel — the gantry lifts/lowers to it before moving XY, then
+        descends/ascends to the target Z. ``Board.move_to_labware`` uses
+        this to travel at ``safe_approach_height`` between labware.
+
         Args:
             instrument: Name (key in ``self.instruments``) or instance.
             position:   (x, y, z) tuple or labware object with x, y, z attrs.
+            travel_z:   Instrument-tip Z to hold during XY travel, in the
+                        same user space as ``position.z``.
         """
         instr = self._resolve_instrument(instrument)
         x, y, z = self._resolve_position(position)
         self._validate_finite_xyz(x, y, z, instr.name)
+        if travel_z is not None and not math.isfinite(travel_z):
+            raise ValueError(
+                f"non-finite travel_z={travel_z} for instrument {instr.name!r}."
+            )
         gantry_x = x - instr.offset_x
         gantry_y = y - instr.offset_y
         gantry_z = z - instr.depth
+        gantry_travel_z = (
+            travel_z - instr.depth if travel_z is not None else None
+        )
         self.logger.info(
             "Moving %s to (%.3f, %.3f, %.3f) → gantry (%.3f, %.3f, %.3f)",
             instr.name, x, y, z, gantry_x, gantry_y, gantry_z,
         )
-        self.gantry.move_to(gantry_x, gantry_y, gantry_z)
+        self.gantry.move_to(gantry_x, gantry_y, gantry_z, travel_z=gantry_travel_z)
 
     def move_to_labware(
         self,
         instrument: str | BaseInstrument,
         labware: Position,
     ) -> None:
-        """Safely travel *instrument* to the approach height above a
-        labware target.
+        """Travel *instrument* to the approach height above a labware target.
 
-        Two-step sequence:
-          1. **Retract.** If the tip is currently below
-             ``labware.z + safe_approach_height``, lift at the current
-             XY first so XY travel never drags through labware.
-          2. **Travel.** Move to (labware.x, labware.y,
-             labware.z + safe_approach_height).
-
-        The instrument ends at approach Z — positioned above the target,
-        not engaged with it. To descend to the action Z, follow up with
-        ``board.move(instrument, (labware.x, labware.y,
-        labware.z + instrument.measurement_height))``. Higher-level
-        commands (``measure``, ``aspirate``, ``scan``, ...) do exactly
-        that: approach → descend → act.
+        Emits a single ``move`` with ``travel_z = labware.z +
+        safe_approach_height``. The gantry lifts/lowers to approach Z at
+        the current XY, travels XY at approach Z, and ends above the
+        target — not engaged with it. Higher-level commands
+        (``measure``, ``aspirate``, ``scan``, ...) follow up with a raw
+        ``board.move`` to descend to ``measurement_height``.
 
         Args:
             instrument: Name or instance.
@@ -97,14 +98,8 @@ class Board:
         """
         instr = self._resolve_instrument(instrument)
         x, y, z = self._resolve_position(labware)
-        # Finite-xyz guarding happens inside self.move (below) — no need to
-        # double-validate here.
         approach_z = z + instr.safe_approach_height
-
-        current_tip_x, current_tip_y, current_tip_z = self._current_tip_position(instr)
-        if current_tip_z < approach_z - _Z_TOLERANCE_MM:
-            self.move(instr, (current_tip_x, current_tip_y, approach_z))
-        self.move(instr, (x, y, approach_z))
+        self.move(instr, (x, y, approach_z), travel_z=approach_z)
 
     def _validate_finite_xyz(self, x: float, y: float, z: float, instr_name: str) -> None:
         for label, value in (("x", x), ("y", y), ("z", z)):
@@ -112,35 +107,6 @@ class Board:
                 raise ValueError(
                     f"non-finite {label}={value} for instrument {instr_name!r}."
                 )
-
-    def _current_tip_position(
-        self, instr: BaseInstrument,
-    ) -> tuple[float, float, float]:
-        """Read gantry coordinates and convert to instrument tip (x, y, z)."""
-        try:
-            current = self.gantry.get_coordinates()
-        except Exception as exc:
-            raise RuntimeError(
-                f"Failed to read gantry coordinates while planning a move "
-                f"for instrument {instr.name!r}: {exc}"
-            ) from exc
-        try:
-            gantry_x, gantry_y, gantry_z = current["x"], current["y"], current["z"]
-        except (KeyError, TypeError) as exc:
-            raise RuntimeError(
-                f"gantry.get_coordinates() returned unexpected shape "
-                f"{current!r} for instrument {instr.name!r}."
-            ) from exc
-        if not all(math.isfinite(v) for v in (gantry_x, gantry_y, gantry_z)):
-            raise RuntimeError(
-                f"Gantry reports non-finite coordinates {current!r} for "
-                f"instrument {instr.name!r}."
-            )
-        return (
-            gantry_x + instr.offset_x,
-            gantry_y + instr.offset_y,
-            gantry_z + instr.depth,
-        )
 
     def object_position(
         self, obj: str | BaseInstrument | Any,

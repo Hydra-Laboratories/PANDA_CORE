@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import statistics
 import time
 from typing import Optional
@@ -13,6 +14,22 @@ from instruments.asmi.models import ASMIStatus, MeasurementResult
 
 _DEFAULT_FORCE_THRESHOLD = -100
 _DEFAULT_SENSOR_CHANNELS = [1]
+_STEP_COUNT_SAFETY_MARGIN = 10
+
+
+def _step_count_bound(z_upper: float, z_lower: float, step_size: float) -> int:
+    """Upper bound on steps needed to cross [z_lower, z_upper] at step_size.
+
+    Ceil-based so that a non-integer number of steps still reaches the
+    clamped endpoint. Used as a loop-iteration cap to guarantee termination
+    if hardware stalls or rounding otherwise prevents the geometric exit
+    condition from firing, and — in offline mode — as the actual step count.
+    """
+    if step_size <= 0:
+        raise ValueError(f"step_size must be positive, got {step_size}")
+    span = abs(z_upper - z_lower)
+    raw_steps = math.ceil(span / step_size) if span > 0 else 0
+    return raw_steps + _STEP_COUNT_SAFETY_MARGIN
 
 
 class ASMI(BaseInstrument):
@@ -221,6 +238,7 @@ class ASMI(BaseInstrument):
         force_limit: float | None = None,
         measurement_height: float | None = None,
         baseline_samples: int | None = None,
+        measure_with_return: bool = False,
     ) -> dict:
         """Perform step-by-step indentation at the current XY position.
 
@@ -238,10 +256,16 @@ class ASMI(BaseInstrument):
             force_limit:        Stop when corrected force exceeds this in N (overrides instance default).
             measurement_height: Z to descend to before starting (overrides instance default).
             baseline_samples:   Number of baseline force readings (overrides instance default).
+            measure_with_return:
+                                If True, after descent also step Z back up to
+                                ``measurement_height`` and record each upward sample.
+                                Every sample is tagged with ``direction`` ("down"
+                                on descent, "up" on return).
 
         Returns:
             Dict with keys: measurements, baseline_avg, baseline_std,
-            force_exceeded, data_points.
+            force_exceeded, data_points, measure_with_return. Every entry in
+            ``measurements`` includes a ``direction`` field.
         """
         # Allow protocol method_kwargs to override instance defaults
         _z_target = z_limit if z_limit is not None else self._z_target
@@ -253,7 +277,13 @@ class ASMI(BaseInstrument):
         _baseline_samples = baseline_samples if baseline_samples is not None else self._baseline_samples
 
         if self._offline:
-            return self._offline_indentation(gantry, _z_target, _step_size, _well_top_z)
+            return self._offline_indentation(
+                gantry,
+                _z_target,
+                _step_size,
+                _well_top_z,
+                measure_with_return=measure_with_return,
+            )
 
         coords = gantry.get_coordinates()
         cur_x, cur_y = coords["x"], coords["y"]
@@ -269,8 +299,9 @@ class ASMI(BaseInstrument):
 
         measurements = []
         force_exceeded = False
+        max_steps = _step_count_bound(_well_top_z, _z_target, _step_size)
 
-        while True:
+        for _ in range(max_steps):
             coords = gantry.get_coordinates()
             current_z = coords["z"]
             if current_z <= _z_target:
@@ -287,6 +318,7 @@ class ASMI(BaseInstrument):
                 "z_mm": coords["z"],
                 "raw_force_n": force,
                 "corrected_force_n": corrected,
+                "direction": "down",
             })
 
             if len(measurements) % 10 == 0:
@@ -302,6 +334,48 @@ class ASMI(BaseInstrument):
                 )
                 force_exceeded = True
                 break
+        else:
+            self.logger.warning(
+                "Descent hit iteration cap %d before reaching z_target %.3f",
+                max_steps, _z_target,
+            )
+
+        if measure_with_return and measurements:
+            self.logger.info(
+                "Starting return sweep (%d descent samples collected)",
+                len(measurements),
+            )
+            return_cap = _step_count_bound(_well_top_z, _z_target, _step_size)
+            for _ in range(return_cap):
+                coords = gantry.get_coordinates()
+                current_z = coords["z"]
+                if current_z >= _well_top_z:
+                    break
+                next_z = min(current_z + _step_size, _well_top_z)
+                self._move_z(gantry, cur_x, cur_y, next_z)
+                coords = gantry.get_coordinates()
+                # Break if the gantry did not advance — prevents infinite loop
+                # on stalled axis. get_coordinates reflects the real position.
+                if coords["z"] <= current_z:
+                    self.logger.warning(
+                        "Return sweep aborted: gantry Z did not advance (%.3f)",
+                        current_z,
+                    )
+                    break
+                force = self.get_force_reading()
+                corrected = force - baseline_avg
+                measurements.append({
+                    "timestamp": time.time(),
+                    "z_mm": coords["z"],
+                    "raw_force_n": force,
+                    "corrected_force_n": corrected,
+                    "direction": "up",
+                })
+            else:
+                self.logger.warning(
+                    "Return sweep hit iteration cap %d before reaching well_top_z %.3f",
+                    return_cap, _well_top_z,
+                )
 
         return {
             "measurements": measurements,
@@ -309,25 +383,53 @@ class ASMI(BaseInstrument):
             "baseline_std": baseline_std,
             "force_exceeded": force_exceeded,
             "data_points": len(measurements),
+            "measure_with_return": measure_with_return,
         }
 
-    def _offline_indentation(self, gantry, z_limit, step_size, measurement_height) -> dict:
+    def _offline_indentation(
+        self,
+        gantry,
+        z_limit,
+        step_size,
+        measurement_height,
+        measure_with_return: bool = False,
+    ) -> dict:
         """Fast offline indentation — no idle-wait, synthetic data."""
         coords = gantry.get_coordinates()
         cur_x, cur_y = coords["x"], coords["y"]
         gantry.move_to(cur_x, cur_y, measurement_height)
 
+        # Integer step counting avoids float accumulation drift at loop boundaries.
+        n_down = _step_count_bound(measurement_height, z_limit, step_size) - _STEP_COUNT_SAFETY_MARGIN
         measurements = []
-        z = measurement_height
-        while z > z_limit:
-            z -= step_size
+        for i in range(1, n_down + 1):
+            z = max(measurement_height - i * step_size, z_limit)
             gantry.move_to(cur_x, cur_y, z)
             measurements.append({
                 "timestamp": time.time(),
                 "z_mm": z,
                 "raw_force_n": self._default_force,
                 "corrected_force_n": 0.0,
+                "direction": "down",
             })
+            if z <= z_limit:
+                break
+
+        if measure_with_return:
+            z_bottom = measurements[-1]["z_mm"] if measurements else measurement_height
+            n_up = _step_count_bound(measurement_height, z_bottom, step_size) - _STEP_COUNT_SAFETY_MARGIN
+            for i in range(1, n_up + 1):
+                z = min(z_bottom + i * step_size, measurement_height)
+                gantry.move_to(cur_x, cur_y, z)
+                measurements.append({
+                    "timestamp": time.time(),
+                    "z_mm": z,
+                    "raw_force_n": self._default_force,
+                    "corrected_force_n": 0.0,
+                    "direction": "up",
+                })
+                if z >= measurement_height:
+                    break
 
         return {
             "measurements": measurements,
@@ -335,4 +437,5 @@ class ASMI(BaseInstrument):
             "baseline_std": 0.0,
             "force_exceeded": False,
             "data_points": len(measurements),
+            "measure_with_return": measure_with_return,
         }

@@ -1,6 +1,7 @@
 """Tests for the ASMI instrument driver (offline mode)."""
 
 import unittest
+from unittest.mock import patch
 
 from instruments.asmi.driver import ASMI
 from instruments.asmi.models import ASMIStatus, MeasurementResult
@@ -47,13 +48,10 @@ class TestASMIOffline(unittest.TestCase):
         """Offline indentation should return synthetic measurements quickly."""
         from gantry.gantry import Gantry
         gantry = Gantry(offline=True)
-        # Use small range for fast test
-        self.asmi._z_target = -12.0
-        self.asmi._well_top_z = -10.0
-        self.asmi._step_size = 0.1
-        self.asmi._safe_z = -5.0
 
-        result = self.asmi.indentation(gantry)
+        result = self.asmi.indentation(
+            gantry, z_limit=-12.0, measurement_height=-10.0, step_size=0.1,
+        )
 
         self.assertIn("measurements", result)
         self.assertIn("baseline_avg", result)
@@ -61,6 +59,194 @@ class TestASMIOffline(unittest.TestCase):
         self.assertEqual(result["data_points"], len(result["measurements"]))
         self.assertGreater(result["data_points"], 0)
         self.assertFalse(result["force_exceeded"])
+        self.assertFalse(result["measure_with_return"])
+
+    def test_indentation_offline_with_return_includes_directions(self):
+        """Return-mode indentation should include both down and up direction samples."""
+        from gantry.gantry import Gantry
+        gantry = Gantry(offline=True)
+
+        result = self.asmi.indentation(
+            gantry,
+            z_limit=-12.0,
+            measurement_height=-10.0,
+            step_size=0.1,
+            measure_with_return=True,
+        )
+
+        self.assertTrue(result["measure_with_return"])
+        directions = [step.get("direction") for step in result["measurements"]]
+        self.assertIn("down", directions)
+        self.assertIn("up", directions)
+
+    def test_indentation_offline_emits_direction_unconditionally(self):
+        """Every sample should carry a direction tag, even without return mode."""
+        from gantry.gantry import Gantry
+        gantry = Gantry(offline=True)
+
+        result = self.asmi.indentation(
+            gantry, z_limit=-12.0, measurement_height=-10.0, step_size=0.1,
+        )
+
+        self.assertGreater(len(result["measurements"]), 0)
+        for step in result["measurements"]:
+            self.assertEqual(step["direction"], "down")
+
+    def test_indentation_offline_return_preserves_ordering_and_monotonicity(self):
+        """All down samples must precede all up samples; z descends then ascends."""
+        from gantry.gantry import Gantry
+        gantry = Gantry(offline=True)
+
+        result = self.asmi.indentation(
+            gantry,
+            z_limit=-12.0,
+            measurement_height=-10.0,
+            step_size=0.1,
+            measure_with_return=True,
+        )
+
+        steps = result["measurements"]
+        directions = [s["direction"] for s in steps]
+        last_down = max(i for i, d in enumerate(directions) if d == "down")
+        first_up = min(i for i, d in enumerate(directions) if d == "up")
+        self.assertLess(last_down, first_up)
+
+        down_z = [s["z_mm"] for s in steps if s["direction"] == "down"]
+        up_z = [s["z_mm"] for s in steps if s["direction"] == "up"]
+        # Down: each z strictly lower than the previous (gantry goes more negative).
+        for prev, curr in zip(down_z, down_z[1:]):
+            self.assertLess(curr, prev)
+        # Up: each z strictly higher than the previous.
+        for prev, curr in zip(up_z, up_z[1:]):
+            self.assertGreater(curr, prev)
+        # Return terminates at measurement_height (well top), never overshoots.
+        self.assertAlmostEqual(up_z[-1], -10.0, places=6)
+
+    def test_indentation_offline_return_no_float_drift(self):
+        """Descent must reach z_limit and return must hit measurement_height exactly,
+        even when step_size doesn't divide the range evenly."""
+        from gantry.gantry import Gantry
+        gantry = Gantry(offline=True)
+
+        # 0.03 does not evenly divide 2.0 (66.67 steps → ceil to 67).
+        result = self.asmi.indentation(
+            gantry,
+            z_limit=-12.0,
+            measurement_height=-10.0,
+            step_size=0.03,
+            measure_with_return=True,
+        )
+
+        down_z = [s["z_mm"] for s in result["measurements"] if s["direction"] == "down"]
+        up_z = [s["z_mm"] for s in result["measurements"] if s["direction"] == "up"]
+        self.assertAlmostEqual(down_z[-1], -12.0, places=6)
+        self.assertAlmostEqual(up_z[-1], -10.0, places=6)
+
+    def test_indentation_offline_step_larger_than_span_takes_one_step(self):
+        """When step_size exceeds the span, one clamped step must still occur."""
+        from gantry.gantry import Gantry
+        gantry = Gantry(offline=True)
+
+        result = self.asmi.indentation(
+            gantry,
+            z_limit=-10.05,
+            measurement_height=-10.0,
+            step_size=0.5,
+            measure_with_return=True,
+        )
+
+        down_z = [s["z_mm"] for s in result["measurements"] if s["direction"] == "down"]
+        up_z = [s["z_mm"] for s in result["measurements"] if s["direction"] == "up"]
+        self.assertEqual(len(down_z), 1)
+        self.assertAlmostEqual(down_z[0], -10.05, places=6)
+        self.assertEqual(len(up_z), 1)
+        self.assertAlmostEqual(up_z[0], -10.0, places=6)
+
+
+class _FakeOnlineGantry:
+    """Minimal gantry stub for exercising ASMI online indentation loops."""
+
+    def __init__(self, start_z: float):
+        self._z = start_z
+
+    def get_coordinates(self) -> dict:
+        return {"x": 0.0, "y": 0.0, "z": self._z}
+
+    def get_status(self) -> str:
+        return "Idle"
+
+    def move_to(self, x: float, y: float, z: float) -> None:
+        self._z = z
+
+
+class TestASMIOnlineIndentation(unittest.TestCase):
+    """Exercise the non-offline indentation code path with mocked hardware I/O."""
+
+    def _make_online_asmi(self) -> ASMI:
+        asmi = ASMI(offline=False, default_force=0.0)
+        asmi._offline = False
+        return asmi
+
+    def test_online_indentation_with_return_records_both_directions(self):
+        asmi = self._make_online_asmi()
+        gantry = _FakeOnlineGantry(start_z=-10.0)
+
+        with patch.object(asmi, "get_baseline_force", return_value=(0.0, 0.0)), \
+             patch.object(asmi, "get_force_reading", return_value=0.1):
+            result = asmi.indentation(
+                gantry,
+                z_limit=-10.5,
+                measurement_height=-10.0,
+                step_size=0.1,
+                force_limit=100.0,
+                baseline_samples=1,
+                measure_with_return=True,
+            )
+
+        directions = [s["direction"] for s in result["measurements"]]
+        self.assertIn("down", directions)
+        self.assertIn("up", directions)
+        up_z = [s["z_mm"] for s in result["measurements"] if s["direction"] == "up"]
+        self.assertAlmostEqual(up_z[-1], -10.0, places=6)
+
+    def test_online_return_terminates_even_if_gantry_stalls(self):
+        """If gantry Z never advances, return loop must bail via iteration cap, not spin."""
+        asmi = self._make_online_asmi()
+
+        class StalledGantry(_FakeOnlineGantry):
+            def move_to(self, x, y, z):
+                # Simulate a stalled axis: position never changes.
+                pass
+
+        gantry = StalledGantry(start_z=-10.0)
+        # Prime descent by letting z reach z_limit on the first real move; we
+        # only need _some_ descent measurement to trigger the return block.
+        original_move = _FakeOnlineGantry.move_to
+        call_count = {"n": 0}
+
+        def move_once_then_stall(self, x, y, z):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                original_move(self, x, y, z)  # initial descend to measurement_height
+            elif call_count["n"] == 2:
+                original_move(self, x, y, z)  # one descent step
+            # subsequent moves no-op → stall during return
+
+        with patch.object(StalledGantry, "move_to", move_once_then_stall), \
+             patch.object(asmi, "get_baseline_force", return_value=(0.0, 0.0)), \
+             patch.object(asmi, "get_force_reading", return_value=0.0):
+            result = asmi.indentation(
+                gantry,
+                z_limit=-10.1,
+                measurement_height=-10.0,
+                step_size=0.1,
+                force_limit=100.0,
+                baseline_samples=1,
+                measure_with_return=True,
+            )
+
+        # The test's real requirement: the call returns, i.e. no infinite loop.
+        self.assertIn("measurements", result)
 
 
 class TestASMIOnlineRequiresHardware(unittest.TestCase):
