@@ -246,9 +246,10 @@ class Mill:
 
         self.logger.info("Querying the mill for status")
 
+        # Wake the controller without forcing a soft reset. Ctrl-X clears
+        # transient state, but on machines with homing lock enabled it also
+        # drops GRBL back into Alarm until the operator homes again.
         ser_mill.write(b"\r\n")
-        time.sleep(0.1)
-        ser_mill.write(b"\x18")
         time.sleep(0.1)
         ser_mill.flushInput()
 
