@@ -13,8 +13,10 @@ working_volume:
   x_max: 0.01   # 0.01 avoids "not set" warning; home WPos ≈ (0, 0)
   y_min: 300.0
   y_max: 0.01
-  z_min: 100.0
-  z_max: 0.0
+  # Positive-down Z: 0 at home (top of travel), grows toward the deck.
+  # Travel range matches max_travel_z in grbl_settings below.
+  z_min: 0.0
+  z_max: 100.0
 
 grbl_settings:
   homing_enable: true

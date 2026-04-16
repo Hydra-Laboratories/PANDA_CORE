@@ -242,25 +242,32 @@ class ASMI(BaseInstrument):
     ) -> dict:
         """Perform step-by-step indentation at the current XY position.
 
+        Coordinate convention (positive-down): user-space Z is 0 at the
+        gantry's home position and grows toward the deck. ``measurement_height``
+        is the absolute Z to start the indent; ``z_limit`` must be larger
+        (deeper) and is the maximum the descent will reach. Each "down"
+        step INCREASES z by ``step_size``.
+
         The scan command positions the gantry at the well before calling
         this method. Indentation then:
-        1. Lowers to measurement_height
+        1. Lowers to measurement_height (descend to start of indent)
         2. Takes baseline force readings
-        3. Steps Z toward z_limit, reading force at each step
-        4. Stops on force_limit or z_limit
+        3. Steps z toward z_limit (z increases), reading force at each step
+        4. Stops on force_limit or z_limit, whichever fires first
 
         Args:
             gantry:             Gantry instance for Z movement.
-            z_limit:            Z position to step down to (overrides instance default).
-            step_size:          Z increment per step in mm (overrides instance default).
-            force_limit:        Stop when corrected force exceeds this in N (overrides instance default).
-            measurement_height: Z to descend to before starting (overrides instance default).
-            baseline_samples:   Number of baseline force readings (overrides instance default).
+            z_limit:            Maximum (deepest) Z; descent stops here. Must be
+                                >= measurement_height.
+            step_size:          Z increment per step in mm (positive).
+            force_limit:        Stop when corrected force exceeds this in N.
+            measurement_height: Z to descend to before starting (the well-top).
+            baseline_samples:   Number of baseline force readings.
             measure_with_return:
-                                If True, after descent also step Z back up to
-                                ``measurement_height`` and record each upward sample.
-                                Every sample is tagged with ``direction`` ("down"
-                                on descent, "up" on return).
+                                If True, after descent step Z back up to
+                                ``measurement_height`` and record each upward
+                                sample. Every sample is tagged with
+                                ``direction`` ("down" on descent, "up" on return).
 
         Returns:
             Dict with keys: measurements, baseline_avg, baseline_std,
@@ -301,13 +308,14 @@ class ASMI(BaseInstrument):
         force_exceeded = False
         max_steps = _step_count_bound(_well_top_z, _z_target, _step_size)
 
+        # Descent: positive-down, so each step INCREASES z toward the deck.
         for _ in range(max_steps):
             coords = gantry.get_coordinates()
             current_z = coords["z"]
-            if current_z <= _z_target:
+            if current_z >= _z_target:
                 self.logger.info("Reached z_target %.3f mm", _z_target)
                 break
-            next_z = current_z - _step_size
+            next_z = current_z + _step_size
             self._move_z(gantry, cur_x, cur_y, next_z)
 
             coords = gantry.get_coordinates()
@@ -346,19 +354,20 @@ class ASMI(BaseInstrument):
                 len(measurements),
             )
             return_cap = _step_count_bound(_well_top_z, _z_target, _step_size)
+            # Return: walk z back up to well_top by DECREASING z each step.
             for _ in range(return_cap):
                 coords = gantry.get_coordinates()
                 current_z = coords["z"]
-                if current_z >= _well_top_z:
+                if current_z <= _well_top_z:
                     break
-                next_z = min(current_z + _step_size, _well_top_z)
+                next_z = max(current_z - _step_size, _well_top_z)
                 self._move_z(gantry, cur_x, cur_y, next_z)
                 coords = gantry.get_coordinates()
-                # Break if the gantry did not advance — prevents infinite loop
+                # Break if the gantry did not retract — prevents infinite loop
                 # on stalled axis. get_coordinates reflects the real position.
-                if coords["z"] <= current_z:
+                if coords["z"] >= current_z:
                     self.logger.warning(
-                        "Return sweep aborted: gantry Z did not advance (%.3f)",
+                        "Return sweep aborted: gantry Z did not retract (%.3f)",
                         current_z,
                     )
                     break
@@ -394,7 +403,12 @@ class ASMI(BaseInstrument):
         measurement_height,
         measure_with_return: bool = False,
     ) -> dict:
-        """Fast offline indentation — no idle-wait, synthetic data."""
+        """Fast offline indentation — no idle-wait, synthetic data.
+
+        Positive-down convention: descent INCREASES z toward z_limit
+        (which is larger than measurement_height); the optional return
+        sweep walks z back DOWN to measurement_height.
+        """
         coords = gantry.get_coordinates()
         cur_x, cur_y = coords["x"], coords["y"]
         gantry.move_to(cur_x, cur_y, measurement_height)
@@ -403,7 +417,7 @@ class ASMI(BaseInstrument):
         n_down = _step_count_bound(measurement_height, z_limit, step_size) - _STEP_COUNT_SAFETY_MARGIN
         measurements = []
         for i in range(1, n_down + 1):
-            z = max(measurement_height - i * step_size, z_limit)
+            z = min(measurement_height + i * step_size, z_limit)
             gantry.move_to(cur_x, cur_y, z)
             measurements.append({
                 "timestamp": time.time(),
@@ -412,14 +426,14 @@ class ASMI(BaseInstrument):
                 "corrected_force_n": 0.0,
                 "direction": "down",
             })
-            if z <= z_limit:
+            if z >= z_limit:
                 break
 
         if measure_with_return:
             z_bottom = measurements[-1]["z_mm"] if measurements else measurement_height
             n_up = _step_count_bound(measurement_height, z_bottom, step_size) - _STEP_COUNT_SAFETY_MARGIN
             for i in range(1, n_up + 1):
-                z = min(z_bottom + i * step_size, measurement_height)
+                z = max(z_bottom - i * step_size, measurement_height)
                 gantry.move_to(cur_x, cur_y, z)
                 measurements.append({
                     "timestamp": time.time(),
@@ -428,7 +442,7 @@ class ASMI(BaseInstrument):
                     "corrected_force_n": 0.0,
                     "direction": "up",
                 })
-                if z >= measurement_height:
+                if z <= measurement_height:
                     break
 
         return {
