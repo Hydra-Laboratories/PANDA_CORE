@@ -19,4 +19,4 @@ labware:
     # Override: ASMI deck orientation walks columns in -x direction.
     x_offset_mm: -9.0
     # y_offset_mm inherits the 9.0 default from sbs_96_wellplate.
-give 
+    
