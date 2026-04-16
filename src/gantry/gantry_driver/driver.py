@@ -15,6 +15,7 @@ of the mill.
 import json
 import os
 import re
+import threading
 import time
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
@@ -129,6 +130,14 @@ class Mill:
         self.interactive_mode = False
         self._wco: Optional[Coordinates] = None
         self.last_status: str = ""
+        # Cache of the most recently parsed WPos from a GRBL status report.
+        # ``current_status`` and ``current_coordinates`` update this whenever
+        # they see a ``WPos:x,y,z`` field, so external readers (e.g. Zoo's
+        # position-poll endpoint) can obtain fresh machine-space coordinates
+        # during an in-flight move without competing for the serial port.
+        # None until the first status with WPos has been parsed.
+        self._last_wpos: Optional[Coordinates] = None
+        self._last_wpos_lock = threading.Lock()
 
     def read_working_volume(self):
         """Checks the mill config for soft limits to be enabled, and then if so check the x, y, and z max travel limits"""
@@ -835,7 +844,45 @@ class Mill:
                     return ""
                 raise StatusReturnError(f"Error in status: {status}")
         self.last_status = status
+        self._update_wpos_cache_from_status(status)
         return status
+
+    def _update_wpos_cache_from_status(self, status: str) -> None:
+        """Parse WPos out of a GRBL status string and cache it if present.
+
+        Safe to call on any status string; a string without a WPos field is
+        ignored (cache remains at its previous value). This runs inside the
+        serial-owning thread but the cache itself is guarded with a lock so
+        external callers can read it concurrently.
+        """
+        if not status:
+            return
+        match = wpos_pattern.search(status)
+        if not match:
+            return
+        try:
+            coords = Coordinates(
+                float(match.group(1)),
+                float(match.group(2)),
+                float(match.group(3)),
+            )
+        except (TypeError, ValueError):
+            return
+        with self._last_wpos_lock:
+            self._last_wpos = coords
+
+    def get_last_known_coordinates(self) -> Optional[Coordinates]:
+        """Return the most recently parsed WPos without touching the serial port.
+
+        Populated as a side effect of the regular status polling that runs
+        during every ``execute_command`` -> ``__wait_for_completion`` loop,
+        so the value stays fresh across long multi-step moves (e.g. a scan).
+        Returns ``None`` until at least one status report has been parsed.
+        Returned ``Coordinates`` are machine/work space (WPos); callers that
+        need user space should apply their own translator.
+        """
+        with self._last_wpos_lock:
+            return self._last_wpos
 
     def write(self, command: str):
         """Write a command to the mill."""
@@ -997,6 +1044,7 @@ class Mill:
             attempts += 1
 
         self.last_status = status
+        self._update_wpos_cache_from_status(status)
         status_mode = int(self.config["$10"])
 
         if int(status_mode) not in [0, 1, 2, 3]:

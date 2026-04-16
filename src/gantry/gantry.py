@@ -298,6 +298,36 @@ class Gantry:
             "status": status,
         }
 
+    def get_cached_position_info(self) -> Optional[Dict[str, Any]]:
+        """Return user-space coordinates + status WITHOUT touching the serial port.
+
+        Reads the cache that ``Mill`` updates on every status poll (including
+        the polls that happen inside ``wait_for_completion`` during a move).
+        Intended for UI layers that want to display live position during a
+        long-running operation — a scan, for example — without competing
+        with the active motion for the serial port.
+
+        Returns ``None`` if the mill hasn't produced a parseable status yet
+        (e.g. before the first connect). In offline mode, returns the
+        offline coordinates. Status is read from ``Mill.last_status`` and
+        may be empty until the first status has arrived.
+        """
+        if self._offline:
+            coords = dict(self._offline_coords)
+            return {"coords": coords, "work_pos": coords, "status": "Idle"}
+        if self._mill is None:
+            return None
+        wpos = self._mill.get_last_known_coordinates()
+        if wpos is None:
+            return None
+        x_user, y_user, z_user = to_user_coordinates(wpos.x, wpos.y, wpos.z)
+        user_coords = {"x": x_user, "y": y_user, "z": z_user}
+        return {
+            "coords": user_coords,
+            "work_pos": user_coords,
+            "status": self._mill.last_status or "",
+        }
+
     def set_serial_timeout(self, timeout: float) -> None:
         """Set the serial read timeout on the active mill connection."""
         if self._offline:

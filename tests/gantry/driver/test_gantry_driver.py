@@ -284,6 +284,45 @@ class TestCNCDriverLogic(unittest.TestCase):
         with self.assertRaises(MillConnectionError):
             mill.soft_reset()
 
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_last_known_coordinates_updates_from_status_string(
+        self, mock_cmd_logger, mock_mill_logger, mock_serial,
+    ):
+        """Parsing a WPos-bearing status must populate ``_last_wpos`` so
+        ``get_last_known_coordinates`` returns fresh coords without
+        touching the serial port — the contract Zoo relies on for live
+        position display during a scan."""
+        mill = Mill()
+        assert mill.get_last_known_coordinates() is None  # cold start
+        mill._update_wpos_cache_from_status(
+            "<Run|WPos:10.500,20.123,-5.000|FS:0,0>"
+        )
+        cached = mill.get_last_known_coordinates()
+        self.assertIsNotNone(cached)
+        self.assertEqual(
+            (cached.x, cached.y, cached.z), (10.5, 20.123, -5.0)
+        )
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_last_known_coordinates_preserved_on_wpos_less_status(
+        self, mock_cmd_logger, mock_mill_logger, mock_serial,
+    ):
+        """A status string without a WPos field must not clear the cache —
+        GRBL emits WPos-less partial reports during some transitions and
+        losing the cache on those would flash the UI."""
+        mill = Mill()
+        mill._update_wpos_cache_from_status(
+            "<Idle|WPos:1.0,2.0,3.0|FS:0,0>"
+        )
+        # A garbage/partial status shouldn't wipe what we already have.
+        mill._update_wpos_cache_from_status("<Run|Bf:15,127|FS:0,0>")
+        cached = mill.get_last_known_coordinates()
+        self.assertEqual((cached.x, cached.y, cached.z), (1.0, 2.0, 3.0))
+
 
 if __name__ == '__main__':
     unittest.main()
