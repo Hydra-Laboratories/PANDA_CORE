@@ -12,7 +12,6 @@ of the mill.
 # pylint: disable=line-too-long
 
 # standard libraries
-import json
 import os
 import re
 import time
@@ -26,8 +25,6 @@ import serial.tools.list_ports
 from .exceptions import (
     CommandExecutionError,
     LocationNotFound,
-    MillConfigError,
-    MillConfigNotFound,
     MillConnectionError,
     StatusReturnError,
 )
@@ -86,9 +83,7 @@ class Mill:
         homing_sequence(): Home the mill, set the feed rate, and clear the buffers.
         connect_to_mill(port, baudrate, timeout): Connect to the mill.
         check_for_alarm_state(): Check if the mill is in an alarm state.
-        read_mill_config_file(config_file): Read the mill configuration file.
         read_mill_config(): Read the mill configuration from the mill and set it as an attribute.
-        write_mill_config_file(config_file): Write the mill configuration to the configuration file.
         execute_command(command): Execute a command on the mill.
         stop(): Stop the mill.
         reset(): Reset the mill.
@@ -111,7 +106,7 @@ class Mill:
         self.logger_location = Path(__file__).parent / "logs"
         self.logger = set_up_mill_logger(self.logger_location)
         self.port = port
-        self.config = self.read_mill_config_file("_configuration.json")
+        self.config = {}
         self._clean_config()
         self.ser_mill: serial.Serial = None
 
@@ -133,7 +128,7 @@ class Mill:
     def read_working_volume(self):
         """Checks the mill config for soft limits to be enabled, and then if so check the x, y, and z max travel limits"""
         working_volume: Coordinates = Coordinates(0, 0, 0)
-        if int(self.config["$20"]) == 1:
+        if self.config.get("$20") == "1":
             self.logger.info("Soft limits are enabled in the mill config")
             xmultiplier = -1
             ymultiplier = -1
@@ -330,7 +325,6 @@ class Mill:
             return self.ser_mill
 
         self.read_mill_config()
-        self.write_mill_config_file("_configuration.json")
         self.read_working_volume()
 
         self.clear_buffers()
@@ -405,66 +399,39 @@ class Mill:
              self.logger.info("Serial connection was already closed or never opened.")
         return
 
-    def read_mill_config_file(self, config_file: str = "_configuration.json"):
-        """Read the config file."""
-        try:
-            config_file_path = Path(__file__).parent / config_file
-            with open(config_file_path, "r", encoding="UTF-8") as file:
-                configuration = json.load(file)
-                self.logger.debug("Mill config loaded: %s", configuration)
-                return configuration
-        except FileNotFoundError:
-            self.logger.error("Config file not found")
-            self.logger.error("Creating default config file")
-            dft_config_file_path = Path(__file__).parent / "default_configuration.json"
-
-            try:
-                with open(dft_config_file_path, "r", encoding="UTF-8") as dft_file:
-                    default_config = json.load(dft_file)
-
-                config_file_path.parent.mkdir(exist_ok=True)
-                with open(config_file_path, "w", encoding="UTF-8") as file:
-                    json.dump(default_config, file, indent=4)
-
-                self.logger.info("Default config file copied to: %s", config_file_path)
-                return default_config
-            except FileNotFoundError as err:
-                self.logger.critical("Default configuration file not found!")
-                raise MillConfigNotFound(
-                    "Neither primary nor default config file found"
-                ) from err
-        except Exception as err:
-            self.logger.error("Error reading config file: %s", str(err))
-            raise MillConfigError("Error reading config file") from err
-
     def read_mill_config(self):
-        """Read the mill config from the mill and set it as an attribute."""
-        try:
-            if self.ser_mill is not None and self.ser_mill.is_open:
-                self.logger.info("Reading mill config")
-                mill_config = self.grbl_settings()
-                self.config = mill_config
-                self.logger.debug("Mill config: %s", mill_config)
-            else:
-                self.logger.error("Serial connection to mill is not open")
-                self.logger.error("Falling back to reading from file")
-                self.config = self.read_mill_config_file("_configuration.json")
+        """Read the live mill config from the connected controller."""
+        if self.ser_mill is None or not self.ser_mill.is_open:
+            self.logger.error("Serial connection to mill is not open")
+            raise MillConnectionError("Serial connection to mill is not open")
 
-        except Exception as exep:
-            self.logger.error("Error reading mill config: %s", str(exep))
-            raise MillConfigError("Error reading mill config") from exep
+        self.logger.info("Reading mill config")
+        mill_config = self.grbl_settings()
+        self.config = mill_config
+        self.logger.debug("Mill config: %s", mill_config)
+        return mill_config
 
-    def write_mill_config_file(self, config_file="_configuration.json"):
-        """Write the mill config to the config file."""
-        try:
-            config_file_path = Path(__file__).parent / config_file
-            with open(config_file_path, "w", encoding="UTF-8") as file:
-                json.dump(self.config, file, indent=4)
-            self.logger.info("Mill config written to file")
-            return 0
-        except Exception as exep:
-            self.logger.error("Error writing mill config to file: %s", str(exep))
-            raise MillConfigError("Error writing mill config to file") from exep
+    def _parse_grbl_settings_response(self, response_lines: List[str]) -> dict:
+        """Parse a GRBL $$ response into a settings dictionary."""
+        settings_dict = {}
+        self.logger.info("Parsing settings from: %s", response_lines)
+        for setting in response_lines:
+            if not setting:
+                continue
+            if setting.startswith("[MSG") or "Grbl" in setting:
+                continue
+            if "=" not in setting:
+                self.logger.warning("Skipping non-setting line: %s", setting)
+                continue
+            try:
+                key, value = setting.split("=", 1)
+                if "(" in value:
+                    value = value.split("(", 1)[0]
+                settings_dict[key.strip()] = value.strip()
+            except ValueError:
+                self.logger.error("Failed to parse setting line: %s", setting)
+                continue
+        return settings_dict
 
     def execute_command(self, command: str, suppress_errors: bool = False):
         """Encodes and sends commands to the mill and returns the response."""
@@ -484,29 +451,7 @@ class Mill:
                     )
                 full_mill_response = full_mill_response[:-1]
                 self.logger.debug("Returned %s", full_mill_response)
-
-                settings_dict = {}
-                self.logger.info(f"Parsing settings from: {full_mill_response}")
-                for setting in full_mill_response:
-                    if not setting:
-                        continue
-                    if setting.startswith("[MSG") or "Grbl" in setting:
-                        continue
-
-                    if "=" not in setting:
-                        self.logger.warning(f"Skipping non-setting line: {setting}")
-                        continue
-
-                    try:
-                        key, value = setting.split("=", 1)
-                        if "(" in value:
-                            value = value.split("(", 1)[0]
-                        settings_dict[key.strip()] = value.strip()
-                    except ValueError:
-                         self.logger.error(f"Failed to parse setting line: {setting}")
-                         continue
-
-                return settings_dict
+                return self._parse_grbl_settings_response(full_mill_response)
 
             mill_response = self.read().lower()
             if not command.startswith("$"):
@@ -881,8 +826,12 @@ class Mill:
         return self.execute_command("$G")
 
     def grbl_settings(self) -> dict:
-        """Return the cached GRBL settings (populated during connect)."""
-        return self.config
+        """Return live GRBL settings from the connected controller."""
+        if self.ser_mill is None or not self.ser_mill.is_open:
+            raise MillConnectionError("Serial connection to mill is not open")
+        settings = self.execute_command("$$")
+        self.config = settings
+        return settings
 
     def set_grbl_setting(self, setting: str, value: str):
         """Set a grbl setting."""

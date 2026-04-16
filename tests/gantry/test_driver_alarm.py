@@ -26,7 +26,6 @@ class TestConnectAlarmDetection(unittest.TestCase):
         )
         mill.read = MagicMock(return_value=status_response)
         mill.read_mill_config = MagicMock()
-        mill.write_mill_config_file = MagicMock()
         mill.read_working_volume = MagicMock()
         mill.clear_buffers = MagicMock()
         mill.set_feed_rate = MagicMock()
@@ -41,7 +40,6 @@ class TestConnectAlarmDetection(unittest.TestCase):
         mill.connect_to_mill(port="/dev/ttyUSB0")
 
         mill.read_mill_config.assert_not_called()
-        mill.write_mill_config_file.assert_not_called()
         mill.read_working_volume.assert_not_called()
         mill.clear_buffers.assert_not_called()
         mill.set_feed_rate.assert_not_called()
@@ -76,7 +74,6 @@ class TestConnectAlarmDetection(unittest.TestCase):
         mill.connect_to_mill(port="/dev/ttyUSB0")
 
         mill.read_mill_config.assert_called_once()
-        mill.write_mill_config_file.assert_called_once()
         mill.read_working_volume.assert_called_once()
         mill.clear_buffers.assert_called_once()
         mill.set_feed_rate.assert_called_once()

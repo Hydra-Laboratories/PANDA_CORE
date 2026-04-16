@@ -1,7 +1,6 @@
 """Contains mocks for cnc driver objects for offline testing"""
 
 # standard libraries
-import json
 import logging
 import re
 from pathlib import Path
@@ -10,7 +9,6 @@ from pathlib import Path
 import serial
 
 from .driver import Mill as RealMill
-from .exceptions import MillConfigError
 from .instruments import Coordinates
 
 # Mock WCO: simulates machine where homing puts MPos at these values
@@ -18,6 +16,17 @@ from .instruments import Coordinates
 MOCK_WCO_X = -300.0
 MOCK_WCO_Y = -200.0
 MOCK_WCO_Z = -80.0
+MOCK_GRBL_SETTINGS = {
+    "$10": "0",
+    "$20": "0",
+    "$22": "1",
+    "$100": "400.000",
+    "$101": "400.000",
+    "$102": "400.000",
+    "$130": "400.000",
+    "$131": "300.000",
+    "$132": "100.000",
+}
 
 
 class MockMill(RealMill):
@@ -99,23 +108,13 @@ class MockMill(RealMill):
         return self.config
 
     def read_mill_config(self):
-        """Read the mill config from the mill and set it as an attribute"""
-        try:
-            if self.ser_mill.is_open:
-                self.logger.info("Reading mill config")
-                config_path = Path("grbl_cnc_mill/_configuration.json")
-                with config_path.open("r") as file:
-                    mill_config = json.load(file)
-                self.config = mill_config
-                self.logger.debug("Mill config: %s", mill_config)
-            else:
-                self.logger.error("Serial connection to mill is not open")
-                # raise MillConnectionError(
-                #     "Serial connection to mill is not open, cannot read config"
-                # )
-        except Exception as exep:
-            self.logger.error("Error reading mill config: %s", str(exep))
-            raise MillConfigError("Error reading mill config") from exep
+        """Populate a deterministic mock GRBL config without reading disk."""
+        if self.ser_mill.is_open:
+            self.logger.info("Reading mock mill config")
+            self.config = dict(MOCK_GRBL_SETTINGS)
+            self.logger.debug("Mock mill config: %s", self.config)
+        else:
+            self.logger.error("Serial connection to mill is not open")
 
     def __wait_for_completion(self, incoming_status, timeout=5):
         return (
