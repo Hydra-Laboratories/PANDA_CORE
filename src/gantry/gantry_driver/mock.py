@@ -119,7 +119,7 @@ class MockMill(RealMill):
 
     def __wait_for_completion(self, incoming_status, timeout=5):
         return (
-            f"<Idle|WPos:{self.ser_mill.current_x - 3},{self.ser_mill.current_y - 3},{self.ser_mill.current_z - 3}"
+            f"<Idle|WPos:{self.ser_mill.current_x},{self.ser_mill.current_y},{self.ser_mill.current_z}"
             f"|Bf:15,127|FS:0,0|WCO:{MOCK_WCO_X},{MOCK_WCO_Y},{MOCK_WCO_Z}>"
         )
 
@@ -215,7 +215,7 @@ class MockSerialToMill:
     def read(self, size):
         """Simulate reading from the serial connection"""
         msg = (
-            f"<Idle|WPos:{self.current_x - 3},{self.current_y - 3},{self.current_z - 3}"
+            f"<Idle|WPos:{self.current_x},{self.current_y},{self.current_z}"
             f"|Bf:15,127|FS:0,0|WCO:{MOCK_WCO_X},{MOCK_WCO_Y},{MOCK_WCO_Z}>"
         ).encode()
         return msg[:size]
@@ -223,14 +223,14 @@ class MockSerialToMill:
     def read_all(self):
         """Simulate reading from the serial connection"""
         return (
-            f"<Idle|WPos:{self.current_x - 3},{self.current_y - 3},{self.current_z - 3}"
+            f"<Idle|WPos:{self.current_x},{self.current_y},{self.current_z}"
             f"|Bf:15,127|FS:0,0|WCO:{MOCK_WCO_X},{MOCK_WCO_Y},{MOCK_WCO_Z}>\n"
         ).encode()
 
     def readline(self):
         """Simulate reading from the serial connection"""
         return (
-            f"<Idle|WPos:{self.current_x - 3},{self.current_y - 3},{self.current_z - 3}"
+            f"<Idle|WPos:{self.current_x},{self.current_y},{self.current_z}"
             f"|Bf:15,127|FS:0,0|WCO:{MOCK_WCO_X},{MOCK_WCO_Y},{MOCK_WCO_Z}>\n"
         ).encode()
 

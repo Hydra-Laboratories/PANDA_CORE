@@ -98,7 +98,9 @@ class Board:
         """
         instr = self._resolve_instrument(instrument)
         x, y, z = self._resolve_position(labware)
-        approach_z = z + instr.safe_approach_height
+        # User-space Z is positive-down (home at z=0, deck at larger z), so
+        # "safely above the labware" is a smaller z than the labware surface.
+        approach_z = z - instr.safe_approach_height
         self.move(instr, (x, y, approach_z), travel_z=approach_z)
 
     def _validate_finite_xyz(self, x: float, y: float, z: float, instr_name: str) -> None:

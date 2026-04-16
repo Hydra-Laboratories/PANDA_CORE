@@ -159,7 +159,7 @@ class TestScanCommand:
 
     def test_descends_to_action_z_after_approach_per_well(self):
         """scan must emit the descent raw-move per well at
-        well.z + measurement_height. A regression dropping this line
+        well.z - measurement_height. A regression dropping this line
         would leave the instrument floating at safe_approach_height."""
         from protocol_engine.commands.scan import scan
 
@@ -172,8 +172,9 @@ class TestScanCommand:
         # 4 wells => 4 descent calls.
         assert ctx.board.move.call_count == 4
         descent_zs = [c.args[1][2] for c in ctx.board.move.call_args_list]
-        # action_z = well.z + measurement_height = 75 + 3 = 78.
-        assert descent_zs == [78.0, 78.0, 78.0, 78.0]
+        # User-space is positive-down: action_z = well.z - measurement_height
+        # = 75 - 3 = 72 (probe held 3 mm above the well).
+        assert descent_zs == [72.0, 72.0, 72.0, 72.0]
 
     def test_descent_move_does_not_pass_travel_z(self):
         """Regression guard: the raw descent after move_to_labware must

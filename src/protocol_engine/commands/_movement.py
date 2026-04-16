@@ -48,5 +48,8 @@ def approach_and_descend(
     context.board.move_to_labware(instrument, coord)
     x, y, z = unpack_xyz(coord)
     instr = context.board.instruments[instrument]
-    action_z = z + instr.measurement_height
+    # User-space Z is positive-down; subtract so a positive ``measurement_height``
+    # means "above the labware surface" (non-contact probes) and a negative
+    # one means "dipping into the sample" (contact instruments).
+    action_z = z - instr.measurement_height
     context.board.move(instrument, (x, y, action_z))

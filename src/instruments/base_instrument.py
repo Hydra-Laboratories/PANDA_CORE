@@ -17,22 +17,24 @@ class BaseInstrument(ABC):
 
     Z-offset convention
     -------------------
-    Coordinates use the gantry's user-space convention: larger Z = further
-    above the deck (away from labware surfaces). Both offsets are measured
-    relative to the same labware reference z. They are applied at different
-    phases of motion:
+    User-space Z is positive-down in this system: z=0 at the gantry's home
+    position (top of travel), larger z moves closer to the deck. Both
+    offsets below are signed heights ABOVE the labware reference z:
+    Board/commands subtract the offset from the labware z to get the
+    tip's target z. Bigger offset = smaller z = higher above the labware.
 
-    * ``measurement_height`` — signed Z offset from the labware reference
-      during the measurement/action. Positive = above the reference;
-      negative = below. Non-contact instruments (uvvis, filmetrics,
-      uv_curing) use a small positive value (probe clearance above sample).
-      Contact instruments (pipette, asmi, potentiostat) use 0 (touch) or
-      negative (dip into the sample). Applied by each *engaging* command
-      (measure/scan/aspirate/etc.) when it descends after approach.
-    * ``safe_approach_height`` — signed Z offset during XY travel, also
-      relative to the labware reference z. Must be >= ``measurement_height``
-      (enforced in __init__) so the instrument never travels *below* its
-      own action Z. Defaults to ``measurement_height`` (correct for
+    * ``measurement_height`` — signed offset above the labware reference
+      during the measurement/action. Positive = above the reference
+      (tip held over the sample); negative = below (tip dipped into the
+      sample). Non-contact instruments (uvvis, filmetrics, uv_curing) use
+      a small positive value for probe clearance. Contact instruments
+      (pipette, asmi, potentiostat) use 0 (touch) or negative (dip).
+      Applied by each *engaging* command (measure/scan/aspirate/etc.)
+      when it descends after approach.
+    * ``safe_approach_height`` — signed offset above the labware reference
+      during XY travel. Must be >= ``measurement_height`` (enforced in
+      __init__) so the instrument never travels *lower* than its own
+      action height. Defaults to ``measurement_height`` (correct for
       non-contact tools); contact instruments should set a larger positive
       value explicitly. Applied by ``Board.move_to_labware``.
     """

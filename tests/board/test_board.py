@@ -312,9 +312,10 @@ class TestBoardMoveToLabware:
 
         assert gantry.move_to.call_count == 1
         call = gantry.move_to.call_args
-        # tip target: (100, 50, 20 + safe_approach=3 = 23). travel_z == target z.
-        assert call.args == (100.0, 50.0, 23.0)
-        assert call.kwargs == {"travel_z": 23.0}
+        # User-space is positive-down: approach tip z = labware.z -
+        # safe_approach_height = 20 - 3 = 17. travel_z == target z.
+        assert call.args == (100.0, 50.0, 17.0)
+        assert call.kwargs == {"travel_z": 17.0}
 
     def test_contact_instrument_travel_at_approach_above_action(self):
         """Contact instrument with safe_approach > measurement: travel_z
@@ -326,9 +327,9 @@ class TestBoardMoveToLabware:
 
         assert gantry.move_to.call_count == 1
         call = gantry.move_to.call_args
-        # approach z = 30 + 20 = 50.
-        assert call.args == (100.0, 50.0, 50.0)
-        assert call.kwargs == {"travel_z": 50.0}
+        # approach z = 30 - 20 = 10 (20 mm above the labware surface).
+        assert call.args == (100.0, 50.0, 10.0)
+        assert call.kwargs == {"travel_z": 10.0}
 
     def test_applies_instrument_xy_offsets_and_depth(self):
         """Instrument offsets shift gantry coords; depth shifts both
@@ -342,10 +343,10 @@ class TestBoardMoveToLabware:
         board.move_to_labware("probe", _mock_labware(x=100, y=50, z=30))
 
         call = gantry.move_to.call_args
-        # approach tip z = 30 + 15 = 45; gantry z = 45 - depth(2) = 43.
+        # approach tip z = 30 - 15 = 15; gantry z = 15 - depth(2) = 13.
         # gantry x = 100 - 10 = 90; gantry y = 50 - (-5) = 55.
-        assert call.args == (90.0, 55.0, 43.0)
-        assert call.kwargs == {"travel_z": 43.0}
+        assert call.args == (90.0, 55.0, 13.0)
+        assert call.kwargs == {"travel_z": 13.0}
 
     def test_accepts_tuple_position(self):
         gantry = _mock_gantry()
@@ -355,8 +356,9 @@ class TestBoardMoveToLabware:
 
         assert gantry.move_to.call_count == 1
         call = gantry.move_to.call_args
-        assert call.args == (50.0, 40.0, 12.0)
-        assert call.kwargs == {"travel_z": 12.0}
+        # 10 - 2 = 8 (probe held 2 mm above the labware's z).
+        assert call.args == (50.0, 40.0, 8.0)
+        assert call.kwargs == {"travel_z": 8.0}
 
     def test_rejects_nan_position_z(self):
         """NaN in position z is caught (via Board.move's validation)."""
