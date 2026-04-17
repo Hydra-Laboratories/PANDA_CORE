@@ -120,4 +120,9 @@ def scan(
                     "Failed to log measurement for well %s: %s", well_id, exc,
                 )
 
+    if sorted_wells:
+        last_well = plate_obj.get_well_center(sorted_wells[-1])
+        approach_z = last_well.z - instr.safe_approach_height
+        context.board.move(instrument, (last_well.x, last_well.y, approach_z))
+
     return results
