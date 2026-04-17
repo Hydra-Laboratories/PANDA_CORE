@@ -164,24 +164,22 @@ class TestScanCommand:
         from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()  # wells at z=75.0
-        sensor = _make_sensor(measurement_height=3.0)
+        sensor = _make_sensor(measurement_height=3.0, safe_approach_height=10.0)
         ctx = _mock_context(plate=plate, sensor=sensor)
 
         scan(ctx, plate="plate_1", instrument="uvvis", method="measure")
 
-        # 4 wells => 4 descent calls.
-        assert ctx.board.move.call_count == 4
-        descent_zs = [c.args[1][2] for c in ctx.board.move.call_args_list]
-        # User-space is positive-down: action_z = well.z - measurement_height
-        # = 75 - 3 = 72 (probe held 3 mm above the well).
-        assert descent_zs == [72.0, 72.0, 72.0, 72.0]
+        # 4 wells => 4 descent calls + 1 retract after last well.
+        assert ctx.board.move.call_count == 5
+        move_zs = [c.args[1][2] for c in ctx.board.move.call_args_list]
+        # First 4: action_z = 75 - 3 = 72 (descent to measurement_height).
+        # Last: approach_z = 75 - 10 = 65 (retract to safe_approach_height).
+        assert move_zs == [72.0, 72.0, 72.0, 72.0, 65.0]
 
-    def test_descent_move_does_not_pass_travel_z(self):
-        """Regression guard: the raw descent after move_to_labware must
-        NOT pass a travel_z. If it did, the gantry would lift to
-        travel_z before descending to action z — reintroducing the
-        original bug where the tip detoured up instead of going
-        straight down from safe_approach_height to measurement_height."""
+    def test_descent_and_retract_moves_do_not_pass_travel_z(self):
+        """Regression guard: raw moves (descent per well + final retract)
+        must NOT pass a travel_z. If they did, the gantry would lift to
+        travel_z before moving — reintroducing the original detour bug."""
         from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()
@@ -192,26 +190,43 @@ class TestScanCommand:
 
         for call in ctx.board.move.call_args_list:
             assert call.kwargs.get("travel_z") is None, (
-                f"descent move must not pass travel_z; got {call.kwargs!r}"
+                f"raw move must not pass travel_z; got {call.kwargs!r}"
             )
 
     def test_approach_then_descend_then_method_per_well(self):
-        """Per-well call order: move_to_labware -> move (descent) -> method."""
+        """Per-well call order: move_to_labware -> move (descent) -> method,
+        followed by a final retract move after the last well."""
         from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()
         sensor = _make_sensor(measurement_height=3.0)
         ctx = _mock_context(plate=plate, sensor=sensor)
-        # Track call order via a shared list.
         order = []
         ctx.board.move_to_labware.side_effect = lambda *a, **k: order.append("approach")
-        ctx.board.move.side_effect = lambda *a, **k: order.append("descent")
+        ctx.board.move.side_effect = lambda *a, **k: order.append("move")
         sensor.measure = lambda *a, **k: (order.append("measure") or "ok")
 
         scan(ctx, plate="plate_1", instrument="uvvis", method="measure")
 
-        # Four wells; per-well sequence repeats.
-        assert order == ["approach", "descent", "measure"] * 4
+        assert order == ["approach", "move", "measure"] * 4 + ["move"]
+
+    def test_retracts_to_safe_approach_height_after_last_well(self):
+        """After the last measurement, the gantry must retract to
+        safe_approach_height above the last well."""
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x2_plate()  # wells at z=75.0
+        sensor = _make_sensor(measurement_height=3.0, safe_approach_height=10.0)
+        ctx = _mock_context(plate=plate, sensor=sensor)
+
+        scan(ctx, plate="plate_1", instrument="uvvis", method="measure")
+
+        last_move = ctx.board.move.call_args_list[-1]
+        instr_name, position = last_move.args
+        assert instr_name == "uvvis"
+        # Last well in row-major order is B2 at (10, 8, 75).
+        # Retract z = 75 - 10 = 65.
+        assert position == (10.0, 8.0, 65.0)
 
     def test_returns_dict_of_results_per_well(self):
         from protocol_engine.commands.scan import scan
