@@ -8,6 +8,7 @@ project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
 from gantry.gantry_driver.driver import Mill, wpos_pattern, mpos_pattern, Coordinates
+from gantry.gantry_driver.exceptions import LocationNotFound, MillConnectionError
 
 class TestCNCDriverLogic(unittest.TestCase):
     
@@ -93,11 +94,37 @@ class TestCNCDriverLogic(unittest.TestCase):
             mill.clear_buffers = MagicMock()
             mill._enforce_wpos_mode = MagicMock()
             mill.set_feed_rate = MagicMock()
+            mill._verify_work_position_reporting = MagicMock()
             mill._seed_wco = MagicMock()
+            mill.read = MagicMock(return_value="<Idle|WPos:0,0,0|FS:0,0>")
             mill.connect_to_mill(port='/dev/test')
             
             self.assertTrue(mill.active_connection)
             self.assertEqual(mill.ser_mill, mock_serial_instance)
+            mill._verify_work_position_reporting.assert_called_once_with()
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_connect_raises_when_wpos_cannot_be_verified(self, mock_cmd_logger, mock_mill_logger, mock_serial):
+        """Test that connect_to_mill fails when WPos is still unavailable after enforcement."""
+        mock_serial_instance = MagicMock()
+        mock_serial_instance.is_open = True
+        mock_serial.return_value = mock_serial_instance
+
+        with patch.object(Mill, 'locate_mill_over_serial', return_value=(mock_serial_instance, '/dev/test')):
+            mill = Mill()
+            mill.read_mill_config = MagicMock()
+            mill.write_mill_config_file = MagicMock()
+            mill.read_working_volume = MagicMock()
+            mill.clear_buffers = MagicMock()
+            mill._enforce_wpos_mode = MagicMock()
+            mill.set_feed_rate = MagicMock()
+            mill.current_coordinates = MagicMock(side_effect=LocationNotFound())
+            mill.read = MagicMock(return_value="<Idle|MPos:0,0,0|FS:0,0>")
+
+            with self.assertRaises(MillConnectionError):
+                mill.connect_to_mill(port='/dev/test')
 
     @patch('gantry.gantry_driver.driver.serial.Serial')
     @patch('gantry.gantry_driver.driver.set_up_mill_logger')

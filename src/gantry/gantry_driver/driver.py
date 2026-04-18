@@ -352,13 +352,9 @@ class Mill:
         self.read_working_volume()
 
         self.clear_buffers()
-        if initial_status:
-            self._enforce_wpos_mode()
-        else:
-            self.logger.warning(
-                "No initial GRBL status response; skipping WPos enforcement during connect"
-            )
+        self._enforce_wpos_mode()
         self.set_feed_rate(DEFAULT_FEED_RATE)
+        self._verify_work_position_reporting()
         if initial_status:
             self._seed_wco()
         return self.ser_mill
@@ -921,6 +917,23 @@ class Mill:
                 "Could not verify G90 during connect; continuing with existing parser state"
             )
         self.logger.info("WPos mode and absolute positioning enforced")
+
+    def _verify_work_position_reporting(self) -> Coordinates:
+        """Fail connect if GRBL still cannot report work coordinates."""
+        try:
+            coords = self.current_coordinates()
+        except (LocationNotFound, StatusReturnError) as exc:
+            raise MillConnectionError(
+                "Mill did not report a usable WPos after connect"
+            ) from exc
+
+        self.logger.info(
+            "Verified WPos reporting after connect: X=%s Y=%s Z=%s",
+            coords.x,
+            coords.y,
+            coords.z,
+        )
+        return coords
 
     def _seed_wco(self):
         """Poll GRBL status until WCO is reported, then cache it.
