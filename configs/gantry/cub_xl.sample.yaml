@@ -16,7 +16,9 @@ working_volume:
   z_max: 100.0
 
 grbl_settings:
+  dir_invert_mask: null  # $3; fill in after controller normalization
   homing_enable: true
+  homing_dir_mask: null  # $23; fill in after controller normalization
   steps_per_mm_x: 400.0
   steps_per_mm_y: 400.0
   steps_per_mm_z: 400.0
