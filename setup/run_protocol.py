@@ -14,8 +14,10 @@ Steps:
     1. Validate all configs and bounds (offline, no hardware)
     2. Load gantry config and create gantry
     3. Connect to gantry
-    4. Run the protocol
-    5. Disconnect
+    4. Clear any startup alarm
+    5. Connect instruments
+    6. Run the protocol
+    7. Disconnect
 """
 
 import sys
@@ -93,6 +95,12 @@ def main() -> None:
         print("Connecting to gantry...")
         gantry.connect()
 
+        print("Clearing gantry alarm state if needed...")
+        gantry.prepare_for_protocol_run()
+
+        print("Connecting instruments...")
+        context.board.connect_instruments()
+
         if not gantry.is_healthy():
             print("ERROR: Gantry health check failed. Aborting.")
             gantry.disconnect()
@@ -118,6 +126,8 @@ def main() -> None:
         traceback.print_exc()
         sys.exit(1)
     finally:
+        print("Disconnecting instruments...")
+        context.board.disconnect_instruments()
         print("Disconnecting...")
         gantry.disconnect()
         print("Done.")

@@ -1,7 +1,6 @@
 """Contains mocks for cnc driver objects for offline testing"""
 
 # standard libraries
-import json
 import logging
 import re
 from pathlib import Path
@@ -10,7 +9,6 @@ from pathlib import Path
 import serial
 
 from .driver import Mill as RealMill
-from .exceptions import MillConfigError
 from .instruments import Coordinates
 
 # Mock WCO: simulates machine where homing puts MPos at these values
@@ -18,6 +16,17 @@ from .instruments import Coordinates
 MOCK_WCO_X = -300.0
 MOCK_WCO_Y = -200.0
 MOCK_WCO_Z = -80.0
+MOCK_GRBL_SETTINGS = {
+    "$10": "0",
+    "$20": "0",
+    "$22": "1",
+    "$100": "400.000",
+    "$101": "400.000",
+    "$102": "400.000",
+    "$130": "400.000",
+    "$131": "300.000",
+    "$132": "100.000",
+}
 
 
 class MockMill(RealMill):
@@ -46,13 +55,11 @@ class MockMill(RealMill):
     gcode_parameters(): Simulate getting G-code parameters.
     gcode_parser_state(): Simulate getting G-code parser state.
     rinse_electrode(): Simulate rinsing the electrode.
-    move_to_safe_position(): Simulate moving to a safe position.
     move_center_to_position(x_coord, y_coord, z_coord): Simulate moving to a specified position.
     current_coordinates(instrument): Return the tracked current coordinates.
     move_pipette_to_position(x_coord, y_coord, z_coord): Simulate moving the pipette to a specified position.
     move_electrode_to_position(x_coord, y_coord, z_coord): Simulate moving the electrode to a specified position.
     update_offset(offset_type, offset_x, offset_y, offset_z): Simulate updating offsets in the config.
-    safe_move(x_coord, y_coord, z_coord, instrument): Simulate a safe move with horizontal and vertical movements.
     """
 
     def __init__(self):
@@ -60,7 +67,6 @@ class MockMill(RealMill):
         self.logger_location = Path(__file__).parent / "mock_logs"
         self.ser_mill: MockSerialToMill = self.connect_to_mill()
         self.working_volume: Coordinates = Coordinates(x=415.0, y=300.0, z=200.0)
-        self.safe_floor_height = 10.0
 
         self.change_logging_level("DEBUG")
 
@@ -102,27 +108,17 @@ class MockMill(RealMill):
         return self.config
 
     def read_mill_config(self):
-        """Read the mill config from the mill and set it as an attribute"""
-        try:
-            if self.ser_mill.is_open:
-                self.logger.info("Reading mill config")
-                config_path = Path("grbl_cnc_mill/_configuration.json")
-                with config_path.open("r") as file:
-                    mill_config = json.load(file)
-                self.config = mill_config
-                self.logger.debug("Mill config: %s", mill_config)
-            else:
-                self.logger.error("Serial connection to mill is not open")
-                # raise MillConnectionError(
-                #     "Serial connection to mill is not open, cannot read config"
-                # )
-        except Exception as exep:
-            self.logger.error("Error reading mill config: %s", str(exep))
-            raise MillConfigError("Error reading mill config") from exep
+        """Populate a deterministic mock GRBL config without reading disk."""
+        if self.ser_mill.is_open:
+            self.logger.info("Reading mock mill config")
+            self.config = dict(MOCK_GRBL_SETTINGS)
+            self.logger.debug("Mock mill config: %s", self.config)
+        else:
+            self.logger.error("Serial connection to mill is not open")
 
     def __wait_for_completion(self, incoming_status, timeout=5):
         return (
-            f"<Idle|WPos:{self.ser_mill.current_x - 3},{self.ser_mill.current_y - 3},{self.ser_mill.current_z - 3}"
+            f"<Idle|WPos:{self.ser_mill.current_x},{self.ser_mill.current_y},{self.ser_mill.current_z}"
             f"|Bf:15,127|FS:0,0|WCO:{MOCK_WCO_X},{MOCK_WCO_Y},{MOCK_WCO_Z}>"
         )
 
@@ -218,7 +214,7 @@ class MockSerialToMill:
     def read(self, size):
         """Simulate reading from the serial connection"""
         msg = (
-            f"<Idle|WPos:{self.current_x - 3},{self.current_y - 3},{self.current_z - 3}"
+            f"<Idle|WPos:{self.current_x},{self.current_y},{self.current_z}"
             f"|Bf:15,127|FS:0,0|WCO:{MOCK_WCO_X},{MOCK_WCO_Y},{MOCK_WCO_Z}>"
         ).encode()
         return msg[:size]
@@ -226,14 +222,14 @@ class MockSerialToMill:
     def read_all(self):
         """Simulate reading from the serial connection"""
         return (
-            f"<Idle|WPos:{self.current_x - 3},{self.current_y - 3},{self.current_z - 3}"
+            f"<Idle|WPos:{self.current_x},{self.current_y},{self.current_z}"
             f"|Bf:15,127|FS:0,0|WCO:{MOCK_WCO_X},{MOCK_WCO_Y},{MOCK_WCO_Z}>\n"
         ).encode()
 
     def readline(self):
         """Simulate reading from the serial connection"""
         return (
-            f"<Idle|WPos:{self.current_x - 3},{self.current_y - 3},{self.current_z - 3}"
+            f"<Idle|WPos:{self.current_x},{self.current_y},{self.current_z}"
             f"|Bf:15,127|FS:0,0|WCO:{MOCK_WCO_X},{MOCK_WCO_Y},{MOCK_WCO_Z}>\n"
         ).encode()
 

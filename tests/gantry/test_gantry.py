@@ -22,14 +22,27 @@ class TestGantry(unittest.TestCase):
         mock_mill.connect_to_mill.assert_called_with(port=None)
 
     @patch("gantry.gantry.Mill")
-    def test_move_delegates_to_safe_move(self, mock_mill_cls):
+    def test_move_delegates_to_move_to_position(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
         gantry = Gantry(config=self.config)
         gantry.move_to(10, 20, 30)
-        mock_mill.safe_move.assert_called_with(
-            x_coord=-10.0,
-            y_coord=-20.0,
-            z_coord=-30.0,
+        mock_mill.move_to_position.assert_called_with(
+            x_coordinate=10.0,
+            y_coordinate=20.0,
+            z_coordinate=-30.0,
+            travel_z=None,
+        )
+
+    @patch("gantry.gantry.Mill")
+    def test_move_with_travel_z_passes_through_translated(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        gantry = Gantry(config=self.config)
+        gantry.move_to(10, 20, 30, travel_z=50)
+        mock_mill.move_to_position.assert_called_with(
+            x_coordinate=10.0,
+            y_coordinate=20.0,
+            z_coordinate=-30.0,
+            travel_z=-50.0,
         )
 
     @patch("gantry.gantry.Mill")
@@ -134,9 +147,59 @@ class TestGantry(unittest.TestCase):
             gantry.home()
 
     @patch("gantry.gantry.Mill")
+    def test_prepare_for_protocol_run_unlocks_alarm_and_restores_state(
+        self, mock_mill_cls
+    ):
+        mock_mill = mock_mill_cls.return_value
+        mock_mill.query_raw_status.side_effect = [
+            "<Alarm|WPos:0,0,0|FS:0,0>",
+            "<Idle|WPos:0,0,0|FS:0,0>",
+            "<Idle|WPos:0,0,0|FS:0,0>",
+        ]
+        mock_mill.grbl_settings.return_value = {}
+        gantry = Gantry(config=self.config)
+
+        gantry.prepare_for_protocol_run()
+
+        mock_mill.soft_reset_and_unlock.assert_called_once()
+        mock_mill.read_mill_config.assert_called_once()
+        mock_mill.read_working_volume.assert_called_once()
+        mock_mill.clear_buffers.assert_called_once()
+        mock_mill._enforce_wpos_mode.assert_called_once()
+        mock_mill.set_feed_rate.assert_called_once()
+        mock_mill._seed_wco.assert_called_once()
+
+    @patch("gantry.gantry.Mill")
+    def test_prepare_for_protocol_run_noops_when_not_in_alarm(
+        self, mock_mill_cls
+    ):
+        mock_mill = mock_mill_cls.return_value
+        mock_mill.query_raw_status.return_value = "<Idle|WPos:0,0,0|FS:0,0>"
+        gantry = Gantry(config=self.config)
+
+        gantry.prepare_for_protocol_run()
+
+        mock_mill.soft_reset_and_unlock.assert_not_called()
+        mock_mill.read_mill_config.assert_not_called()
+
+    @patch("gantry.gantry.Mill")
+    def test_prepare_for_protocol_run_raises_if_alarm_persists(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        mock_mill.query_raw_status.side_effect = [
+            "<Alarm|WPos:0,0,0|FS:0,0>",
+            "<Idle|WPos:0,0,0|FS:0,0>",
+            "<Alarm|WPos:0,0,0|FS:0,0>",
+        ]
+        mock_mill.grbl_settings.return_value = {}
+        gantry = Gantry(config=self.config)
+
+        with self.assertRaises(MillConnectionError):
+            gantry.prepare_for_protocol_run()
+
+    @patch("gantry.gantry.Mill")
     def test_move_to_raises_on_command_error(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
-        mock_mill.safe_move.side_effect = CommandExecutionError("move failed")
+        mock_mill.move_to_position.side_effect = CommandExecutionError("move failed")
         gantry = Gantry(config=self.config)
         with self.assertRaises(CommandExecutionError):
             gantry.move_to(10, 20, 30)
@@ -144,7 +207,7 @@ class TestGantry(unittest.TestCase):
     @patch("gantry.gantry.Mill")
     def test_move_to_does_not_catch_unexpected_errors(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
-        mock_mill.safe_move.side_effect = RuntimeError("unexpected")
+        mock_mill.move_to_position.side_effect = RuntimeError("unexpected")
         gantry = Gantry(config=self.config)
         with self.assertRaises(RuntimeError):
             gantry.move_to(10, 20, 30)

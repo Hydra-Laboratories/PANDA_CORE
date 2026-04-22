@@ -45,8 +45,9 @@ def test_measure_approaches_then_descends_then_acts():
 
     # Step 1: approach.
     ctx.board.move_to_labware.assert_called_once_with("uvvis", coord)
-    # Step 2: descend to action Z = 30 + 3 = 33 at same XY.
-    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, 33.0))
+    # Step 2: descend to action Z = 30 - 3 = 27 at same XY (user-space is
+    # positive-down; a positive measurement_height lifts the probe above).
+    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, 27.0))
     # Step 3: act.
     instr.measure.assert_called_once()
     assert result == "spectrum"
@@ -61,8 +62,8 @@ def test_measure_contact_instrument_descends_below_reference():
 
     measure(ctx, instrument="uvvis", position="plate_1.A1")
 
-    # Descent target = 30 + (-5) = 25.
-    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, 25.0))
+    # Descent target = 30 - (-5) = 35 (tip dipped 5 mm into the sample).
+    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, 35.0))
 
 
 def test_measure_passes_method_kwargs():

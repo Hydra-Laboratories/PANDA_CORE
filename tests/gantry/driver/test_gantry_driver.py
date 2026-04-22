@@ -38,41 +38,149 @@ class TestCNCDriverLogic(unittest.TestCase):
     @patch('gantry.gantry_driver.driver.serial.Serial')
     @patch('gantry.gantry_driver.driver.set_up_mill_logger')
     @patch('gantry.gantry_driver.driver.set_up_command_logger')
-    def test_generate_movement_commands(self, mock_cmd_logger, mock_mill_logger, mock_serial):
-        """Test generation of G-code commands."""
-        # Setup mock mill with basic config
+    def test_generate_movement_commands_are_axis_by_axis(self, mock_cmd_logger, mock_mill_logger, mock_serial):
+        """Direct moves emit X, Y, Z on separate G-code lines — never a
+        combined ``G01 X… Y…`` interpolation. The mill must not command
+        simultaneous multi-axis motion so callers own every straight
+        segment of the path."""
         mill = Mill()
-        mill.max_z_height = 0.0
-        mill.safe_z_height = -5.0
-        
-        # Test 1: Simple XY move (current Z is safe)
-        current = Coordinates(0, 0, 0) # At safe height (0 >= -5)
-        target = Coordinates(10, 10, 0)
-        
+
+        current = Coordinates(0.0, 0.0, 0.0)
+        target = Coordinates(10.0, 20.0, -5.0)
         commands = mill._generate_movement_commands(current, target)
-        # Should be diagonal move
-        self.assertIn("G01 X10.0 Y10.0 F2000", commands)
-        self.assertIn("G01 Z0.0 F2000", commands)
-        
-        # Test 2: Move where current Z is unsafe (e.g. deep in a well)
-        # However, _generate_movement_commands logic in current driver:
-        # if current.z >= safe_height: diagonal move
-        # else: separate moves
-        
-        current_unsafe = Coordinates(0, 0, -10) # Below safe height of -5
-        target_unsafe = Coordinates(10, 10, -10)
-        
-        commands_unsafe = mill._generate_movement_commands(current_unsafe, target_unsafe)
-        # Should NOT have diagonal move X Y together if strictly following "non-safe" path logic?
-        # Looking at code: 
-        # else:
-        #   append X..
-        #   append Y..
-        #   append Z..
-        
-        self.assertIn("G01 X10.0 F2000", commands_unsafe)
-        self.assertIn("G01 Y10.0 F2000", commands_unsafe)
-        self.assertNotIn("G01 X10.0 Y10.0", commands_unsafe)
+
+        self.assertEqual(commands, [
+            "G01 X10.0 F2000",
+            "G01 Y20.0 F2000",
+            "G01 Z-5.0 F2000",
+        ])
+        # Regression guard: no combined-XY command anywhere.
+        self.assertFalse(any("Y" in c and "X" in c for c in commands))
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_generate_movement_commands_skips_unchanged_axes(self, mock_cmd_logger, mock_mill_logger, mock_serial):
+        """Only the axes that actually changed get a G-code line."""
+        mill = Mill()
+
+        current = Coordinates(0.0, 5.0, -5.0)
+        target = Coordinates(10.0, 5.0, -5.0)  # only X changes
+        commands = mill._generate_movement_commands(current, target)
+
+        self.assertEqual(commands, ["G01 X10.0 F2000"])
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_generate_transit_commands_lifts_traverses_descends(
+        self, mock_cmd_logger, mock_mill_logger, mock_serial,
+    ):
+        """Transit: lift → X → Y → (descend skipped when target_z == travel_z).
+
+        Models an inter-well scan hop. X and Y always ship as separate
+        G-code lines so no diagonal motion is ever commanded.
+        """
+        mill = Mill()
+
+        current = Coordinates(-100.0, -50.0, -78.0)  # well_i action z
+        target = Coordinates(-110.0, -60.0, -85.0)   # well_j approach z
+        commands = mill._generate_transit_commands(current, target, travel_z=-85.0)
+
+        self.assertEqual(commands, [
+            "G01 Z-85.0 F2000",    # lift
+            "G01 X-110.0 F2000",   # X alone
+            "G01 Y-60.0 F2000",    # Y alone
+            # target.z == travel_z, final descent skipped.
+        ])
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_generate_transit_commands_skips_lift_when_already_at_travel_z(
+        self, mock_cmd_logger, mock_mill_logger, mock_serial,
+    ):
+        """Already at travel_z: no lift, just X (Y unchanged) then descent."""
+        mill = Mill()
+
+        current = Coordinates(-100.0, -50.0, -85.0)
+        target = Coordinates(-110.0, -50.0, -90.0)  # Y unchanged
+        commands = mill._generate_transit_commands(current, target, travel_z=-85.0)
+
+        self.assertEqual(commands, [
+            "G01 X-110.0 F2000",
+            "G01 Z-90.0 F2000",
+        ])
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_generate_transit_commands_skips_xy_when_target_xy_matches_current(
+        self, mock_cmd_logger, mock_mill_logger, mock_serial,
+    ):
+        """Same-XY transit: lift then descend — neither X nor Y emits."""
+        mill = Mill()
+
+        current = Coordinates(-100.0, -50.0, -78.0)
+        target = Coordinates(-100.0, -50.0, -90.0)
+        commands = mill._generate_transit_commands(current, target, travel_z=-85.0)
+
+        self.assertEqual(commands, [
+            "G01 Z-85.0 F2000",
+            "G01 Z-90.0 F2000",
+        ])
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_generate_transit_commands_emits_all_four_steps(
+        self, mock_cmd_logger, mock_mill_logger, mock_serial,
+    ):
+        """Lift → X → Y → descend, all four fire when every axis changes
+        and travel_z differs from both current.z and target.z."""
+        mill = Mill()
+
+        current = Coordinates(-100.0, -50.0, -78.0)
+        target = Coordinates(-110.0, -60.0, -90.0)
+        commands = mill._generate_transit_commands(current, target, travel_z=-85.0)
+
+        self.assertEqual(commands, [
+            "G01 Z-85.0 F2000",    # lift
+            "G01 X-110.0 F2000",   # X alone
+            "G01 Y-60.0 F2000",    # Y alone
+            "G01 Z-90.0 F2000",    # descend
+        ])
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_move_to_position_with_travel_z_emits_ordered_commands(
+        self, mock_cmd_logger, mock_mill_logger, mock_serial,
+    ):
+        """End-to-end: move_to_position(..., travel_z=...) routes
+        through _generate_transit_commands and emits lift → X → Y →
+        descend in order. instrument='center' has zero offsets, so
+        the emitted travel_z matches the input."""
+        mill = Mill()
+        mill.ser_mill = MagicMock()
+        mill.current_coordinates = MagicMock(
+            return_value=Coordinates(-100.0, -50.0, -78.0),
+        )
+
+        sent = []
+        mill.execute_command = lambda cmd: sent.append(cmd) or "ok"
+
+        mill.move_to_position(
+            x_coordinate=-110.0, y_coordinate=-60.0, z_coordinate=-90.0,
+            travel_z=-85.0,
+        )
+
+        self.assertEqual(sent, [
+            "G01 Z-85.0 F2000",
+            "G01 X-110.0 F2000",
+            "G01 Y-60.0 F2000",
+            "G01 Z-90.0 F2000",
+        ])
 
     @patch('gantry.gantry_driver.driver.serial.Serial')
     @patch('gantry.gantry_driver.driver.set_up_mill_logger')
@@ -87,7 +195,6 @@ class TestCNCDriverLogic(unittest.TestCase):
         with patch.object(Mill, 'locate_mill_over_serial', return_value=(mock_serial_instance, '/dev/test')):
             mill = Mill()
             mill.read_mill_config = MagicMock()
-            mill.write_mill_config_file = MagicMock()
             mill.read_working_volume = MagicMock()
             mill.check_for_alarm_state = MagicMock()
             mill.clear_buffers = MagicMock()
@@ -98,6 +205,22 @@ class TestCNCDriverLogic(unittest.TestCase):
             
             self.assertTrue(mill.active_connection)
             self.assertEqual(mill.ser_mill, mock_serial_instance)
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_grbl_settings_reads_live_controller(self, mock_cmd_logger, mock_mill_logger, mock_serial):
+        """Test that grbl_settings issues a live $$ read."""
+        mill = Mill()
+        mill.ser_mill = MagicMock()
+        mill.ser_mill.is_open = True
+        mill.execute_command = MagicMock(return_value={"$130": "400.000"})
+
+        settings = mill.grbl_settings()
+
+        mill.execute_command.assert_called_once_with("$$")
+        self.assertEqual(settings["$130"], "400.000")
+        self.assertEqual(mill.config["$130"], "400.000")
 
     @patch('gantry.gantry_driver.driver.serial.Serial')
     @patch('gantry.gantry_driver.driver.set_up_mill_logger')

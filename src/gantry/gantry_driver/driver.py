@@ -12,7 +12,6 @@ of the mill.
 # pylint: disable=line-too-long
 
 # standard libraries
-import json
 import os
 import re
 import time
@@ -26,8 +25,6 @@ import serial.tools.list_ports
 from .exceptions import (
     CommandExecutionError,
     LocationNotFound,
-    MillConfigError,
-    MillConfigNotFound,
     MillConnectionError,
     StatusReturnError,
 )
@@ -78,8 +75,6 @@ class Mill:
         active_connection (bool): True if the connection to the mill is active, False otherwise.
         instrument_manager (InstrumentManager): The instrument manager for the mill.
         working_volume (Coordinates): The working volume of the mill.
-        safe_z_height (float): The safe Z height for clearance moves.
-        max_z_height (float): The maximum Z height after homing.
         logger_location (Path): The location of the logger.
         logger (Logger): The logger for the mill.
 
@@ -88,9 +83,7 @@ class Mill:
         homing_sequence(): Home the mill, set the feed rate, and clear the buffers.
         connect_to_mill(port, baudrate, timeout): Connect to the mill.
         check_for_alarm_state(): Check if the mill is in an alarm state.
-        read_mill_config_file(config_file): Read the mill configuration file.
         read_mill_config(): Read the mill configuration from the mill and set it as an attribute.
-        write_mill_config_file(config_file): Write the mill configuration to the configuration file.
         execute_command(command): Execute a command on the mill.
         stop(): Stop the mill.
         reset(): Reset the mill.
@@ -105,17 +98,15 @@ class Mill:
         grbl_settings(): Get the GRBL settings of the mill.
         set_grbl_setting(setting, value): Set a GRBL setting of the mill.
         current_coordinates(instrument): Get the current coordinates of the mill.
-        move_to_safe_position(): Move the mill to its current x,y location and z = 0.
-        move_to_position(x, y, z, coordinates, instrument): Move the mill to the specified coordinates.
+        move_to_position(x, y, z, coordinates, instrument, travel_z): Move the mill to the specified coordinates, optionally via a given XY-travel Z.
         update_offset(instrument, offset_x, offset_y, offset_z): Update the offset in the config file.
-        safe_move(x_coord, y_coord, z_coord, coordinates, instrument, second_z_cord, second_z_cord_feed): Move the mill to the specified coordinates using only horizontal (xy) and vertical movements.
     """
 
     def __init__(self, port: Optional[str] = None):
         self.logger_location = Path(__file__).parent / "logs"
         self.logger = set_up_mill_logger(self.logger_location)
         self.port = port
-        self.config = self.read_mill_config_file("_configuration.json")
+        self.config = {}
         self._clean_config()
         self.ser_mill: serial.Serial = None
 
@@ -129,8 +120,6 @@ class Mill:
         self.active_connection = False
         self.instrument_manager: InstrumentManager = InstrumentManager()
         self.working_volume: Coordinates = self.read_working_volume()
-        self.safe_z_height = -10.0  # TODO: set the safe floor height to the max height of any active object on the mill + the pipette length
-        self.max_z_height = 0.0
         self.command_logger = set_up_command_logger(self.logger_location)
         self.interactive_mode = False
         self._wco: Optional[Coordinates] = None
@@ -139,7 +128,7 @@ class Mill:
     def read_working_volume(self):
         """Checks the mill config for soft limits to be enabled, and then if so check the x, y, and z max travel limits"""
         working_volume: Coordinates = Coordinates(0, 0, 0)
-        if int(self.config["$20"]) == 1:
+        if self.config.get("$20") == "1":
             self.logger.info("Soft limits are enabled in the mill config")
             xmultiplier = -1
             ymultiplier = -1
@@ -162,18 +151,6 @@ class Mill:
         self.home()
         self.set_feed_rate(5000)
         self.clear_buffers()
-        self.check_max_z_height()
-
-    def check_max_z_height(self):
-        """
-        After homing, if there are no axes offset (G54-G59), the working coordinates should be 0,0,0.
-        If there are axes offset, the working coordinates should be the offset values.
-
-        For this function, if after homing the z coordinate is not 0, then the max z height is set to the current z coordinate.
-        """
-        current_coordinates = self.current_coordinates()
-        if current_coordinates.z != 0:
-            self.max_z_height = current_coordinates.z
 
     def locate_mill_over_serial(self, port: Optional[str] = None) -> Tuple[serial.Serial, str]:
         """
@@ -269,9 +246,10 @@ class Mill:
 
         self.logger.info("Querying the mill for status")
 
+        # Wake the controller without forcing a soft reset. Ctrl-X clears
+        # transient state, but on machines with homing lock enabled it also
+        # drops GRBL back into Alarm until the operator homes again.
         ser_mill.write(b"\r\n")
-        time.sleep(0.1)
-        ser_mill.write(b"\x18")
         time.sleep(0.1)
         ser_mill.flushInput()
 
@@ -348,7 +326,6 @@ class Mill:
             return self.ser_mill
 
         self.read_mill_config()
-        self.write_mill_config_file("_configuration.json")
         self.read_working_volume()
 
         self.clear_buffers()
@@ -423,66 +400,39 @@ class Mill:
              self.logger.info("Serial connection was already closed or never opened.")
         return
 
-    def read_mill_config_file(self, config_file: str = "_configuration.json"):
-        """Read the config file."""
-        try:
-            config_file_path = Path(__file__).parent / config_file
-            with open(config_file_path, "r", encoding="UTF-8") as file:
-                configuration = json.load(file)
-                self.logger.debug("Mill config loaded: %s", configuration)
-                return configuration
-        except FileNotFoundError:
-            self.logger.error("Config file not found")
-            self.logger.error("Creating default config file")
-            dft_config_file_path = Path(__file__).parent / "default_configuration.json"
-
-            try:
-                with open(dft_config_file_path, "r", encoding="UTF-8") as dft_file:
-                    default_config = json.load(dft_file)
-
-                config_file_path.parent.mkdir(exist_ok=True)
-                with open(config_file_path, "w", encoding="UTF-8") as file:
-                    json.dump(default_config, file, indent=4)
-
-                self.logger.info("Default config file copied to: %s", config_file_path)
-                return default_config
-            except FileNotFoundError as err:
-                self.logger.critical("Default configuration file not found!")
-                raise MillConfigNotFound(
-                    "Neither primary nor default config file found"
-                ) from err
-        except Exception as err:
-            self.logger.error("Error reading config file: %s", str(err))
-            raise MillConfigError("Error reading config file") from err
-
     def read_mill_config(self):
-        """Read the mill config from the mill and set it as an attribute."""
-        try:
-            if self.ser_mill is not None and self.ser_mill.is_open:
-                self.logger.info("Reading mill config")
-                mill_config = self.grbl_settings()
-                self.config = mill_config
-                self.logger.debug("Mill config: %s", mill_config)
-            else:
-                self.logger.error("Serial connection to mill is not open")
-                self.logger.error("Falling back to reading from file")
-                self.config = self.read_mill_config_file("_configuration.json")
+        """Read the live mill config from the connected controller."""
+        if self.ser_mill is None or not self.ser_mill.is_open:
+            self.logger.error("Serial connection to mill is not open")
+            raise MillConnectionError("Serial connection to mill is not open")
 
-        except Exception as exep:
-            self.logger.error("Error reading mill config: %s", str(exep))
-            raise MillConfigError("Error reading mill config") from exep
+        self.logger.info("Reading mill config")
+        mill_config = self.grbl_settings()
+        self.config = mill_config
+        self.logger.debug("Mill config: %s", mill_config)
+        return mill_config
 
-    def write_mill_config_file(self, config_file="_configuration.json"):
-        """Write the mill config to the config file."""
-        try:
-            config_file_path = Path(__file__).parent / config_file
-            with open(config_file_path, "w", encoding="UTF-8") as file:
-                json.dump(self.config, file, indent=4)
-            self.logger.info("Mill config written to file")
-            return 0
-        except Exception as exep:
-            self.logger.error("Error writing mill config to file: %s", str(exep))
-            raise MillConfigError("Error writing mill config to file") from exep
+    def _parse_grbl_settings_response(self, response_lines: List[str]) -> dict:
+        """Parse a GRBL $$ response into a settings dictionary."""
+        settings_dict = {}
+        self.logger.info("Parsing settings from: %s", response_lines)
+        for setting in response_lines:
+            if not setting:
+                continue
+            if setting.startswith("[MSG") or "Grbl" in setting:
+                continue
+            if "=" not in setting:
+                self.logger.warning("Skipping non-setting line: %s", setting)
+                continue
+            try:
+                key, value = setting.split("=", 1)
+                if "(" in value:
+                    value = value.split("(", 1)[0]
+                settings_dict[key.strip()] = value.strip()
+            except ValueError:
+                self.logger.error("Failed to parse setting line: %s", setting)
+                continue
+        return settings_dict
 
     def execute_command(self, command: str, suppress_errors: bool = False):
         """Encodes and sends commands to the mill and returns the response."""
@@ -502,29 +452,7 @@ class Mill:
                     )
                 full_mill_response = full_mill_response[:-1]
                 self.logger.debug("Returned %s", full_mill_response)
-
-                settings_dict = {}
-                self.logger.info(f"Parsing settings from: {full_mill_response}")
-                for setting in full_mill_response:
-                    if not setting:
-                        continue
-                    if setting.startswith("[MSG") or "Grbl" in setting:
-                        continue
-
-                    if "=" not in setting:
-                        self.logger.warning(f"Skipping non-setting line: {setting}")
-                        continue
-
-                    try:
-                        key, value = setting.split("=", 1)
-                        if "(" in value:
-                            value = value.split("(", 1)[0]
-                        settings_dict[key.strip()] = value.strip()
-                    except ValueError:
-                         self.logger.error(f"Failed to parse setting line: {setting}")
-                         continue
-
-                return settings_dict
+                return self._parse_grbl_settings_response(full_mill_response)
 
             mill_response = self.read().lower()
             if not command.startswith("$"):
@@ -899,8 +827,12 @@ class Mill:
         return self.execute_command("$G")
 
     def grbl_settings(self) -> dict:
-        """Return the cached GRBL settings (populated during connect)."""
-        return self.config
+        """Return live GRBL settings from the connected controller."""
+        if self.ser_mill is None or not self.ser_mill.is_open:
+            raise MillConnectionError("Serial connection to mill is not open")
+        settings = self.execute_command("$$")
+        self.config = settings
+        return settings
 
     def set_grbl_setting(self, setting: str, value: str):
         """Set a grbl setting."""
@@ -1103,10 +1035,6 @@ class Mill:
         else:
             return mill_center
 
-    def move_to_safe_position(self) -> str:
-        """Move the mill to its current x,y location and the max z height."""
-        return self.execute_command(f"G01 Z{self.max_z_height}")
-
     def move_to_position(
         self,
         x_coordinate: float = 0.00,
@@ -1114,9 +1042,20 @@ class Mill:
         z_coordinate: float = 0.00,
         coordinates: Coordinates = None,
         instrument: str = "center",
-    ) -> Coordinates:
+        travel_z: Optional[float] = None,
+    ) -> None:
         """
         Move the mill to the specified coordinates.
+
+        When ``travel_z`` is provided, XY travel happens at that Z rather
+        than whatever Z the tip is currently at. The sequence becomes:
+        lift/lower to ``travel_z`` at current XY, XY travel at ``travel_z``,
+        then descend/ascend to the target Z. This lets callers (Board,
+        protocol commands) own their own "safe approach" height instead of
+        the mill baking in a machine-wide retract.
+
+        When ``travel_z`` is None, the mill issues a direct axis-by-axis
+        move (X, then Y, then Z) — no Z detour, no diagonal interpolation.
 
         Args:
             x_coordinate (float): X coordinate.
@@ -1124,9 +1063,7 @@ class Mill:
             z_coordinate (float): Z coordinate.
             coordinates (Coordinates): Target coordinates object (overrides x/y/z params).
             instrument (str): Instrument to move (default: "center").
-
-        Returns:
-            Coordinates: Current coordinates after the move, or None.
+            travel_z (float): Machine-space Z to hold during XY travel.
         """
         goto = (
             Coordinates(x=x_coordinate, y=y_coordinate, z=z_coordinate)
@@ -1148,61 +1085,20 @@ class Mill:
                 y_coordinate,
                 z_coordinate,
             )
-            return current_coordinates
+            return
 
         self._log_target_coordinates(target_coordinates)
         self._validate_target_coordinates(target_coordinates)
-        commands = self._generate_movement_commands(
-            current_coordinates, target_coordinates
-        )
-        for cmd in commands:
-            self.execute_command(cmd)
-        return None
 
-    def move_to_positions(
-        self,
-        coordinates: List[Coordinates],
-        instrument: str = "center",
-        safe_move_required: bool = True,
-    ) -> None:
-        """
-        Move the mill to the specified list of coordinate locations safely.
-        Each movement ensures proper Z-axis clearance before horizontal movements.
-
-        Args:
-            coordinates (List[Coordinates]): List of target coordinates to move to in sequence.
-            instrument (str): The instrument being used (default: "center").
-            safe_move_required (bool): Whether to enforce safe movement patterns (default: True).
-        """
-        current_coordinates = self.current_coordinates()
-        offsets = self.instrument_manager.get_offset(instrument)
-        commands = []
-
-        for target in coordinates:
-            target_coordinates = self._calculate_target_coordinates(
-                target, current_coordinates, offsets
+        if travel_z is None:
+            commands = self._generate_movement_commands(
+                current_coordinates, target_coordinates
             )
-
-            self._validate_target_coordinates(target_coordinates)
-
-            if self._is_already_at_target(target_coordinates, current_coordinates):
-                self.logger.debug(
-                    "%s is already at target coordinates [%s, %s, %s]",
-                    instrument,
-                    target_coordinates.x,
-                    target_coordinates.y,
-                    target_coordinates.z,
-                )
-                continue
-
-            commands.extend(
-                self._generate_movement_commands(
-                    current_coordinates, target_coordinates
-                )
+        else:
+            travel_z_offset = travel_z + offsets.z
+            commands = self._generate_transit_commands(
+                current_coordinates, target_coordinates, travel_z_offset
             )
-
-            current_coordinates = target_coordinates
-
         for cmd in commands:
             self.execute_command(cmd)
 
@@ -1216,88 +1112,6 @@ class Mill:
         )
 
         self.instrument_manager.update_instrument(instrument, new_offset)
-
-    def safe_move(
-        self,
-        x_coord=None,
-        y_coord=None,
-        z_coord=None,
-        coordinates: Coordinates = None,
-        instrument: str = "center",
-        second_z_cord: float = None,
-        second_z_cord_feed: float = 2000,
-    ) -> Coordinates:
-        """
-        Move the mill to the specified coordinates using only horizontal (xy) and vertical movements.
-
-        Args:
-            x_coord (float): X coordinate.
-            y_coord (float): Y coordinate.
-            z_coord (float): Z coordinate.
-            coordinates (Coordinates): Target coordinates object (overrides x/y/z params).
-            instrument (str): The instrument to move to the specified coordinates.
-            second_z_cord (float): The second z coordinate to move to.
-            second_z_cord_feed (float): The feed rate to use when moving to the second z coordinate.
-
-        Returns:
-            Coordinates: Current center coordinates.
-        """
-        if not isinstance(instrument, str):
-            try:
-                instrument = instrument.value
-            except AttributeError:
-                raise ValueError("Invalid instrument") from None
-        commands = []
-        goto = (
-            Coordinates(x=x_coord, y=y_coord, z=z_coord)
-            if not coordinates
-            else coordinates
-        )
-        offsets = self.instrument_manager.get_offset(instrument)
-        current_coordinates = self.current_coordinates()
-
-        target_coordinates = self._calculate_target_coordinates(
-            goto, current_coordinates, offsets
-        )
-        self._validate_target_coordinates(target_coordinates)
-        if self._is_already_at_target(target_coordinates, current_coordinates):
-            self.logger.debug(
-                "%s is already at the target coordinates of [%s, %s, %s]",
-                instrument,
-                x_coord,
-                y_coord,
-                z_coord,
-            )
-            return current_coordinates
-
-        self._log_target_coordinates(target_coordinates)
-        move_to_zero = False
-        if self.__should_move_to_safe_position_first(
-            current_coordinates, target_coordinates, self.max_z_height
-        ):
-            self.logger.debug("Moving to Z=%s first", self.max_z_height)
-            commands.append(f"G01 Z{self.max_z_height} F{DEFAULT_FEED_RATE}")
-            move_to_zero = True
-        else:
-            self.logger.debug("Not moving to Z=%s first", self.max_z_height)
-
-        commands.extend(
-            self._generate_movement_commands(
-                current_coordinates, target_coordinates, move_to_zero
-            )
-        )
-
-        if second_z_cord is not None:
-            # Adjust the second z coordinate according to the instrument offsets
-            second_z_cord += offsets.z
-
-            commands.append(f"G01 Z{second_z_cord} F{second_z_cord_feed}")
-            commands.append(f"F{DEFAULT_FEED_RATE}")
-
-        for cmd in commands:
-            self.execute_command(cmd)
-
-        return self.current_coordinates()
 
     def _is_already_at_target(
         self, goto: Coordinates, current_coordinates: Coordinates
@@ -1341,51 +1155,47 @@ class Mill:
         self,
         current_coordinates: Coordinates,
         target_coordinates: Coordinates,
-        move_z_first: bool = False,
     ):
+        """Direct move from current to target, axis-by-axis.
+
+        Emits one G-code per changed axis in X-then-Y-then-Z order.
+        The mill never commands simultaneous multi-axis (diagonal)
+        motion — combining axes in a single G01 would couple their
+        motion into a straight interpolation that could graze
+        obstacles the caller didn't plan for.
+        """
         f = f" F{DEFAULT_FEED_RATE}"
         commands = []
-        if current_coordinates.z >= self.safe_z_height or move_z_first:
-            # If above the safe height, allow an XY diagonal move then Z movement
-            commands.append(f"G01 X{target_coordinates.x} Y{target_coordinates.y}{f}")
+        if target_coordinates.x != current_coordinates.x:
+            commands.append(f"G01 X{target_coordinates.x}{f}")
+        if target_coordinates.y != current_coordinates.y:
+            commands.append(f"G01 Y{target_coordinates.y}{f}")
+        if target_coordinates.z != current_coordinates.z:
             commands.append(f"G01 Z{target_coordinates.z}{f}")
-        else:
-            if target_coordinates.x != current_coordinates.x:
-                commands.append(f"G01 X{target_coordinates.x}{f}")
-            if target_coordinates.y != current_coordinates.y:
-                commands.append(f"G01 Y{target_coordinates.y}{f}")
-            if target_coordinates.z != current_coordinates.z:
-                commands.append(f"G01 Z{target_coordinates.z}{f}")
-            if (
-                target_coordinates.z == current_coordinates.z and move_z_first
-            ):
-                commands.append(f"G01 Z{target_coordinates.z}{f}")
-
         return commands
 
-    def __should_move_to_safe_position_first(
+    def _generate_transit_commands(
         self,
-        current: Coordinates,
-        destination: Coordinates,
-        safe_height_floor: Optional[float] = None,
+        current_coordinates: Coordinates,
+        target_coordinates: Coordinates,
+        travel_z: float,
     ):
+        """Transit via ``travel_z``, axis-by-axis: lift → X → Y → descend.
+
+        Each step is emitted only when it would produce actual motion,
+        so a move already at ``travel_z`` skips the lift, a same-X
+        (or same-Y) move skips that axis, and a final Z matching
+        ``travel_z`` skips the descent. X and Y always move in
+        separate G-codes — no diagonal.
         """
-        Determine if the mill should move to self.max_z_height before moving to the specified coordinates.
-
-        Args:
-            current (Coordinates): Current coordinates.
-            destination (Coordinates): Target coordinates.
-            safe_height_floor (float): Safe floor height.
-
-        Returns:
-            bool: True if the mill should move to self.max_z_height first, False otherwise.
-        """
-        if safe_height_floor is None:
-            safe_height_floor = self.safe_z_height
-        if current.z >= self.max_z_height or current.z >= safe_height_floor:
-            return False
-
-        if current.x != destination.x or current.y != destination.y:
-            return True
-
-        return False
+        f = f" F{DEFAULT_FEED_RATE}"
+        commands = []
+        if current_coordinates.z != travel_z:
+            commands.append(f"G01 Z{travel_z}{f}")
+        if target_coordinates.x != current_coordinates.x:
+            commands.append(f"G01 X{target_coordinates.x}{f}")
+        if target_coordinates.y != current_coordinates.y:
+            commands.append(f"G01 Y{target_coordinates.y}{f}")
+        if target_coordinates.z != travel_z:
+            commands.append(f"G01 Z{target_coordinates.z}{f}")
+        return commands

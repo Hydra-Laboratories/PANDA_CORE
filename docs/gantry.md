@@ -66,6 +66,106 @@ Use this file when:
 
 Working volume bounds are inclusive. Current configs include both positive-space gantries and the older ASMI negative-space gantry, so match the coordinate convention used by your selected gantry config.
 
+## GRBL Axis And Homing Normalization
+
+Use this procedure when bringing up a new machine or normalizing multiple GRBL
+controllers to the same physical convention.
+
+Target behavior:
+
+- home is back-right-top
+- `+X` moves right
+- `+Y` moves back, away from the user
+- `+Z` moves up
+
+In CubOS gantry config, these GRBL fields map to the live controller settings:
+
+- `grbl_settings.dir_invert_mask` -> `$3`
+- `grbl_settings.homing_dir_mask` -> `$23`
+
+Inspect the current controller state first:
+
+```text
+$$
+```
+
+Record `$3` and `$23` before changing anything.
+
+### Safety
+
+- ensure the tool is clear of fixtures, stock, and cables
+- keep a hand on the E-stop or controller reset
+- use low jog speeds while validating motion
+
+### Procedure
+
+1. Start with a known homing direction, for example:
+
+   ```text
+   $23=0
+   ```
+
+2. Run homing:
+
+   ```text
+   $H
+   ```
+
+3. Check which corner the machine reaches. The goal is back-right-top.
+4. If homing is wrong, adjust `$23` and home again. GRBL uses this bitmask:
+   - `X=1`
+   - `Y=2`
+   - `Z=4`
+
+   Example:
+
+   ```text
+   $23=3
+   ```
+
+   This flips the X and Y homing directions.
+
+5. After homing is correct, jog each axis and verify:
+   - `+X` moves right
+   - `+Y` moves back
+   - `+Z` moves up
+
+6. If jogging is wrong, adjust `$3` using the same bitmask:
+
+   ```text
+   $3=2
+   ```
+
+   This inverts Y motion.
+
+7. Run `$H` again after changing `$3`. `$3` and `$23` are coupled, so a motion
+   change can also affect homing behavior.
+8. Repeat the `$23` and `$3` adjustments until both of these are true:
+   - `$H` always goes to back-right-top
+   - positive jog directions are right, back, and up
+9. Save the final `$3` and `$23` values in the gantry config so the expected
+   controller settings are documented with the machine:
+
+   ```yaml
+   grbl_settings:
+     dir_invert_mask: 2
+     homing_dir_mask: 3
+   ```
+
+### Acceptance Criteria
+
+- `$H` always goes to back-right-top
+- `+X`, `+Y`, and `+Z` always move right, back, and up
+- the same `$3` / `$23` pair is documented and reused for identical machines
+
+### Quick Reference
+
+- `$3` bitmask: `X=1`, `Y=2`, `Z=4`
+- `$23` bitmask: `X=1`, `Y=2`, `Z=4`
+- `$3` controls motion direction
+- `$23` controls homing direction
+- validate them together, not independently
+
 ## Supported Gantries
 
 | Config | System | Working Volume |

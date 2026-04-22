@@ -169,6 +169,15 @@ src/protocol_engine/__pycache__/
 architecture.md
 test_scripts/
 src/gantry/gantry_driver/mill_port.txt
+src/gantry/gantry_driver/_configuration.json
 .omx/
 PANDA-BEAR/
 .claude/
+.codex/
+!.codex/agents/
+!.codex/agents/**
+!.codex/skills/
+!.codex/skills/**
+.codex/skills/.system/**
+!.codex/prompts/
+!.codex/prompts/**

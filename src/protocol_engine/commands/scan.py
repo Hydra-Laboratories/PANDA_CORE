@@ -34,6 +34,8 @@ def scan(
     instrument: str,
     method: str,
     delay_s: float = 0.0,
+    entry_travel_z: float | None = None,
+    safe_approach_height: float | None = None,
     method_kwargs: Dict[str, Any] = {},
 ) -> Dict[str, Any]:
     """Scan every well on *plate* using *instrument*'s *method*.
@@ -53,6 +55,14 @@ def scan(
         instrument:    Name of the instrument registered on the board.
         method:        Name of the method on the instrument to call per well.
         delay_s:       Seconds to pause between wells (default 0.0).
+        entry_travel_z:
+                       Optional absolute Z coordinate used only for the
+                       initial transit into the first well of the scan.
+        safe_approach_height:
+                       Optional protocol-level override for the XY-travel
+                       absolute Z coordinate used between wells. When
+                       omitted, the instrument's board-configured default
+                       is used.
         method_kwargs: Keyword arguments passed to the instrument method
                        on each well (e.g. {"intensity": 50, "exposure_time": 10.0}).
 
@@ -86,7 +96,13 @@ def scan(
             time.sleep(delay_s)
 
         well = plate_obj.get_well_center(well_id)
-        approach_and_descend(context, instrument, well)
+        approach_z = entry_travel_z if i == 0 and entry_travel_z is not None else safe_approach_height
+        approach_and_descend(
+            context,
+            instrument,
+            well,
+            safe_approach_height=approach_z,
+        )
 
         # Inject gantry if the method accepts it (e.g. ASMI.indentation
         # needs the gantry for Z stepping), then merge with method_kwargs.
@@ -119,5 +135,14 @@ def scan(
                 logger.warning(
                     "Failed to log measurement for well %s: %s", well_id, exc,
                 )
+
+    if sorted_wells:
+        last_well = plate_obj.get_well_center(sorted_wells[-1])
+        final_approach_z = (
+            safe_approach_height
+            if safe_approach_height is not None
+            else last_well.z - instr.safe_approach_height
+        )
+        context.board.move(instrument, (last_well.x, last_well.y, final_approach_z))
 
     return results
