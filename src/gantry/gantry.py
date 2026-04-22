@@ -9,7 +9,7 @@ from .coordinate_translator import (
     to_user_coordinates,
     translate_status_string,
 )
-from .gantry_driver.driver import Mill
+from .gantry_driver.driver import DEFAULT_FEED_RATE, Mill
 from .gantry_driver.exceptions import (
     CommandExecutionError,
     LocationNotFound,
@@ -133,6 +133,47 @@ class Gantry:
         except (MillConnectionError, StatusReturnError) as exc:
             self.logger.error("Error homing gantry: %s", exc)
             raise
+
+    def prepare_for_protocol_run(self) -> None:
+        """Clear any startup alarm and restore controller state."""
+        if self._offline:
+            return
+        assert self._mill is not None
+
+        raw_status = self._mill.query_raw_status()
+        if not raw_status or "alarm" not in raw_status.lower():
+            return
+
+        self.logger.warning(
+            "GRBL alarm detected before protocol run; unlocking controller. "
+            "Status: %s",
+            raw_status,
+        )
+        self.reset_and_unlock()
+        self._restore_controller_state()
+
+        final_status = self._mill.query_raw_status()
+        if final_status and "alarm" in final_status.lower():
+            raise MillConnectionError(
+                f"Gantry remained in alarm after unlock. Status: {final_status}"
+            )
+
+    def _restore_controller_state(self) -> None:
+        """Re-run controller initialization skipped when connect saw Alarm."""
+        if self._offline:
+            return
+        assert self._mill is not None
+
+        self._mill.read_mill_config()
+        self._mill.read_working_volume()
+        self._mill.clear_buffers()
+        status = self._mill.query_raw_status()
+        if status:
+            self._mill._enforce_wpos_mode()
+        self._mill.set_feed_rate(DEFAULT_FEED_RATE)
+        if status:
+            self._mill._seed_wco()
+        self._validate_grbl_settings()
 
     def move_to(
         self,

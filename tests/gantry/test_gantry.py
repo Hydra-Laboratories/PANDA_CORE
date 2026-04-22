@@ -147,6 +147,56 @@ class TestGantry(unittest.TestCase):
             gantry.home()
 
     @patch("gantry.gantry.Mill")
+    def test_prepare_for_protocol_run_unlocks_alarm_and_restores_state(
+        self, mock_mill_cls
+    ):
+        mock_mill = mock_mill_cls.return_value
+        mock_mill.query_raw_status.side_effect = [
+            "<Alarm|WPos:0,0,0|FS:0,0>",
+            "<Idle|WPos:0,0,0|FS:0,0>",
+            "<Idle|WPos:0,0,0|FS:0,0>",
+        ]
+        mock_mill.grbl_settings.return_value = {}
+        gantry = Gantry(config=self.config)
+
+        gantry.prepare_for_protocol_run()
+
+        mock_mill.soft_reset_and_unlock.assert_called_once()
+        mock_mill.read_mill_config.assert_called_once()
+        mock_mill.read_working_volume.assert_called_once()
+        mock_mill.clear_buffers.assert_called_once()
+        mock_mill._enforce_wpos_mode.assert_called_once()
+        mock_mill.set_feed_rate.assert_called_once()
+        mock_mill._seed_wco.assert_called_once()
+
+    @patch("gantry.gantry.Mill")
+    def test_prepare_for_protocol_run_noops_when_not_in_alarm(
+        self, mock_mill_cls
+    ):
+        mock_mill = mock_mill_cls.return_value
+        mock_mill.query_raw_status.return_value = "<Idle|WPos:0,0,0|FS:0,0>"
+        gantry = Gantry(config=self.config)
+
+        gantry.prepare_for_protocol_run()
+
+        mock_mill.soft_reset_and_unlock.assert_not_called()
+        mock_mill.read_mill_config.assert_not_called()
+
+    @patch("gantry.gantry.Mill")
+    def test_prepare_for_protocol_run_raises_if_alarm_persists(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        mock_mill.query_raw_status.side_effect = [
+            "<Alarm|WPos:0,0,0|FS:0,0>",
+            "<Idle|WPos:0,0,0|FS:0,0>",
+            "<Alarm|WPos:0,0,0|FS:0,0>",
+        ]
+        mock_mill.grbl_settings.return_value = {}
+        gantry = Gantry(config=self.config)
+
+        with self.assertRaises(MillConnectionError):
+            gantry.prepare_for_protocol_run()
+
+    @patch("gantry.gantry.Mill")
     def test_move_to_raises_on_command_error(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
         mock_mill.move_to_position.side_effect = CommandExecutionError("move failed")

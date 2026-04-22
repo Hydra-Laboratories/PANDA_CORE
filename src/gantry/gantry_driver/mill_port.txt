@@ -1,1 +1,1 @@
-/dev/cu.usbserial-2130
+/dev/ttyUSB0

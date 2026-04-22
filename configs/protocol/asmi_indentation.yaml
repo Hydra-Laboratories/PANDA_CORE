@@ -17,7 +17,7 @@
 
 positions:
   # Park 50 mm below home, well clear of any labware on the deck.
-  safe_z: [0.0, 0.0, 50.0]
+  safe_z: [0.0, 0.0, 20.0]
 
 protocol:
   # Home the gantry and zero coordinates
@@ -33,7 +33,7 @@ protocol:
         # indent starts; z_limit is the deepest the tip is allowed to
         # reach (must be > measurement_height in positive-down space).
         measurement_height: 73.0
-        z_limit: 83.0
+        z_limit: 70.0
         step_size: 0.01
         force_limit: 10.0
         baseline_samples: 10
