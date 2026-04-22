@@ -29,6 +29,13 @@ protocol:
       position: plate_1.C9
 """
 
+VALID_MEASURE_WITH_OMITTED_DEFAULTS = """
+protocol:
+  - measure:
+      instrument: uvvis
+      position: plate_1.A1
+"""
+
 
 def _write_yaml(content: str) -> str:
     """Write YAML content to a temp file and return its path."""
@@ -74,6 +81,16 @@ def test_loaded_protocol_step_has_correct_args():
         protocol = load_protocol_from_yaml(path)
         args = protocol.steps[0].args
         assert args == {"instrument": "pipette", "position": "plate_1.A1"}
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_loaded_protocol_step_omits_unspecified_default_args():
+    path = _write_yaml(VALID_MEASURE_WITH_OMITTED_DEFAULTS)
+    try:
+        protocol = load_protocol_from_yaml(path)
+        args = protocol.steps[0].args
+        assert args == {"instrument": "uvvis", "position": "plate_1.A1"}
     finally:
         Path(path).unlink(missing_ok=True)
 
