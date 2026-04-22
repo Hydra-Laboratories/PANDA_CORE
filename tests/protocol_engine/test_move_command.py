@@ -85,6 +85,18 @@ class TestMoveCommandRouting:
         ctx.board.move_to_labware.assert_not_called()
         ctx.deck.resolve.assert_not_called()
 
+    def test_named_position_forwards_travel_z(self):
+        from protocol_engine.commands.move import move
+
+        ctx = _mock_context(positions={"safe": [50.0, 50.0, 70.0]})
+        move(ctx, instrument="pipette", position="safe", travel_z=80.0)
+
+        ctx.board.move.assert_called_once_with(
+            "pipette", (50.0, 50.0, 70.0), travel_z=80.0,
+        )
+        ctx.board.move_to_labware.assert_not_called()
+        ctx.deck.resolve.assert_not_called()
+
     def test_passes_instrument_name_through_deck_path(self):
         from protocol_engine.commands.move import move
 
@@ -117,6 +129,15 @@ class TestMoveCommandRouting:
 
         with pytest.raises(ProtocolExecutionError, match="home_postion"):
             move(ctx, instrument="pipette", position="home_postion")
+
+    def test_deck_target_rejects_travel_z_override(self):
+        from protocol_engine.commands.move import move
+        from protocol_engine.errors import ProtocolExecutionError
+
+        ctx = _mock_context()
+
+        with pytest.raises(ProtocolExecutionError, match="travel_z is only supported"):
+            move(ctx, instrument="pipette", position="plate_1.A1", travel_z=80.0)
 
 
 # ─── End-to-end: YAML → load → run ──────────────────────────────────────────
@@ -182,6 +203,32 @@ protocol:
             protocol.run(ctx)
 
             ctx.board.move.assert_called_once_with("pipette", (100.0, 50.0, 30.0))
+            ctx.board.move_to_labware.assert_not_called()
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_yaml_named_position_forwards_travel_z(self):
+        yaml_content = """
+positions:
+  safe_z: [0.0, 0.0, 20.0]
+protocol:
+  - move:
+      instrument: pipette
+      position: safe_z
+      travel_z: 20.0
+"""
+        ctx = _mock_context(positions={"safe_z": [0.0, 0.0, 20.0]})
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            path = f.name
+        try:
+            protocol = load_protocol_from_yaml(path)
+            protocol.run(ctx)
+
+            ctx.board.move.assert_called_once_with(
+                "pipette", (0.0, 0.0, 20.0), travel_z=20.0,
+            )
             ctx.board.move_to_labware.assert_not_called()
         finally:
             Path(path).unlink(missing_ok=True)

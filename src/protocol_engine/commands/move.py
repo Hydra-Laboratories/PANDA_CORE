@@ -10,7 +10,12 @@ if TYPE_CHECKING:
 
 
 @protocol_command("move")
-def move(context: "ProtocolContext", instrument: str, position: Any) -> None:
+def move(
+    context: "ProtocolContext",
+    instrument: str,
+    position: Any,
+    travel_z: float | None = None,
+) -> None:
     """Move *instrument* to *position*.
 
     Position resolution:
@@ -28,16 +33,34 @@ def move(context: "ProtocolContext", instrument: str, position: Any) -> None:
         context:    Runtime context (board, deck, logger).
         instrument: Name of the instrument registered on the board.
         position:   Named position, [x, y, z] list, or deck target string.
+        travel_z:   Optional raw transit Z for literal/named XYZ moves.
+                    When set, the gantry first moves Z to ``travel_z`` at
+                    the current XY, then moves XY at that Z, then finishes
+                    at ``position``.
     """
     if isinstance(position, (list, tuple)):
         target = tuple(position)
-        context.logger.info("move: %s -> %s (raw)", instrument, target)
-        context.board.move(instrument, target)
+        context.logger.info(
+            "move: %s -> %s (raw, travel_z=%s)", instrument, target, travel_z,
+        )
+        if travel_z is None:
+            context.board.move(instrument, target)
+        else:
+            context.board.move(instrument, target, travel_z=travel_z)
         return
     if isinstance(position, str) and position in context.positions:
         target = tuple(context.positions[position])
-        context.logger.info("move: %s -> %s (named: %s)", instrument, target, position)
-        context.board.move(instrument, target)
+        context.logger.info(
+            "move: %s -> %s (named: %s, travel_z=%s)",
+            instrument,
+            target,
+            position,
+            travel_z,
+        )
+        if travel_z is None:
+            context.board.move(instrument, target)
+        else:
+            context.board.move(instrument, target, travel_z=travel_z)
         return
 
     # Deck target — route through move_to_labware so safe_approach_height
@@ -56,5 +79,11 @@ def move(context: "ProtocolContext", instrument: str, position: Any) -> None:
                 f"target: {exc}"
             ) from exc
         raise
+    if travel_z is not None:
+        raise ProtocolExecutionError(
+            "move: travel_z is only supported for literal/named XYZ targets, "
+            "not deck targets. Deck targets already use move_to_labware() "
+            "with instrument safe-approach behavior."
+        )
     context.logger.info("move: %s -> %s (labware: safe approach)", instrument, position)
     context.board.move_to_labware(instrument, coord)

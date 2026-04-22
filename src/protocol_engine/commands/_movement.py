@@ -36,6 +36,7 @@ def approach_and_descend(
     context: "ProtocolContext",
     instrument: str,
     coord: Any,
+    safe_approach_height: float | None = None,
 ) -> None:
     """Safely travel above a labware target, then descend to action Z.
 
@@ -44,12 +45,26 @@ def approach_and_descend(
         instrument: Name of the instrument registered on the board.
         coord:      Labware-reference point (``Coordinate3D``-like or
                     ``(x, y, z)`` tuple).
+        safe_approach_height:
+                    Optional protocol-level override for the XY-travel
+                    absolute Z coordinate.
     """
-    context.board.move_to_labware(instrument, coord)
-    x, y, z = unpack_xyz(coord)
     instr = context.board.instruments[instrument]
+    x, y, z = unpack_xyz(coord)
+    action_z = z - instr.measurement_height
+    if safe_approach_height is None:
+        context.board.move_to_labware(instrument, coord)
+    else:
+        if safe_approach_height > action_z:
+            raise ValueError(
+                f"safe_approach_height ({safe_approach_height}) must be <= "
+                f"action_z ({action_z}) for instrument {instrument!r}."
+            )
+        approach_z = safe_approach_height
+        context.board.move(
+            instrument, (x, y, approach_z), travel_z=approach_z,
+        )
     # User-space Z is positive-down; subtract so a positive ``measurement_height``
     # means "above the labware surface" (non-contact probes) and a negative
     # one means "dipping into the sample" (contact instruments).
-    action_z = z - instr.measurement_height
     context.board.move(instrument, (x, y, action_z))

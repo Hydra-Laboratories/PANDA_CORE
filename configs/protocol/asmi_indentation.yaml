@@ -28,6 +28,10 @@ protocol:
       plate: plate
       instrument: asmi
       method: indentation
+      # Absolute Z used only for the first transit into A1.
+      entry_travel_z: 20.0
+      # Absolute Z used for XY travel between wells.
+      safe_approach_height: 70.0
       method_kwargs:
         # Absolute Zs (not offsets). measurement_height is where the
         # indent starts; z_limit is the deepest the tip is allowed to
@@ -43,6 +47,7 @@ protocol:
   - move:
       instrument: asmi
       position: safe_z
+      travel_z: 20.0
 
   # Home the gantry
   - home:

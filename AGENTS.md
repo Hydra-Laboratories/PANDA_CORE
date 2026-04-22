@@ -61,6 +61,13 @@ Driver for the Vernier GoDirect force sensor used for ASMI indentation/force mea
     - **Constructor**: `ASMI(..., default_force=0.0, force_threshold=-100, z_target=-17.0, step_size=0.01, force_limit=15.0, baseline_samples=10, ...)`
     - **Lifecycle**: `connect()`, `disconnect()`, `health_check()`
     - **Commands**: `measure(n_samples=1)`, `get_status()`, `get_force_reading()`, `get_baseline_force(samples)`, `indentation(gantry, ...)`
+    - **Important semantic split**:
+        - Board/instrument `measurement_height` on the ASMI mount is the generic `BaseInstrument` relative offset used by shared protocol movement helpers.
+        - `ASMI.indentation(..., measurement_height=...)` is a protocol/runtime absolute Z for the start of the indentation, not a relative offset.
+    - **ASMI scan motion model**:
+        - `scan.entry_travel_z` is an absolute Z used only for the initial transit into the first well (e.g. A1).
+        - `scan.safe_approach_height` is an absolute Z used only for well-to-well travel inside the scan.
+        - After the within-scan transit, `indentation()` moves to its own absolute `measurement_height`, collects baseline force, then performs the stepwise indentation.
 - **`models.py`**: `MeasurementResult` and `ASMIStatus` frozen dataclasses.
 - **`exceptions.py`**: `ASMIError` hierarchy.
 
@@ -111,7 +118,14 @@ A modular system for executing experiment sequences defined in code or YAML.
 - **`commands/`**: Protocol command implementations:
   - `home`: home the gantry and zero coordinates.
   - `move`: move an instrument to a named position, raw `[x, y, z]`, or deck target.
+    - Named/literal XYZ moves may also supply `travel_z` to force a retract-first transit (`Z -> XY -> final Z`).
+    - Deck targets ignore `travel_z` and use `Board.move_to_labware()` with the instrument's board-configured relative `safe_approach_height`.
+    - Named positions such as `safe_z` live in protocol YAML `positions:`; they are not deck/labware entries.
   - `scan`: iterate all wells on a plate, call an instrument method per well, and persist measurements when a `DataStore` is configured.
+    - For generic instruments, omitted scan overrides fall back to the instrument's board-configured relative `safe_approach_height`.
+    - `scan.entry_travel_z` is an absolute Z used only for the initial move into the first well.
+    - `scan.safe_approach_height` is an absolute Z used only for well-to-well travel inside the scan.
+    - This `scan.safe_approach_height` field name is historical; despite the name, the scan override is an absolute Z coordinate, not a relative offset.
   - `measure`: move to one deck position and call an instrument method once.
   - `pause`: sleep for a fixed number of seconds.
   - `breakpoint`: pause until the user presses Enter.
@@ -220,6 +234,10 @@ First-run scripts for verifying hardware after unboxing.
     - **Dependencies**: `src/gantry`, `src/deck`, `src/board`, `src/protocol_engine`, `src/validation`
 - **`run_protocol.py`**: Load, validate, connect to hardware, and run a protocol end-to-end. Runs offline validation first, then connects to the gantry and executes the protocol.
     - **Usage**: `python setup/run_protocol.py <gantry.yaml> <deck.yaml> <board.yaml> <protocol.yaml>`
+    - **Startup behavior**:
+        - Connects to the gantry, clears the expected GRBL alarm state if present, and restores controller state.
+        - Connects all board instruments before the first protocol step.
+        - Disconnects instruments and gantry in `finally`, even on protocol failure.
     - **Dependencies**: `src/gantry`, `src/deck`, `src/board`, `src/protocol_engine`, `src/validation`
 - **`keyboard_input.py`**: Helper module that reads single keypresses (including arrow keys) without requiring Enter. Uses `tty`/`termios` (Unix only).
 

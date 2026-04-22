@@ -96,6 +96,15 @@ Included examples:
 Defines instruments mounted on the gantry head, including offsets and
 hardware-specific parameters.
 
+Board-level Z semantics:
+
+- `measurement_height` is the instrument's relative action offset from the
+  labware reference Z.
+- `safe_approach_height` is the instrument's relative XY-travel offset from
+  the labware reference Z.
+- These board-level fields are used by generic deck-target motion such as
+  `move` to a deck target, `measure`, and pipette commands.
+
 ```yaml
 instruments:
   pipette:
@@ -112,6 +121,9 @@ Defines the experiment as a sequence of commands. Positions can reference
 labware by key and well ID, for example `plate_1.A1`.
 
 ```yaml
+positions:
+  safe_z: [0.0, 0.0, 20.0]
+
 protocol:
   - home:
   - move:
@@ -121,6 +133,27 @@ protocol:
 
 Available protocol commands include `home`, `move`, `scan`, `measure`,
 `pause`, and the pipette command set.
+
+Protocol motion notes:
+
+- `positions:` entries such as `safe_z` are protocol named positions, not deck
+  labware.
+- `move` accepts optional `travel_z` for named/literal XYZ targets. That forces
+  a retract-first transit: move Z to `travel_z`, travel in XY at that Z, then
+  finish at the target position.
+- `scan.entry_travel_z` is an absolute Z used only for the first move into the
+  first well.
+- `scan.safe_approach_height` is also an absolute Z, but only for well-to-well
+  travel inside the scan.
+- This is intentionally different from board-level `safe_approach_height`,
+  which remains a relative offset from labware for generic motion helpers.
+
+ASMI-specific note:
+
+- ASMI has two different `measurement_height` concepts.
+- Board YAML `measurement_height` is the generic relative instrument offset.
+- `scan.method_kwargs.measurement_height` for `ASMI.indentation()` is an
+  absolute Z where the indentation begins.
 
 ## Setup and Execution
 
@@ -174,6 +207,14 @@ python setup/run_protocol.py \
     configs/board/mofcat_board.yaml \
     configs/protocol/protocol.sample.yaml
 ```
+
+`setup/run_protocol.py` runs offline validation first, then:
+
+- connects to the gantry
+- clears the expected GRBL alarm state if present and restores controller state
+- connects all board instruments
+- executes the protocol
+- disconnects instruments and gantry in `finally`
 
 Programmatic setup:
 

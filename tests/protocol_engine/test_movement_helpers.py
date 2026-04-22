@@ -85,3 +85,28 @@ class TestApproachAndDescend:
         approach_and_descend(ctx, "sensor", (5.0, 6.0, 7.0))
         # 7.0 - 2.0 = 5.0 (2 mm above the tuple's z).
         ctx.board.move.assert_called_once_with("sensor", (5.0, 6.0, 5.0))
+
+    def test_safe_approach_height_override_uses_protocol_value(self):
+        ctx, instr = _mock_ctx(measurement_height=3.0)
+        coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
+
+        approach_and_descend(
+            ctx, "sensor", coord, safe_approach_height=20.0,
+        )
+
+        ctx.board.move_to_labware.assert_not_called()
+        assert len(ctx.board.move.call_args_list) == 2
+        first_call, second_call = ctx.board.move.call_args_list
+        assert first_call.args == ("sensor", (10.0, 20.0, 20.0))
+        assert first_call.kwargs == {"travel_z": 20.0}
+        assert second_call.args == ("sensor", (10.0, 20.0, 27.0))
+        assert second_call.kwargs == {}
+
+    def test_safe_approach_height_override_must_not_sit_below_action_height(self):
+        ctx, instr = _mock_ctx(measurement_height=3.0)
+        coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
+
+        with pytest.raises(ValueError, match="safe_approach_height"):
+            approach_and_descend(
+                ctx, "sensor", coord, safe_approach_height=28.0,
+            )
