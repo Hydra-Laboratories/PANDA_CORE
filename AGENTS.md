@@ -2,6 +2,22 @@
 
 This repository contains code to control a CNC router (mill) using a Python-based driver that communicates over serial (GRBL).
 
+## Hardware Development Rule
+
+This is software for a hardware repository. Any development work can affect real motion, instruments, samples, or connected controllers.
+
+When making changes, always tell the user:
+
+- What hardware the change can touch or affect, even if the change was only validated offline.
+- What hardware tests the user must run before trusting the change on a real setup.
+- Whether the change was tested only with mocks/offline validation, or also on physical hardware.
+
+When opening or updating a PR, include a hardware impact section that lists:
+
+- Hardware touched or potentially affected.
+- Offline validation performed.
+- Required hardware validation still pending for the user.
+
 ## Key Components
 
 ### Source Code (`src/instrument_drivers/cnc_driver`)
