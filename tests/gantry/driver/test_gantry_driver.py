@@ -8,6 +8,7 @@ project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
 from gantry.gantry_driver.driver import Mill, wpos_pattern, mpos_pattern, Coordinates
+from gantry.gantry_driver.exceptions import StatusReturnError
 
 class TestCNCDriverLogic(unittest.TestCase):
     
@@ -181,6 +182,37 @@ class TestCNCDriverLogic(unittest.TestCase):
             "G01 Y-60.0 F2000",
             "G01 Z-90.0 F2000",
         ])
+
+    @patch('gantry.gantry_driver.driver.time.sleep')
+    @patch('gantry.gantry_driver.driver.time.time', side_effect=[0.0, 2.0])
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_wait_for_completion_raises_on_timeout(
+        self, mock_cmd_logger, mock_mill_logger, mock_serial, mock_time, mock_sleep,
+    ):
+        mill = Mill()
+        mill.current_status = MagicMock(return_value="<Hold|WPos:0,0,0|FS:0,0>")
+
+        with self.assertRaises(StatusReturnError):
+            mill._Mill__wait_for_completion(
+                "<Hold|WPos:0,0,0|FS:0,0>", timeout=1,
+            )
+
+    @patch('gantry.gantry_driver.driver.time.sleep')
+    @patch('gantry.gantry_driver.driver.time.time', side_effect=[0.0, 2.0])
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_home_raises_on_timeout(
+        self, mock_cmd_logger, mock_mill_logger, mock_serial, mock_time, mock_sleep,
+    ):
+        mill = Mill()
+        mill.execute_command = MagicMock()
+        mill.current_status = MagicMock(return_value="<Run|WPos:0,0,0|FS:0,0>")
+
+        with self.assertRaises(StatusReturnError):
+            mill.home(timeout=1)
 
     @patch('gantry.gantry_driver.driver.serial.Serial')
     @patch('gantry.gantry_driver.driver.set_up_mill_logger')

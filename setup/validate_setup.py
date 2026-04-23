@@ -28,6 +28,7 @@ from gantry.loader import load_gantry_from_yaml
 from gantry.gantry import Gantry
 from protocol_engine.loader import load_protocol_from_yaml
 from validation.bounds import validate_deck_positions, validate_gantry_positions
+from validation.protocol_semantics import validate_protocol_semantics
 
 SEPARATOR = "-" * 60
 
@@ -194,11 +195,23 @@ def run_validation(
         out(f"  OK ({total_positions} positions x {len(board.instruments)} instrument(s) checked)")
     out()
 
+    # 7. Protocol semantic validation
+    out("Validating protocol semantics...")
+    semantic_violations = validate_protocol_semantics(protocol, board, deck)
+    if semantic_violations:
+        out(f"  FAIL — {len(semantic_violations)} violation(s):")
+        for v in semantic_violations:
+            out(f"  - step {v.step_index} ({v.command_name}): {v.message}")
+    else:
+        out("  OK")
+    out()
+
     # Final result
     all_violations = deck_violations + gantry_violations
     out(SEPARATOR)
-    if all_violations:
-        out(f"RESULT: FAIL — {len(all_violations)} violation(s) found")
+    if all_violations or semantic_violations:
+        total = len(all_violations) + len(semantic_violations)
+        out(f"RESULT: FAIL — {total} violation(s) found")
         out(SEPARATOR)
         return ValidationResult(output="\n".join(lines), passed=False)
 

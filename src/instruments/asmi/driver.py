@@ -228,7 +228,25 @@ class ASMI(BaseInstrument):
 
     def _move_z(self, gantry, x, y, z):
         gantry.move_to(x, y, z)
-        self._wait_for_idle(gantry)
+        if not self._wait_for_idle(gantry):
+            raise ASMICommandError(
+                f"Gantry did not become Idle within {self._idle_timeout:.2f}s "
+                f"after ASMI Z move to {z}."
+            )
+
+    @staticmethod
+    def _validate_indentation_parameters(
+        measurement_height: float,
+        z_limit: float,
+        step_size: float,
+    ) -> None:
+        if step_size <= 0:
+            raise ValueError(f"step_size must be positive, got {step_size}")
+        if z_limit <= measurement_height:
+            raise ValueError(
+                "z_limit must be greater than measurement_height under the "
+                "current positive-down ASMI convention."
+            )
 
     def indentation(
         self,
@@ -282,6 +300,8 @@ class ASMI(BaseInstrument):
             self._well_top_z if self._well_top_z is not None else self.measurement_height
         )
         _baseline_samples = baseline_samples if baseline_samples is not None else self._baseline_samples
+
+        self._validate_indentation_parameters(_well_top_z, _z_target, _step_size)
 
         if self._offline:
             return self._offline_indentation(

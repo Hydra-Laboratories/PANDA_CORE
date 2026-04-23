@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from instruments.asmi.driver import ASMI
+from instruments.asmi.exceptions import ASMICommandError
 from instruments.asmi.models import ASMIStatus, MeasurementResult
 
 
@@ -163,6 +164,24 @@ class TestASMIOffline(unittest.TestCase):
         self.assertEqual(len(up_z), 1)
         self.assertAlmostEqual(up_z[0], 10.0, places=6)
 
+    def test_indentation_rejects_inverted_z_range(self):
+        from gantry.gantry import Gantry
+        gantry = Gantry(offline=True)
+
+        with self.assertRaises(ValueError, msg="z_limit"):
+            self.asmi.indentation(
+                gantry, z_limit=9.0, measurement_height=10.0, step_size=0.1,
+            )
+
+    def test_indentation_rejects_non_positive_step_size(self):
+        from gantry.gantry import Gantry
+        gantry = Gantry(offline=True)
+
+        with self.assertRaises(ValueError, msg="step_size"):
+            self.asmi.indentation(
+                gantry, z_limit=12.0, measurement_height=10.0, step_size=0.0,
+            )
+
 
 class _FakeOnlineGantry:
     """Minimal gantry stub for exercising ASMI online indentation loops."""
@@ -187,6 +206,14 @@ class TestASMIOnlineIndentation(unittest.TestCase):
         asmi = ASMI(offline=False, default_force=0.0)
         asmi._offline = False
         return asmi
+
+    def test_move_z_raises_when_gantry_never_goes_idle(self):
+        asmi = ASMI(offline=False, idle_timeout=0.0)
+        gantry = _FakeOnlineGantry(start_z=10.0)
+        gantry.get_status = lambda: "Run"
+
+        with self.assertRaises(ASMICommandError):
+            asmi._move_z(gantry, 0.0, 0.0, 10.1)
 
     def test_online_indentation_with_return_records_both_directions(self):
         asmi = self._make_online_asmi()

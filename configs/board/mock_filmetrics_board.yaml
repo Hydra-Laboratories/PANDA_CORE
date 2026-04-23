@@ -9,4 +9,4 @@ instruments:
       offset_y: 0.0
       depth: 0.0
       safe_approach_height: 10.0
-      measurement_height: 3.0
+      measurement_height: 10.0

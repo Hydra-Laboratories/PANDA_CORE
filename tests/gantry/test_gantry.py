@@ -12,10 +12,10 @@ from gantry.gantry_driver.exceptions import (
 
 class TestGantry(unittest.TestCase):
     def setUp(self):
-        self.config = {"cnc": {"serial_port": "/dev/tty.usbserial"}}
+        self.config = {"serial_port": "/dev/tty.usbserial"}
 
     @patch("gantry.gantry.Mill")
-    def test_connect_uses_config_port(self, mock_mill_cls):
+    def test_connect_auto_scans_even_with_configured_port(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
         gantry = Gantry(config=self.config)
         gantry.connect()

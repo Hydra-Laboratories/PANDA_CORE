@@ -66,6 +66,33 @@ Use this file when:
 
 Working volume bounds are inclusive. Current configs include both positive-space gantries and the older ASMI negative-space gantry, so match the coordinate convention used by your selected gantry config.
 
+## Planned Deck-Origin CubOS Convention
+
+Issue #87 tracks a refactor to make the user-facing CubOS frame deck-origin
+instead of gantry-top-origin. Until that migration lands, check the selected
+config and tests before assuming these semantics are active everywhere.
+
+Target convention:
+
+- CubOS `(0, 0, 0)` is the front-left-bottom reachable work volume after
+  homing, backing off limits, and setting WPos zero.
+- `+X` moves right from the operator perspective.
+- `+Y` moves away from the operator, toward the back of the deck.
+- `+Z` moves up, away from the deck.
+- `-Z` moves down, toward the deck.
+- GRBL may still physically home at top-back-right. That machine-frame detail
+  should remain isolated inside the gantry/GRBL boundary.
+
+Under that target convention, protocol movement names should describe intent:
+
+- `measurement_height` is where an instrument performs its action. For ASMI,
+  this is the indentation start height.
+- `interwell_travel_height` is the scan travel height between wells and should
+  default to `measurement_height` when omitted.
+- `entry_travel_height` is the first scan transit height.
+- `park_position` is an explicit rest pose and should replace ambiguous names
+  such as `safe_z` in examples.
+
 ## GRBL Axis And Homing Normalization
 
 Use this procedure when bringing up a new machine or normalizing multiple GRBL
