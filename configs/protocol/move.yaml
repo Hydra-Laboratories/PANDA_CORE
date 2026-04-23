@@ -3,6 +3,7 @@
 # Execute with: protocol.run(ProtocolContext(board=board, deck=deck))
 
 protocol:
+  - home:
   # ── Move ──────────────────────────────────────────────────────────
   - move:
       instrument: uvvis

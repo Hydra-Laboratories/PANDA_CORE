@@ -572,7 +572,7 @@ class Mill:
 
             if time.time() - start_time > timeout:
                 self.logger.warning("Homing timed out")
-                break
+                raise StatusReturnError(f"Homing timed out after {timeout} seconds")
 
             if "Idle" in status:
                 self.logger.info("Homing completed")
@@ -747,7 +747,9 @@ class Mill:
                 raise StatusReturnError(f"Alarm in status: {status}")
             if time.time() - start_time > timeout:
                 self.logger.warning("Command execution timed out")
-                return status
+                raise StatusReturnError(
+                    f"Command execution timed out after {timeout} seconds: {status}"
+                )
             status = self.current_status()
         return status
 

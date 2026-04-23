@@ -58,7 +58,7 @@ class Gantry:
         return None
 
     def connect(self) -> None:
-        """Connect to the CNC mill via auto-scan of available serial ports."""
+        """Connect to the CNC mill by auto-scanning serial ports."""
         if self._offline:
             return
         assert self._mill is not None

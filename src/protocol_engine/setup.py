@@ -15,7 +15,8 @@ from gantry.loader import load_gantry_from_yaml_safe
 from protocol_engine.loader import load_protocol_from_yaml_safe
 from protocol_engine.protocol import Protocol, ProtocolContext
 from validation.bounds import validate_deck_positions, validate_gantry_positions
-from validation.errors import SetupValidationError
+from validation.errors import ProtocolSemanticValidationError, SetupValidationError
+from validation.protocol_semantics import validate_protocol_semantics
 
 
 def setup_protocol(
@@ -74,6 +75,10 @@ def setup_protocol(
     violations.extend(validate_gantry_positions(gantry_config, deck, board))
     if violations:
         raise SetupValidationError(violations)
+
+    semantic_violations = validate_protocol_semantics(protocol, board, deck)
+    if semantic_violations:
+        raise ProtocolSemanticValidationError(semantic_violations)
 
     context = ProtocolContext(board=board, deck=deck, positions=protocol.positions, gantry=gantry_config)
     return protocol, context
