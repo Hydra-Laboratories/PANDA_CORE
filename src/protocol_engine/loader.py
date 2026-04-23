@@ -73,7 +73,11 @@ def _compile_steps(schema: ProtocolYamlSchema) -> List[ProtocolStep]:
                 index=i,
                 command_name=step_schema.command,
                 handler=registered.handler,
-                args=validated_args.model_dump(),
+                # Keep the compiled step aligned with the YAML surface by only
+                # carrying arguments that were explicitly provided. This avoids
+                # materializing handler defaults such as ``travel_z=None`` or
+                # ``reason=""`` into ProtocolStep.args.
+                args=validated_args.model_dump(exclude_unset=True),
             )
         )
     return steps

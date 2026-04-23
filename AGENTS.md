@@ -19,8 +19,10 @@ This repository contains code to control a CNC router (mill) using a Python-base
 ## Usage Guide for Agents
 
 1.  **Connecting**: Always use the context manager `with Mill() as mill:` to ensure proper connection and cleanup.
-2.  **Moving**: Use `mill.move_to_position(x, y, z)` for safe moves. The driver handles validation against the working volume (negative coordinates mostly).
-    - **Coordinates**: The gantry typically operates in negative space relative to Home (0,0,0). e.g., X goes from 0 to -415.
+2.  **Moving**: Use `mill.move_to_position(x, y, z)` for safe moves. At the repo/user level, always think and communicate in positive `X`, `Y`, and `Z`.
+    - **Coordinates**: The physical/workcell convention is positive `X`, positive `Y`, positive `Z`. Do not pre-flip signs in calling code to match raw CNC coordinates.
+    - **Current XYZ convention**: In the high-level `src/gantry` wrapper, we keep user-facing `X/Y/Z` positive. The underlying boundary code translates `Z` to negative machine `Z` before sending commands to the controller, similar to CNC mode. We do not manually compensate for that translation in higher-level code.
+    - **TODO**: In a later PR, redefine `Z` from the base deck reference instead of the gantry head/top reference.
 3.  **Offsets**: Instruments have offsets managed by `InstrumentManager`.
 
 ### Instruments (`src/instruments`)
@@ -52,16 +54,58 @@ Driver for the Thorlabs CCS-series compact spectrometers (CCS100/CCS175/CCS200).
 - **`models.py`**: `UVVisSpectrum` frozen dataclass (`wavelengths`, `intensities`, `integration_time_s`, `is_valid`, `num_pixels`). `NUM_PIXELS = 3648`.
 - **`exceptions.py`**: `UVVisCCSError` hierarchy (`UVVisCCSConnectionError`, `UVVisCCSMeasurementError`, `UVVisCCSTimeoutError`).
 
+#### ASMI Force Sensor (`src/instruments/asmi`)
+Driver for the Vernier GoDirect force sensor used for ASMI indentation/force measurements over USB.
+
+- **`driver.py`**: `ASMI(BaseInstrument)` — real GoDirect driver with `offline=True` support for dry runs.
+    - **Constructor**: `ASMI(..., default_force=0.0, force_threshold=-100, z_target=-17.0, step_size=0.01, force_limit=15.0, baseline_samples=10, ...)`
+    - **Lifecycle**: `connect()`, `disconnect()`, `health_check()`
+    - **Commands**: `measure(n_samples=1)`, `get_status()`, `get_force_reading()`, `get_baseline_force(samples)`, `indentation(gantry, ...)`
+    - **Important semantic split**:
+        - Board/instrument `measurement_height` on the ASMI mount is the generic `BaseInstrument` relative offset used by shared protocol movement helpers.
+        - `ASMI.indentation(..., measurement_height=...)` is a protocol/runtime absolute Z for the start of the indentation, not a relative offset.
+    - **ASMI scan motion model**:
+        - `scan.entry_travel_z` is an absolute Z used only for the initial transit into the first well (e.g. A1).
+        - `scan.safe_approach_height` is an absolute Z used only for well-to-well travel inside the scan.
+        - After the within-scan transit, `indentation()` moves to its own absolute `measurement_height`, collects baseline force, then performs the stepwise indentation.
+- **`models.py`**: `MeasurementResult` and `ASMIStatus` frozen dataclasses.
+- **`exceptions.py`**: `ASMIError` hierarchy.
+
+#### UV Curing (`src/instruments/uv_curing`)
+Driver for the Excelitas OmniCure S1500 PRO UV curing system over RS-232 serial.
+
+- **`driver.py`**: `UVCuring(BaseInstrument)` — real serial driver with `offline=True` support for dry runs.
+    - **Constructor**: `UVCuring(port="/dev/ttyACM0", baud_rate=19200, default_intensity=100.0, default_exposure_time=1.0, name=None, ...)`
+    - **Lifecycle**: `connect()`, `disconnect()`, `health_check()`
+    - **Commands**: `cure(intensity=None, exposure_time=None)`, `measure(**kwargs)` as a protocol-compatible alias, `get_status()`
+- **`models.py`**: `CureResult` and `UVCuringStatus` frozen dataclasses.
+- **`exceptions.py`**: `UVCuringError` hierarchy.
+
 #### Pipette (`src/instruments/pipette`)
 Driver for Opentrons OT-2 and Flex pipettes. Communicates with the pipette motor via Arduino serial (Pawduino firmware). Supports 10 pipette models; the P300 single-channel has real calibrated values from the BEAR-DEN workcell.
 
-- **`driver.py`**: `Pipette(BaseInstrument)` — the real serial driver.
-    - **Constructor**: `Pipette(pipette_model, port, baud_rate=115200, command_timeout=30.0, name=None)`
+- **`driver.py`**: `Pipette(BaseInstrument)` — serial driver with built-in offline mode.
+    - **Constructor**: `Pipette(pipette_model, port, baud_rate=115200, command_timeout=30.0, name=None, offline=False)`
     - **Lifecycle**: `connect()`, `disconnect()`, `health_check()`, `warm_up()` (homes + primes)
     - **Commands**: `home()`, `prime(speed)`, `aspirate(volume_ul, speed)`, `dispense(volume_ul, speed)`, `blowout(speed)`, `mix(volume_ul, reps, speed)`, `pick_up_tip(speed)`, `drop_tip(speed)`, `get_status() -> PipetteStatus`, `drip_stop(volume_ul, speed)`
-- **`mock.py`**: `MockPipette` — in-memory mock for testing. Tracks `command_history: list[str]`.
+    - **Offline mode**: Pass `offline=True` for dry runs — simulates plunger state in memory without serial I/O.
 - **`models.py`**: `PipetteConfig` (frozen, per-model hardware description), `PipetteStatus`, `AspirateResult`, `MixResult` (all frozen dataclasses). `PIPETTE_MODELS` registry dict. `PipetteFamily` enum (OT2/FLEX).
 - **`exceptions.py`**: `PipetteError` hierarchy (`PipetteConnectionError`, `PipetteCommandError`, `PipetteTimeoutError`, `PipetteConfigError`).
+
+#### Potentiostat (`src/instruments/potentiostat`)
+Driver for Admiral Instruments SquidStat potentiostats via the vendor `SquidstatPyLibrary` (Qt/PySide6 signal-slot API). Wraps the async vendor API in a blocking, synchronous facade matching the rest of the instrument stack: a lazy process-wide `QCoreApplication` plus a per-experiment `QEventLoop`. Vendor SDK is lazy-imported inside `connect()`; the package imports and runs in `offline=True` mode without it.
+
+Install the optional extra to get the vendor SDK and numpy: `pip install -e ".[potentiostat]"`.
+
+- **`driver.py`**: `Potentiostat(BaseInstrument)` — the real driver.
+    - **Class attribute**: `vendor = "admiral"` — surfaced on every result so the persistence layer can tag rows.
+    - **Constructor**: `Potentiostat(port, channel=0, command_timeout=600.0, name=None, offline=False)`
+    - **Lifecycle**: `connect()`, `disconnect()`, `health_check()`
+    - **Experiments**: `run_cv(CVParams) -> CVResult`, `run_ocp(OCPParams) -> OCPResult`, `run_ca(CAParams) -> CAResult`, `run_cp(CPParams) -> CPResult`
+    - Offline mode returns deterministic synthetic traces (seeded RNG) so downstream code can be exercised without hardware.
+- **`models.py`**: frozen param dataclasses (`CVParams`, `OCPParams`, `CAParams`, `CPParams`) with validation in `__post_init__`, and frozen result dataclasses (`OCPResult`, `CAResult`, `CPResult`, `CVResult`) carrying `tuple[float, ...]` traces (`time_s`, `voltage_v`, `current_a`), the requested technique scalars (e.g. `scan_rate_v_s`, `step_potential_v`, `cycles`), a `vendor` field, a `.technique` property, and a free-form `metadata` mapping (`device_id`, `channel`, `started_at`, `stopped_at`, `aborted`, `stop_reason`).
+- **`exceptions.py`**: `PotentiostatError` hierarchy (`PotentiostatConnectionError`, `PotentiostatCommandError`, `PotentiostatTimeoutError`, `PotentiostatConfigError`).
+- **Persistence**: results flow through `protocol_engine.measurements.normalize_measurement` (which recognises all four result types) into `DataStore.log_measurement`, which writes to the `potentiostat_measurements` table. See the data-layer section for the schema.
 
 ### Protocol Engine (`src/protocol_engine`)
 A modular system for executing experiment sequences defined in code or YAML.
@@ -71,16 +115,32 @@ A modular system for executing experiment sequences defined in code or YAML.
 - **`loader.py`**: `load_protocol_from_yaml(path)` and `_safe` variant.
 - **`registry.py`**: `CommandRegistry` singleton and `@protocol_command()` decorator for registering commands.
 - **`setup.py`**: `setup_protocol(gantry_path, deck_path, board_path, protocol_path)` — loads all configs, validates bounds, and returns `(Protocol, ProtocolContext)` ready to run. Uses an offline `Gantry` by default for offline validation.
-- **`commands/`**: Protocol command implementations (`move.py`, `pipette.py`, `scan.py`).
+- **`commands/`**: Protocol command implementations:
+  - `home`: home the gantry and zero coordinates.
+  - `move`: move an instrument to a named position, raw `[x, y, z]`, or deck target.
+    - Named/literal XYZ moves may also supply `travel_z` to force a retract-first transit (`Z -> XY -> final Z`).
+    - Deck targets ignore `travel_z` and use `Board.move_to_labware()` with the instrument's board-configured relative `safe_approach_height`.
+    - Named positions such as `safe_z` live in protocol YAML `positions:`; they are not deck/labware entries.
+  - `scan`: iterate all wells on a plate, call an instrument method per well, and persist measurements when a `DataStore` is configured.
+    - For generic instruments, omitted scan overrides fall back to the instrument's board-configured relative `safe_approach_height`.
+    - `scan.entry_travel_z` is an absolute Z used only for the initial move into the first well.
+    - `scan.safe_approach_height` is an absolute Z used only for well-to-well travel inside the scan.
+    - This `scan.safe_approach_height` field name is historical; despite the name, the scan override is an absolute Z coordinate, not a relative offset.
+  - `measure`: move to one deck position and call an instrument method once.
+  - `pause`: sleep for a fixed number of seconds.
+  - `breakpoint`: pause until the user presses Enter.
+  - Pipette commands: `aspirate`, `pick_up_tip`, `transfer`, `serial_transfer`, `mix`, `blowout`, `drop_tip`.
+  - `dispense` exists as an internal helper only; use `transfer` in YAML so labware state is logged correctly.
 
 ### Gantry Config (`src/gantry`)
 Gantry YAML loader and domain model for CNC gantry working volume and homing strategy.
 
-- **Coordinate convention**: All user-facing XYZ coordinates are positive-space. The `Gantry` wrapper translates user-space `(+)` coordinates to machine-space `(-)` GRBL coordinates internally.
+- **Coordinate convention**: At the repo/user level we work in positive `X`, `Y`, and `Z`. The underlying `Gantry` boundary code currently translates user-facing `Z` to machine `-Z` before sending commands to the controller, and converts machine `Z` back on reads. Do not manually apply that translation in higher-level code.
+- **TODO**: In a later PR, redefine `Z` from the base deck reference instead of the gantry head/top reference.
 - **`yaml_schema.py`**: `GantryYamlSchema` with strict Pydantic validation (working volume bounds, homing strategy, serial port, and `cnc.total_z_height`).
 - **`gantry_config.py`**: `GantryConfig` and `WorkingVolume` frozen dataclasses. `WorkingVolume.contains(x, y, z)` checks if a point is within bounds (inclusive). `GantryConfig.total_z_height` is the top-reference height used for labware height conversion. `HomingStrategy` enum: `STANDARD`, `XY_HARD_LIMITS`, `MANUAL_ORIGIN`.
 - **`loader.py`**: `load_gantry_from_yaml(path)` and `load_gantry_from_yaml_safe(path)`.
-- **Config files**: `configs/gantry/` (e.g., `cubos_xl.yaml`).
+- **Config files**: `configs/gantry/` (e.g., `cub_xl.yaml`).
 
 ### Validation (`src/validation`)
 Bounds validation for protocol setup — ensures all deck positions and gantry-computed positions are within the gantry's working volume before the protocol runs.
@@ -91,17 +151,25 @@ Bounds validation for protocol setup — ensures all deck positions and gantry-c
 ### Deck and Labware (`src/deck`)
 Deck configuration loading, runtime deck container, and labware geometry/positioning models.
 
-- **`src/deck/deck.py`**: `Deck` class — runtime container holding labware loaded from deck YAML. Provides dict-like access (`deck["plate_1"]`, `len(deck)`, `"plate_1" in deck`) and `deck.resolve("plate_1.A1")` for target-to-coordinate resolution. The raw labware dict is accessible via `deck.labware`.
+- **`src/deck/deck.py`**: `Deck` class — runtime container holding labware loaded from deck config files. Provides dict-like access (`deck["plate_1"]`, `len(deck)`, `"plate_1" in deck`) and `deck.resolve("plate_1.A1")` for target-to-coordinate resolution. The raw labware dict is accessible via `deck.labware`.
 - **Labware models** (`src/deck/labware/`):
-  - **`labware.py`**: `Coordinate3D` and `Labware` base model. `Labware` provides high-level shared behavior (e.g., `get_location`, `get_initial_position`) and common validation helpers; concrete required fields live in subclasses. All models use strict schema (`extra='forbid'`).
+  - **`labware.py`**: `Coordinate3D`, `BoundingBoxGeometry`, and `Labware` base model. `Labware` provides high-level shared behavior (e.g., `get_location`, `get_initial_position`) plus shared `geometry` metadata. Current deck models populate `geometry` as a bounding box, even when they also retain convenience fields such as `length_mm` or `diameter_mm`. All models use strict schema (`extra='forbid'`).
+  - **`holder.py`**: Shared holder infrastructure. Contains `HolderLabware` and `LabwareSlot`.
+  - **`tip_holder.py`**: `TipHolder(HolderLabware)` with the tip-holder bounding-box dimensions.
+  - **`tip_disposal.py`**: `TipDisposal(HolderLabware)` with the used-tip disposal bounding-box dimensions.
+  - **`well_plate_holder.py`**: `WellPlateHolder(HolderLabware)` with the `SlideHolder_Top` dimensions and seat-height metadata.
+  - **`vial_holder.py`**: `VialHolder(HolderLabware)` with the `9VialHolder20mL_TightFit` dimensions, seat-height metadata, and slot-count validation.
+  - **`tip_rack.py`**: `TipRack(Labware)` for exact-position pipette pickup targets. Stores a mapping of tip IDs (e.g. `A1`, `B15`) to absolute pickup coordinates plus `z_pickup` and optional `z_drop`.
   - **`well_plate.py`**: `WellPlate(Labware)` for multi-well plates (e.g., SBS 96-well). Required fields include `name`, `model_name`, dimensions, layout (`rows`, `columns`), `wells`, and volume fields (`capacity_ul`, `working_volume_ul`). Also provides `get_well_center(well_id)`.
   - **`vial.py`**: `Vial(Labware)` for a single vial. Required fields include `name`, `model_name`, geometry (`height_mm`, `diameter_mm`), single `location`, and volume fields (`capacity_ul`, `working_volume_ul`), plus `get_vial_center()`.
-- **Deck configuration (YAML)**: Deck layout is defined in a **deck YAML** file (labware only; no gantry settings). Strict schema: only allowed fields; missing, extra, or wrong-type fields raise `ValidationError`.
-  - **`src/deck/yaml_schema.py`**: Pydantic models for deck YAML: `DeckYamlSchema` (root, single key `labware`), `WellPlateYamlEntry` (two-point calibration points under `calibration.a1` and `calibration.a2`, axis-aligned only), `VialYamlEntry` (single vial location). Both support optional `height` for automatic Z calculation. All use `extra='forbid'`.
-  - **`src/deck/loader.py`**: `load_deck_from_yaml(path, total_z_height=None)` loads a deck YAML file and returns a `Deck` containing all labware. Well plates are built from calibration A1/A2 and x/y offsets (derived well positions); vials from a single explicit `location`. If `height` is provided in labware YAML, z is computed as `total_z_height - height`.
+- **Deck configuration (YAML)**: Deck layout is defined in a deck YAML file (labware only; no gantry settings). Strict schema: only allowed fields; missing, extra, or wrong-type fields raise `ValidationError`.
+  - **`src/deck/yaml_schema.py`**: Pydantic models for deck config files: `DeckYamlSchema` (root, single key `labware`), `WellPlateYamlEntry` (two-point calibration points under `calibration.a1` and `calibration.a2`, axis-aligned only), `VialYamlEntry` (single vial location), `TipRackYamlEntry` (explicit tip pickup coordinates), plus holder entries for `tip_holder`, `tip_disposal`, `well_plate_holder`, and `vial_holder`. `VialHolderYamlEntry` can contain nested `vials`, and `WellPlateHolderYamlEntry` can contain a nested `well_plate`; their experiment Z is derived from the holder seat height. All use `extra='forbid'`.
+  - **`src/deck/loader.py`**: `load_deck_from_yaml(path, total_z_height=None)` loads a deck YAML config and returns a `Deck` containing all labware. Well plates are built from calibration A1/A2 and x/y offsets (derived well positions); tip racks use explicit pickup coordinates; vials and holders are built from explicit `location` points. Nested holder children inherit their experiment Z from `holder.location.z + holder.labware_seat_height_from_bottom_mm`.
   - **`src/deck/errors.py`**: `DeckLoaderError` for user-facing loader failures.
-- **Sample config**: `configs/deck/deck.sample.yaml` — one well plate and one vial; use as reference for required fields and two-point calibration format.
-- **Usage**: Load a deck with `load_deck_from_yaml("configs/deck/deck.sample.yaml", total_z_height=<float>)` to get a `Deck` object. Access labware: `deck["plate_1"]`. Resolve targets: `deck.resolve("plate_1.A1")` for absolute XYZ.
+- **Sample configs**:
+  - `configs/deck/deck.sample.yaml` — one well plate and one vial; use as reference for required fields and two-point calibration format.
+  - `configs/deck/panda_deck.yaml` — YAML deck config derived from `panda.json`, including two 2x15 tip racks, a nested well plate holder, and a nested vial holder.
+- **Usage**: Load a deck with `load_deck_from_yaml("configs/deck/deck.sample.yaml", total_z_height=<float>)` or `load_deck_from_yaml("configs/deck/panda_deck.yaml", total_z_height=<float>)` to get a `Deck` object. Access labware: `deck["plate_1"]`. Resolve targets: `deck.resolve("plate_1.A1")` or nested targets like `deck.resolve("well_plate_holder.plate.A1")` for absolute XYZ.
 
 ### Config Directory Structure
 Config files are organized by type:
@@ -126,11 +194,12 @@ SQLite-backed persistence layer for self-driving lab campaigns. All state lives 
         - `UVVisSpectrum` → `uvvis_measurements` (wavelengths/intensities stored as little-endian BLOB via `struct.pack`)
         - `MeasurementResult` → `filmetrics_measurements` (thickness_nm, goodness_of_fit)
         - `str` (image path) → `camera_measurements`
+        - `InstrumentMeasurement` with potentiostat type → `potentiostat_measurements` (technique, JSON-encoded `time_s`/`voltage_v`/`current_a`, plus per-technique scalars: `sample_period_s`, `duration_s`, `step_potential_v`, `step_current_a`, `scan_rate_v_s`, `step_size_v`, `cycles`; run metadata `vendor`, `device_id`, `channel`, `started_at`, `stopped_at`, `aborted`, `stop_reason` each promoted to their own column)
     - **Labware API** (volume and content tracking, persisted to `labware` table):
         - `register_labware(campaign_id, labware_key, labware)` — registers a Vial (1 row) or WellPlate (1 row per well) with total/working volume from the model.
         - `record_dispense(campaign_id, labware_key, well_id, source_name, volume_ul)` — increments `current_volume_ul` and appends to `contents` JSON.
         - `get_contents(campaign_id, labware_key, well_id) -> list | None` — returns parsed contents list.
-    - **Schema tables**: `campaigns`, `experiments`, `uvvis_measurements`, `filmetrics_measurements`, `camera_measurements`, `labware`
+    - **Schema tables**: `campaigns`, `experiments`, `uvvis_measurements`, `filmetrics_measurements`, `camera_measurements`, `asmi_measurements`, `potentiostat_measurements`, `labware`
 
 #### Protocol Integration
 - **`ProtocolContext.data_store`**: Optional `DataStore` instance. When set (along with `campaign_id`), `scan` and `transfer` commands automatically persist measurements and labware state.
@@ -165,9 +234,29 @@ First-run scripts for verifying hardware after unboxing.
     - **Dependencies**: `src/gantry`, `src/deck`, `src/board`, `src/protocol_engine`, `src/validation`
 - **`run_protocol.py`**: Load, validate, connect to hardware, and run a protocol end-to-end. Runs offline validation first, then connects to the gantry and executes the protocol.
     - **Usage**: `python setup/run_protocol.py <gantry.yaml> <deck.yaml> <board.yaml> <protocol.yaml>`
+    - **Startup behavior**:
+        - Connects to the gantry, clears the expected GRBL alarm state if present, and restores controller state.
+        - Connects all board instruments before the first protocol step.
+        - Disconnects instruments and gantry in `finally`, even on protocol failure.
     - **Dependencies**: `src/gantry`, `src/deck`, `src/board`, `src/protocol_engine`, `src/validation`
 - **`keyboard_input.py`**: Helper module that reads single keypresses (including arrow keys) without requiring Enter. Uses `tty`/`termios` (Unix only).
 
+### Calibration (`calibration/`)
+- **`home_gantry.py`**: CNC homing wrapper that loads `configs/gantry/cub_xl.yaml`, connects to the gantry, and runs the configured homing sequence.
+    - **Usage**: `python calibration/home_gantry.py`
+
+### Development Commands
+- **Install for development**:
+  ```bash
+  python -m venv .venv
+  source .venv/bin/activate
+  pip install -e ".[dev]"
+  ```
+- **Install docs extras**: `pip install -e ".[docs,dev]"`
+- **Run tests**: `pytest tests/`
+- **Build/serve docs**: use MkDocs commands from the docs environment, e.g. `mkdocs build` or `mkdocs serve`.
+
 ## Environment
-- **Python**: 3.x
-- **Dependencies**: `pyserial`, `opencv-python`, `pydantic`, `pyyaml`.
+- **Python**: 3.9+
+- **Dependencies**: `pyserial`, `pydantic`, `pyyaml`.
+- **Optional/dev dependencies**: `pytest`; docs extras install MkDocs and mkdocstrings.

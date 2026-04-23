@@ -1,12 +1,13 @@
 """Manual origin homing script for the Genmitsu Desktop CNC.
 
-Connects to the CNC, runs the manual_origin homing strategy (interactive
-keyboard jogging), then prints the confirmed working volume bounds.
+Loads the standard Cub gantry config, overrides the homing strategy to
+``manual_origin``, then runs interactive keyboard jogging to set work zero.
 """
 
 import logging
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import yaml
@@ -17,11 +18,9 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
-from gantry import Gantry, load_gantry_from_yaml_safe
+from gantry import Gantry, HomingStrategy, load_gantry_from_yaml_safe
 
-DESKTOP_CONFIG = (
-    project_root / "configs" / "gantry" / "genmitsu_3018_PRO_Desktop.yaml"
-)
+BASE_CONFIG = project_root / "configs" / "gantry" / "cub.yaml"
 
 
 def main() -> None:
@@ -29,10 +28,14 @@ def main() -> None:
     print("  CUB — Manual Origin Homing")
     print("=" * 50)
 
-    gantry_config = load_gantry_from_yaml_safe(DESKTOP_CONFIG)
+    gantry_config = replace(
+        load_gantry_from_yaml_safe(BASE_CONFIG),
+        homing_strategy=HomingStrategy.MANUAL_ORIGIN,
+    )
 
-    with open(DESKTOP_CONFIG) as f:
+    with open(BASE_CONFIG) as f:
         raw_config = yaml.safe_load(f)
+    raw_config["cnc"]["homing_strategy"] = "manual_origin"
 
     gantry = Gantry(config=raw_config)
 

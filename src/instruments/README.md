@@ -17,17 +17,18 @@ Every instrument folder follows the same layout:
 ```
 <instrument>/
 ├── __init__.py       # Public exports
-├── driver.py         # Real hardware driver (extends BaseInstrument)
-├── mock.py           # Mock implementation for testing (extends BaseInstrument)
+├── driver.py         # Hardware driver (extends BaseInstrument, supports offline=True)
 ├── models.py         # Frozen dataclasses for measurement results
 └── exceptions.py     # Instrument-specific exception hierarchy
 ```
+
+Drivers support an `offline=True` constructor flag for dry runs — no serial I/O, synthetic return values. The board loader passes `offline=True` automatically when `mock_mode=True`.
 
 ## Adding a new instrument
 
 1. Create a new folder under `src/instruments/`.
 2. Subclass `BaseInstrument` and implement `connect()`, `disconnect()`, `health_check()`.
-3. Add a mock that tracks `command_history` for test assertions.
+3. Guard all I/O with `if self._offline: ...` branches that return synthetic data.
 4. Define a frozen dataclass in `models.py` for measurement results.
 5. Create an exception hierarchy rooted in `InstrumentError`.
 6. Register the instrument in `registry.yaml` (type, module, class_name, vendors).

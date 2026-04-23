@@ -6,6 +6,7 @@ from typing import Any, Dict, TYPE_CHECKING
 
 from ..errors import ProtocolExecutionError
 from ..registry import protocol_command
+from ._movement import approach_and_descend
 
 if TYPE_CHECKING:
     from ..protocol import ProtocolContext
@@ -21,9 +22,12 @@ def measure(
 ) -> Any:
     """Measure at a deck position using *instrument*.
 
-    Resolves *position* on the deck, applies the instrument's
-    measurement_height offset to Z, moves the instrument there,
-    then calls the instrument method with any provided kwargs.
+    Three phases:
+      1. **Approach.** ``Board.move_to_labware`` retracts (if below
+         ``safe_approach_height``) and travels XY to above the target.
+      2. **Descend.** Lower straight down to
+         ``labware.z + measurement_height``.
+      3. **Act.** Call the instrument method.
 
     Args:
         context:       Runtime context (board, deck, logger).
@@ -49,8 +53,6 @@ def measure(
         )
 
     coord = context.deck.resolve(position)
-    target = (coord.x, coord.y, coord.z + instr.measurement_height)
-    context.board.move(instrument, target)
-
     context.logger.info("measure: %s.%s(%s) at %s", instrument, method, method_kwargs, position)
+    approach_and_descend(context, instrument, coord)
     return getattr(instr, method)(**method_kwargs)

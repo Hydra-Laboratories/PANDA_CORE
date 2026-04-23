@@ -9,7 +9,7 @@ from .coordinate_translator import (
     to_user_coordinates,
     translate_status_string,
 )
-from .gantry_driver.driver import Mill
+from .gantry_driver.driver import DEFAULT_FEED_RATE, Mill
 from .gantry_driver.exceptions import (
     CommandExecutionError,
     LocationNotFound,
@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 class Gantry:
     """High-level gantry wrapper around the low-level Mill driver.
 
-    User-facing coordinates are positive-space XYZ. The underlying GRBL
-    controller still operates in negative machine space, so this wrapper
-    handles translation at the boundary.
+    X/Y coordinates are passed to the controller unchanged. Z remains
+    inverted at the boundary so higher-level code can keep the existing
+    vertical convention without depending directly on the low-level driver.
     """
 
     def __init__(
@@ -134,18 +134,85 @@ class Gantry:
             self.logger.error("Error homing gantry: %s", exc)
             raise
 
-    def move_to(self, x: float, y: float, z: float) -> None:
-        """Move to absolute user-space coordinates."""
+    def prepare_for_protocol_run(self) -> None:
+        """Clear any startup alarm and restore controller state."""
         if self._offline:
+            return
+        assert self._mill is not None
+
+        raw_status = self._mill.query_raw_status()
+        if not raw_status or "alarm" not in raw_status.lower():
+            return
+
+        self.logger.warning(
+            "GRBL alarm detected before protocol run; unlocking controller. "
+            "Status: %s",
+            raw_status,
+        )
+        self.reset_and_unlock()
+        self._restore_controller_state()
+
+        final_status = self._mill.query_raw_status()
+        if final_status and "alarm" in final_status.lower():
+            raise MillConnectionError(
+                f"Gantry remained in alarm after unlock. Status: {final_status}"
+            )
+
+    def _restore_controller_state(self) -> None:
+        """Re-run controller initialization skipped when connect saw Alarm."""
+        if self._offline:
+            return
+        assert self._mill is not None
+
+        self._mill.read_mill_config()
+        self._mill.read_working_volume()
+        self._mill.clear_buffers()
+        status = self._mill.query_raw_status()
+        if status:
+            self._mill._enforce_wpos_mode()
+        self._mill.set_feed_rate(DEFAULT_FEED_RATE)
+        if status:
+            self._mill._seed_wco()
+        self._validate_grbl_settings()
+
+    def move_to(
+        self,
+        x: float,
+        y: float,
+        z: float,
+        travel_z: Optional[float] = None,
+    ) -> None:
+        """Move to absolute gantry coordinates.
+
+        ``travel_z``, if given, becomes the Z during XY travel: the gantry
+        lifts/lowers to it at the current XY before moving XY, then
+        descends/ascends to the target Z. This is how higher layers (Board,
+        protocol commands) express "travel above this labware" without the
+        mill baking in a machine-wide retract.
+        """
+        if self._offline:
+            if travel_z is not None:
+                # Dry runs only record the final tip pose. Log the transit
+                # height so offline protocol validation can still reason
+                # about approach path (e.g. assert it stays above labware).
+                self.logger.debug(
+                    "Offline move to (%s, %s, %s) via travel_z=%s", x, y, z, travel_z,
+                )
             self._offline_coords = {"x": x, "y": y, "z": z}
             return
         assert self._mill is not None
         try:
             machine_x, machine_y, machine_z = to_machine_coordinates(x, y, z)
-            self._mill.safe_move(
-                x_coord=machine_x,
-                y_coord=machine_y,
-                z_coord=machine_z,
+            machine_travel_z = (
+                to_machine_coordinates(0.0, 0.0, travel_z)[2]
+                if travel_z is not None
+                else None
+            )
+            self._mill.move_to_position(
+                x_coordinate=machine_x,
+                y_coordinate=machine_y,
+                z_coordinate=machine_z,
+                travel_z=machine_travel_z,
             )
         except (
             MillConnectionError,
@@ -165,7 +232,7 @@ class Gantry:
         z: float = 0,
         feed_rate: float = 2000,
     ) -> None:
-        """Jog by a relative user-space offset."""
+        """Jog by a relative gantry offset."""
         if self._offline:
             self._offline_coords = {
                 "x": self._offline_coords["x"] + x,
@@ -175,7 +242,7 @@ class Gantry:
             return
         assert self._mill is not None
         try:
-            self._mill.jog(x=-x, y=-y, z=-z, feed_rate=feed_rate)
+            self._mill.jog(x=x, y=y, z=-z, feed_rate=feed_rate)
         except (MillConnectionError, CommandExecutionError) as exc:
             self.logger.error("Jog error: %s", exc)
             raise
@@ -225,7 +292,7 @@ class Gantry:
             raise
 
     def get_status(self) -> str:
-        """Return the current status string translated to user-space coords."""
+        """Return the current status string with normalized coordinates."""
         if self._offline:
             return "Idle"
         assert self._mill is not None
@@ -247,7 +314,7 @@ class Gantry:
             raise
 
     def get_coordinates(self) -> Dict[str, float]:
-        """Return current user-space coordinates as a dict."""
+        """Return current gantry coordinates as a dict."""
         if self._offline:
             return dict(self._offline_coords)
         assert self._mill is not None
@@ -279,13 +346,6 @@ class Gantry:
         assert self._mill is not None
         if self._mill.ser_mill is not None:
             self._mill.ser_mill.timeout = timeout
-
-    def set_safe_z(self, z: float) -> None:
-        """Set the clearance height used by Mill.safe_move for XY travel."""
-        if self._offline:
-            return
-        assert self._mill is not None
-        self._mill.max_z_height = z
 
     def zero_coordinates(self) -> None:
         """Zero the work coordinate system at the current position."""

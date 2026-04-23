@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any, TYPE_CHECKING
 
 from instruments.base_instrument import BaseInstrument
@@ -35,27 +36,79 @@ class Board:
         self,
         instrument: str | BaseInstrument,
         position: Position,
+        travel_z: float | None = None,
     ) -> None:
         """Move the gantry so that *instrument* arrives at *position*.
 
         Accounts for the instrument's offset_x, offset_y, and depth so the
         gantry head ends up at the right place for the instrument tip to be
-        at the requested (x, y, z).
+        at the requested (x, y, z). Validates that the target is finite
+        (no NaN/Inf) before commanding the gantry.
+
+        ``travel_z``, if given, is an instrument-tip Z held during XY
+        travel — the gantry lifts/lowers to it before moving XY, then
+        descends/ascends to the target Z. ``Board.move_to_labware`` uses
+        this to travel at ``safe_approach_height`` between labware.
 
         Args:
             instrument: Name (key in ``self.instruments``) or instance.
             position:   (x, y, z) tuple or labware object with x, y, z attrs.
+            travel_z:   Instrument-tip Z to hold during XY travel, in the
+                        same user space as ``position.z``.
         """
         instr = self._resolve_instrument(instrument)
         x, y, z = self._resolve_position(position)
+        self._validate_finite_xyz(x, y, z, instr.name)
+        if travel_z is not None and not math.isfinite(travel_z):
+            raise ValueError(
+                f"non-finite travel_z={travel_z} for instrument {instr.name!r}."
+            )
         gantry_x = x - instr.offset_x
         gantry_y = y - instr.offset_y
         gantry_z = z - instr.depth
+        gantry_travel_z = (
+            travel_z - instr.depth if travel_z is not None else None
+        )
         self.logger.info(
             "Moving %s to (%.3f, %.3f, %.3f) → gantry (%.3f, %.3f, %.3f)",
             instr.name, x, y, z, gantry_x, gantry_y, gantry_z,
         )
-        self.gantry.move_to(gantry_x, gantry_y, gantry_z)
+        self.gantry.move_to(gantry_x, gantry_y, gantry_z, travel_z=gantry_travel_z)
+
+    def move_to_labware(
+        self,
+        instrument: str | BaseInstrument,
+        labware: Position,
+    ) -> None:
+        """Travel *instrument* to the approach height above a labware target.
+
+        Emits a single ``move`` with ``travel_z = labware.z +
+        safe_approach_height``. The gantry lifts/lowers to approach Z at
+        the current XY, travels XY at approach Z, and ends above the
+        target — not engaged with it. Higher-level commands
+        (``measure``, ``aspirate``, ``scan``, ...) follow up with a raw
+        ``board.move`` to descend to ``measurement_height``.
+
+        Args:
+            instrument: Name or instance.
+            labware:    A labware-reference point — anything with x/y/z
+                        attributes (e.g. a ``Coordinate3D`` returned by
+                        ``Deck.resolve()``). ``(x, y, z)`` tuples are
+                        accepted for convenience/testing.
+        """
+        instr = self._resolve_instrument(instrument)
+        x, y, z = self._resolve_position(labware)
+        # User-space Z is positive-down (home at z=0, deck at larger z), so
+        # "safely above the labware" is a smaller z than the labware surface.
+        approach_z = z - instr.safe_approach_height
+        self.move(instr, (x, y, approach_z), travel_z=approach_z)
+
+    def _validate_finite_xyz(self, x: float, y: float, z: float, instr_name: str) -> None:
+        for label, value in (("x", x), ("y", y), ("z", z)):
+            if not math.isfinite(value):
+                raise ValueError(
+                    f"non-finite {label}={value} for instrument {instr_name!r}."
+                )
 
     def object_position(
         self, obj: str | BaseInstrument | Any,

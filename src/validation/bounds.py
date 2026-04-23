@@ -2,18 +2,13 @@
 
 from __future__ import annotations
 
-import logging
 from typing import List, Tuple
 
 from board.board import Board
 from deck.deck import Deck
-from deck.labware.vial import Vial
-from deck.labware.well_plate import WellPlate
 from gantry.gantry_config import GantryConfig, WorkingVolume
 
 from .errors import BoundsViolation
-
-logger = logging.getLogger(__name__)
 
 
 def _check_point(
@@ -43,17 +38,8 @@ def _get_all_positions(
     positions: List[Tuple[str, str, float, float, float]] = []
     for key in deck:
         labware = deck[key]
-        if isinstance(labware, WellPlate):
-            for well_id, coord in labware.wells.items():
-                positions.append((key, well_id, coord.x, coord.y, coord.z))
-        elif isinstance(labware, Vial):
-            loc = labware.location
-            positions.append((key, "location", loc.x, loc.y, loc.z))
-        else:
-            logger.warning(
-                "Skipping unknown labware type %r for key %r during bounds validation",
-                type(labware).__name__, key,
-            )
+        for position_id, coord in labware.iter_positions().items():
+            positions.append((key, position_id, coord.x, coord.y, coord.z))
     return positions
 
 
