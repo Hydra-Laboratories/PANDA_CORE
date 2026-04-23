@@ -4,20 +4,21 @@
 #
 # Coordinate convention (positive-down): user-space Z is 0 at the gantry's
 # home position and grows toward the deck. "Above" = smaller z; "below" =
-# larger z. Indentation steps descend by INCREASING z, capped at z_limit.
+# larger z. Indentation steps descend by INCREASING z, capped at
+# indentation_limit.
 #
 # Flow per well (handled by scan + indentation method):
-#   1. Move to well XY at safe_approach_height above labware
+#   1. Move to well XY at interwell_travel_height above labware
 #   2. Descend to measurement_height (absolute z to start the indent)
-#   3. Step z toward z_limit (increasing), reading force at each step
-#   4. Stop on force_limit or z_limit (whichever comes first)
+#   3. Step z toward indentation_limit (increasing), reading force at each step
+#   4. Stop on force_limit or indentation_limit (whichever comes first)
 #
 # Protocol-level flow:
-#   home → scan all wells → move safe_z → home
+#   home -> scan all wells -> move park_position -> home
 
 positions:
-  # Park 50 mm below home, well clear of any labware on the deck.
-  safe_z: [0.0, 0.0, 20.0]
+  # Park near home, well clear of labware.
+  park_position: [0.0, 0.0, 20.0]
 
 protocol:
   # Home the gantry and zero coordinates
@@ -29,15 +30,15 @@ protocol:
       instrument: asmi
       method: indentation
       # Absolute Z used only for the first transit into A1.
-      entry_travel_z: 20.0
+      entry_travel_height: 20.0
       # Absolute Z used for XY travel between wells.
-      safe_approach_height: 70.0
+      interwell_travel_height: 70.0
       method_kwargs:
         # Absolute Zs (not offsets). measurement_height is where the
-        # indent starts; z_limit is the deepest the tip is allowed to
+        # indent starts; indentation_limit is the deepest the tip is allowed to
         # reach (must be > measurement_height in positive-down space).
         measurement_height: 73.0
-        z_limit: 75.0
+        indentation_limit: 75.0
         step_size: 0.1 # usually .01, .1 for testing
         force_limit: 10.0
         baseline_samples: 10
@@ -46,7 +47,7 @@ protocol:
   # Return to safe Z after scan
   - move:
       instrument: asmi
-      position: safe_z
+      position: park_position
       travel_z: 20.0
 
   # Home the gantry

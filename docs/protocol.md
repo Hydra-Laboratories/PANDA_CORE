@@ -16,7 +16,7 @@ Representative example:
 
 ```yaml
 positions:
-  safe_z: [0.0, 0.0, -50.0]
+  park_position: [0.0, 0.0, 20.0]
 
 protocol:
   # Home the gantry and zero coordinates
@@ -27,18 +27,20 @@ protocol:
       plate: plate
       instrument: asmi
       method: indentation
+      entry_travel_height: 20.0
+      interwell_travel_height: 70.0
       method_kwargs:
-        z_limit: -83.0
+        indentation_limit: 75.0
         step_size: 0.01
         force_limit: 10.0
-        measurement_height: -73.0
+        measurement_height: 73.0
         baseline_samples: 10
         measure_with_return: false  # true = down + return (up) sampling
 
-  # Return to safe Z after scan
+  # Return to park position after scan
   - move:
       instrument: asmi
-      position: safe_z
+      position: park_position
 
   # Home the gantry
   - home:
@@ -79,6 +81,28 @@ The `move` command accepts:
 - a deck target string such as `plate_1.A1` or `vial_1`
 
 The `measure` command requires both `instrument` and `position`. It resolves the deck target, applies the instrument's `measurement_height`, moves there, and then calls the selected method. The default method is `measure`.
+
+## Scan Heights
+
+Use the Phase 1 scan names for new protocols:
+
+- `measurement_height` is the action/start Z for a scan target.
+- `interwell_travel_height` is the between-well travel Z. When omitted, it
+  defaults to `measurement_height`.
+- `entry_travel_height` is the first transit Z into the scan. When omitted, it
+  defaults to `interwell_travel_height`.
+- `indentation_limit` is the ASMI indentation stopping Z. The legacy ASMI name
+  `z_limit` is still accepted temporarily.
+
+During the current positive-down transition, scan-level heights are absolute Z
+coordinates. The deck-origin refactor tracked in issue #87 will update the
+underlying formula so `measurement_height` becomes deck-relative across all
+instruments.
+
+Legacy scan fields remain accepted for migration:
+
+- `safe_approach_height` -> `interwell_travel_height`
+- `entry_travel_z` -> `entry_travel_height`
 
 Example:
 

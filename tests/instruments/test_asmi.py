@@ -173,6 +173,33 @@ class TestASMIOffline(unittest.TestCase):
                 gantry, z_limit=9.0, measurement_height=10.0, step_size=0.1,
             )
 
+    def test_indentation_limit_alias_matches_z_limit(self):
+        from gantry.gantry import Gantry
+        gantry = Gantry(offline=True)
+
+        result = self.asmi.indentation(
+            gantry,
+            indentation_limit=10.2,
+            measurement_height=10.0,
+            step_size=0.1,
+        )
+
+        self.assertEqual(result["data_points"], 2)
+        self.assertAlmostEqual(result["measurements"][-1]["z_mm"], 10.2)
+
+    def test_conflicting_z_limit_aliases_raise(self):
+        from gantry.gantry import Gantry
+        gantry = Gantry(offline=True)
+
+        with self.assertRaises(ValueError, msg="Conflicting ASMI arguments"):
+            self.asmi.indentation(
+                gantry,
+                z_limit=10.3,
+                indentation_limit=10.2,
+                measurement_height=10.0,
+                step_size=0.1,
+            )
+
     def test_indentation_rejects_non_positive_step_size(self):
         from gantry.gantry import Gantry
         gantry = Gantry(offline=True)

@@ -84,7 +84,7 @@ Vernier GoDirect force sensor for indentation measurements.
 | Method | Description |
 |--------|-------------|
 | `measure(n_samples)` | Take force readings. |
-| `indentation(gantry, z_limit, step_size, force_limit, measurement_height, baseline_samples, measure_with_return=False)` | Step-by-step indentation: descend in Z steps, reading force at each step until force limit or Z limit. Pass `measure_with_return=True` to also record upward return samples; every measurement carries a `direction` tag (`"down"` or `"up"`). |
+| `indentation(gantry, indentation_limit, step_size, force_limit, measurement_height, baseline_samples, measure_with_return=False)` | Step-by-step indentation: descend in Z steps, reading force at each step until force limit or indentation limit. The legacy `z_limit` name is still accepted temporarily. Pass `measure_with_return=True` to also record upward return samples; every measurement carries a `direction` tag (`"down"` or `"up"`). |
 | `get_force_reading()` | Single instantaneous force reading. |
 | `get_baseline_force(samples)` | Average force over N samples (returns mean and std). |
 | `get_status()` | Return sensor state. |

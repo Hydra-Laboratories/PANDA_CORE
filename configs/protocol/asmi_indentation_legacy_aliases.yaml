@@ -1,0 +1,30 @@
+# ASMI indentation protocol using legacy scan aliases.
+# Kept as a compatibility/hardware comparison fixture during the naming
+# migration. Prefer configs/protocol/asmi_indentation.yaml for new protocols.
+
+positions:
+  park_position: [0.0, 0.0, 20.0]
+
+protocol:
+  - home:
+
+  - scan:
+      plate: plate
+      instrument: asmi
+      method: indentation
+      entry_travel_z: 20.0
+      safe_approach_height: 70.0
+      method_kwargs:
+        measurement_height: 73.0
+        z_limit: 75.0
+        step_size: 0.1
+        force_limit: 10.0
+        baseline_samples: 10
+        measure_with_return: false
+
+  - move:
+      instrument: asmi
+      position: park_position
+      travel_z: 20.0
+
+  - home:

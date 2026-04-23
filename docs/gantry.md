@@ -93,6 +93,16 @@ Under that target convention, protocol movement names should describe intent:
 - `park_position` is an explicit rest pose and should replace ambiguous names
   such as `safe_z` in examples.
 
+Phase 1 of the migration accepts the new protocol names while preserving these
+legacy aliases:
+
+- `safe_approach_height` -> `interwell_travel_height`
+- `entry_travel_z` -> `entry_travel_height`
+- ASMI `z_limit` -> `indentation_limit`
+
+Until the deck-origin semantic change lands, scan-level heights remain absolute
+Z coordinates in the current positive-down user space.
+
 ## GRBL Axis And Homing Normalization
 
 Use this procedure when bringing up a new machine or normalizing multiple GRBL

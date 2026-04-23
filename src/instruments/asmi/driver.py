@@ -252,6 +252,7 @@ class ASMI(BaseInstrument):
         self,
         gantry,
         z_limit: float | None = None,
+        indentation_limit: float | None = None,
         step_size: float | None = None,
         force_limit: float | None = None,
         measurement_height: float | None = None,
@@ -275,8 +276,9 @@ class ASMI(BaseInstrument):
 
         Args:
             gantry:             Gantry instance for Z movement.
-            z_limit:            Maximum (deepest) Z; descent stops here. Must be
-                                >= measurement_height.
+            z_limit:            Deprecated name for the maximum (deepest) Z;
+                                descent stops here. Must be >= measurement_height.
+            indentation_limit:  Preferred name for the maximum (deepest) Z.
             step_size:          Z increment per step in mm (positive).
             force_limit:        Stop when corrected force exceeds this in N.
             measurement_height: Z to descend to before starting (the well-top).
@@ -292,8 +294,22 @@ class ASMI(BaseInstrument):
             force_exceeded, data_points, measure_with_return. Every entry in
             ``measurements`` includes a ``direction`` field.
         """
-        # Allow protocol method_kwargs to override instance defaults
-        _z_target = z_limit if z_limit is not None else self._z_target
+        if (
+            z_limit is not None
+            and indentation_limit is not None
+            and z_limit != indentation_limit
+        ):
+            raise ValueError(
+                "Conflicting ASMI arguments: `indentation_limit`="
+                f"{indentation_limit!r} and `z_limit`={z_limit!r}. "
+                "Use `indentation_limit`."
+            )
+
+        # Allow protocol method kwargs to override instance defaults.
+        resolved_limit = (
+            indentation_limit if indentation_limit is not None else z_limit
+        )
+        _z_target = resolved_limit if resolved_limit is not None else self._z_target
         _step_size = step_size if step_size is not None else self._step_size
         _force_limit = force_limit if force_limit is not None else self._force_limit
         _well_top_z = measurement_height if measurement_height is not None else (

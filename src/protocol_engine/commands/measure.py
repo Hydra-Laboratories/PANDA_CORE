@@ -25,8 +25,7 @@ def measure(
     Three phases:
       1. **Approach.** ``Board.move_to_labware`` retracts (if below
          ``safe_approach_height``) and travels XY to above the target.
-      2. **Descend.** Lower straight down to
-         ``labware.z + measurement_height``.
+      2. **Descend.** Lower straight down to the current action Z.
       3. **Act.** Call the instrument method.
 
     Args:

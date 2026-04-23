@@ -1,0 +1,14 @@
+# Generic scan protocol using the Phase 1 scan naming surface.
+# With the current positive-down convention these heights are absolute Z
+# coordinates. The deck-origin refactor will update the underlying formula.
+
+protocol:
+  - move:
+      instrument: uvvis
+      position: plate_1.A1
+
+  - scan:
+      plate: plate_1
+      instrument: uvvis
+      method: measure
+      measurement_height: 10.0

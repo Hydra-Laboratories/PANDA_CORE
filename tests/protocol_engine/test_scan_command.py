@@ -83,6 +83,19 @@ class _FakeSensor(BaseInstrument):
         self.call_count += 1
         return self._return_value
 
+    def indentation(
+        self,
+        measurement_height: float | None = None,
+        z_limit: float | None = None,
+        gantry=None,
+    ) -> dict:
+        self.call_count += 1
+        return {
+            "measurement_height": measurement_height,
+            "z_limit": z_limit,
+            "gantry": gantry,
+        }
+
 
 def _make_sensor(**kwargs) -> _FakeSensor:
     defaults = dict(name="sensor", offset_x=0.0, offset_y=0.0, depth=0.0)
@@ -245,6 +258,98 @@ class TestScanCommand:
         later_approaches = ctx.board.move.call_args_list[2:-1:2]
         for call in later_approaches:
             assert call.kwargs == {"travel_z": 20.0}
+
+    def test_interwell_travel_height_alias_matches_safe_approach_height(self):
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x2_plate()
+        sensor = _make_sensor(measurement_height=3.0, safe_approach_height=10.0)
+        ctx = _mock_context(plate=plate, sensor=sensor)
+
+        scan(
+            ctx,
+            plate="plate_1",
+            instrument="uvvis",
+            method="measure",
+            interwell_travel_height=20.0,
+        )
+
+        move_zs = [c.args[1][2] for c in ctx.board.move.call_args_list]
+        assert move_zs == [20.0, 72.0, 20.0, 72.0, 20.0, 72.0, 20.0, 72.0, 20.0]
+
+    def test_entry_travel_height_alias_matches_entry_travel_z(self):
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x2_plate()
+        sensor = _make_sensor(measurement_height=3.0, safe_approach_height=10.0)
+        ctx = _mock_context(plate=plate, sensor=sensor)
+
+        scan(
+            ctx,
+            plate="plate_1",
+            instrument="uvvis",
+            method="measure",
+            entry_travel_height=30.0,
+            interwell_travel_height=20.0,
+        )
+
+        move_zs = [c.args[1][2] for c in ctx.board.move.call_args_list]
+        assert move_zs == [30.0, 72.0, 20.0, 72.0, 20.0, 72.0, 20.0, 72.0, 20.0]
+
+    def test_measurement_height_defaults_interwell_travel_height(self):
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x2_plate()
+        sensor = _make_sensor(measurement_height=3.0, safe_approach_height=10.0)
+        ctx = _mock_context(plate=plate, sensor=sensor)
+
+        scan(
+            ctx,
+            plate="plate_1",
+            instrument="uvvis",
+            method="measure",
+            measurement_height=72.0,
+        )
+
+        move_zs = [c.args[1][2] for c in ctx.board.move.call_args_list]
+        assert move_zs == [72.0, 72.0, 72.0, 72.0, 72.0, 72.0, 72.0, 72.0, 72.0]
+
+    def test_measurement_height_is_passed_to_method_when_supported(self):
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x2_plate()
+        sensor = _make_sensor(measurement_height=0.0, safe_approach_height=10.0)
+        ctx = _mock_context(plate=plate, sensor=sensor)
+        ctx.board.gantry = object()
+
+        results = scan(
+            ctx,
+            plate="plate_1",
+            instrument="uvvis",
+            method="indentation",
+            measurement_height=73.0,
+            indentation_limit=75.0,
+        )
+
+        assert all(r["measurement_height"] == 73.0 for r in results.values())
+        assert all(r["z_limit"] == 75.0 for r in results.values())
+
+    def test_conflicting_legacy_and_new_travel_names_raise(self):
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x2_plate()
+        sensor = _make_sensor(measurement_height=3.0, safe_approach_height=10.0)
+        ctx = _mock_context(plate=plate, sensor=sensor)
+
+        with pytest.raises(ProtocolExecutionError, match="Conflicting scan arguments"):
+            scan(
+                ctx,
+                plate="plate_1",
+                instrument="uvvis",
+                method="measure",
+                safe_approach_height=20.0,
+                interwell_travel_height=25.0,
+            )
 
     def test_descent_and_retract_moves_do_not_pass_travel_z(self):
         """Regression guard: raw moves (descent per well + final retract)

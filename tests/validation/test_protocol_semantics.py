@@ -95,7 +95,7 @@ def test_scan_travel_height_must_not_be_below_action_height():
     violations = validate_protocol_semantics(protocol, board, deck)
 
     assert len(violations) == 1
-    assert "safe_approach_height" in violations[0].message
+    assert "interwell_travel_height" in violations[0].message
 
 
 def test_valid_asmi_scan_semantics_pass():
@@ -114,3 +114,42 @@ def test_valid_asmi_scan_semantics_pass():
     })
 
     assert validate_protocol_semantics(protocol, board, deck) == []
+
+
+def test_valid_asmi_scan_semantics_pass_with_new_names():
+    board, deck = _board_and_deck()
+    protocol = _protocol({
+        "plate": "plate",
+        "instrument": "asmi",
+        "method": "indentation",
+        "entry_travel_height": 20.0,
+        "interwell_travel_height": 70.0,
+        "measurement_height": 73.0,
+        "method_kwargs": {
+            "indentation_limit": 83.0,
+            "step_size": 0.01,
+        },
+    })
+
+    assert validate_protocol_semantics(protocol, board, deck) == []
+
+
+def test_conflicting_scan_aliases_are_semantic_violations():
+    board, deck = _board_and_deck()
+    protocol = _protocol({
+        "plate": "plate",
+        "instrument": "asmi",
+        "method": "indentation",
+        "safe_approach_height": 70.0,
+        "interwell_travel_height": 72.0,
+        "method_kwargs": {
+            "measurement_height": 73.0,
+            "z_limit": 83.0,
+            "step_size": 0.01,
+        },
+    })
+
+    violations = validate_protocol_semantics(protocol, board, deck)
+
+    assert len(violations) == 1
+    assert "Conflicting scan arguments" in violations[0].message
