@@ -69,35 +69,23 @@ def test_measure_current_positive_down_contract():
     board.move.assert_called_once_with("uvvis", (10.0, 20.0, 72.0))
 
 
-def test_scan_legacy_and_new_travel_names_are_equivalent():
+def test_scan_new_travel_names_current_positive_down_contract():
     from protocol_engine.commands.scan import scan
 
-    def make_context():
-        instr = _instrument(name="uvvis", measurement_height=3.0)
-        instr.measure = MagicMock(return_value="ok")
-        board = MagicMock()
-        board.instruments = {"uvvis": instr}
-        deck = MagicMock()
-        deck.__getitem__ = MagicMock(return_value=_plate())
-        return ProtocolContext(
-            board=board,
-            deck=deck,
-            logger=logging.getLogger("test"),
-        )
-
-    legacy_ctx = make_context()
-    new_ctx = make_context()
-
-    scan(
-        legacy_ctx,
-        plate="plate_1",
-        instrument="uvvis",
-        method="measure",
-        entry_travel_z=30.0,
-        safe_approach_height=20.0,
+    instr = _instrument(name="uvvis", measurement_height=3.0)
+    instr.measure = MagicMock(return_value="ok")
+    board = MagicMock()
+    board.instruments = {"uvvis": instr}
+    deck = MagicMock()
+    deck.__getitem__ = MagicMock(return_value=_plate())
+    ctx = ProtocolContext(
+        board=board,
+        deck=deck,
+        logger=logging.getLogger("test"),
     )
+
     scan(
-        new_ctx,
+        ctx,
         plate="plate_1",
         instrument="uvvis",
         method="measure",
@@ -105,7 +93,8 @@ def test_scan_legacy_and_new_travel_names_are_equivalent():
         interwell_travel_height=20.0,
     )
 
-    assert legacy_ctx.board.move.call_args_list == new_ctx.board.move.call_args_list
+    assert ctx.board.move.call_args_list[0].args == ("uvvis", (10.0, 20.0, 30.0))
+    assert ctx.board.move.call_args_list[-1].args == ("uvvis", (19.0, 20.0, 20.0))
 
 
 def test_pipette_aspirate_current_positive_down_contract():

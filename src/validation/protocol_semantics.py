@@ -22,13 +22,26 @@ def _normalize_scan_args(
     step_index: int,
     args: dict[str, Any],
 ) -> tuple[NormalizedScanArguments | None, list[ProtocolSemanticViolation]]:
+    legacy_messages: list[ProtocolSemanticViolation] = []
+    if "entry_travel_z" in args:
+        legacy_messages.append(ProtocolSemanticViolation(
+            step_index,
+            "scan",
+            "`entry_travel_z` is no longer supported. Use `entry_travel_height`.",
+        ))
+    if "safe_approach_height" in args:
+        legacy_messages.append(ProtocolSemanticViolation(
+            step_index,
+            "scan",
+            "`safe_approach_height` is no longer supported. Use `interwell_travel_height`.",
+        ))
+    if legacy_messages:
+        return (None, legacy_messages)
     try:
         return (
             normalize_scan_arguments(
                 measurement_height=args.get("measurement_height"),
-                entry_travel_z=args.get("entry_travel_z"),
                 entry_travel_height=args.get("entry_travel_height"),
-                safe_approach_height=args.get("safe_approach_height"),
                 interwell_travel_height=args.get("interwell_travel_height"),
                 indentation_limit=args.get("indentation_limit"),
                 method_kwargs=args.get("method_kwargs"),
@@ -112,7 +125,7 @@ def _validate_asmi_indentation(
         if normalized.measurement_height is not None
         else kwargs.get("measurement_height")
     )
-    z_limit = kwargs.get("z_limit")
+    indentation_limit = kwargs.get("indentation_limit")
     step_size = kwargs.get("step_size")
 
     if step_size is not None and step_size <= 0:
@@ -122,16 +135,16 @@ def _validate_asmi_indentation(
             f"ASMI step_size must be positive, got {step_size}.",
         ))
 
-    if measurement_height is None or z_limit is None:
+    if measurement_height is None or indentation_limit is None:
         return violations
 
-    if z_limit <= measurement_height:
+    if indentation_limit <= measurement_height:
         violations.append(ProtocolSemanticViolation(
             step_index,
             "scan",
-            "ASMI z_limit must be greater than measurement_height under the "
+            "ASMI indentation_limit must be greater than measurement_height under the "
             f"current positive-down convention; got measurement_height="
-            f"{measurement_height}, z_limit={z_limit}.",
+            f"{measurement_height}, indentation_limit={indentation_limit}.",
         ))
 
     return violations

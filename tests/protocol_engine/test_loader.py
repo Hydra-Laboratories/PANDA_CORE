@@ -123,6 +123,24 @@ def test_scan_accepts_new_height_names():
         Path(path).unlink(missing_ok=True)
 
 
+def test_scan_rejects_legacy_travel_names():
+    yaml = """
+protocol:
+  - scan:
+      plate: plate_1
+      instrument: uvvis
+      method: measure
+      safe_approach_height: 10.0
+      entry_travel_z: 10.0
+"""
+    path = _write_yaml(yaml)
+    try:
+        with pytest.raises(Exception):
+            load_protocol_from_yaml(path)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
 def test_loaded_protocol_has_source_path():
     path = _write_yaml(VALID_SINGLE_MOVE)
     try:

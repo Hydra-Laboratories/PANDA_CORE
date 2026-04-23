@@ -39,15 +39,13 @@ def scan(
     entry_travel_height: float | None = None,
     interwell_travel_height: float | None = None,
     indentation_limit: float | None = None,
-    entry_travel_z: float | None = None,
-    safe_approach_height: float | None = None,
     method_kwargs: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """Scan every well on *plate* using *instrument*'s *method*.
 
     Iterates wells in row-major order (A1, A2, ..., B1, B2, ...).
     For each well, uses :func:`approach_and_descend` to safely travel
-    above the well (at ``safe_approach_height``) and descend to the
+    above the well (at ``interwell_travel_height``) and descend to the
     action Z (``measurement_height``), then calls the method with any
     provided keyword arguments.
 
@@ -72,11 +70,7 @@ def scan(
                        Optional absolute Z coordinate used between wells.
                        Defaults to ``measurement_height`` when provided.
         indentation_limit:
-                       ASMI-friendly alias for ``z_limit``.
-        entry_travel_z:
-                       Deprecated alias for ``entry_travel_height``.
-        safe_approach_height:
-                       Deprecated alias for ``interwell_travel_height``.
+                       ASMI indentation stopping Z.
         method_kwargs: Keyword arguments passed to the instrument method
                        on each well (e.g. {"intensity": 50, "exposure_time": 10.0}).
 
@@ -104,9 +98,7 @@ def scan(
     try:
         normalized = normalize_scan_arguments(
             measurement_height=measurement_height,
-            entry_travel_z=entry_travel_z,
             entry_travel_height=entry_travel_height,
-            safe_approach_height=safe_approach_height,
             interwell_travel_height=interwell_travel_height,
             indentation_limit=indentation_limit,
             method_kwargs=method_kwargs,

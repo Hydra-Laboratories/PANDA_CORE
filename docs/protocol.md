@@ -92,17 +92,12 @@ Use the Phase 1 scan names for new protocols:
 - `entry_travel_height` is the first transit Z into the scan. When omitted, it
   defaults to `interwell_travel_height`.
 - `indentation_limit` is the ASMI indentation stopping Z. The legacy ASMI name
-  `z_limit` is still accepted temporarily.
+  `z_limit` is no longer accepted.
 
 During the current positive-down transition, scan-level heights are absolute Z
 coordinates. The deck-origin refactor tracked in issue #87 will update the
 underlying formula so `measurement_height` becomes deck-relative across all
 instruments.
-
-Legacy scan fields remain accepted for migration:
-
-- `safe_approach_height` -> `interwell_travel_height`
-- `entry_travel_z` -> `entry_travel_height`
 
 Example:
 
