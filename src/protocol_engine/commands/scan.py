@@ -14,6 +14,7 @@ from deck.labware.well_plate import WellPlate
 from ..errors import ProtocolExecutionError
 from ..measurements import normalize_measurement
 from ..registry import protocol_command
+from ..scan_args import normalize_scan_arguments
 from ._movement import approach_and_descend
 
 if TYPE_CHECKING:
@@ -34,15 +35,17 @@ def scan(
     instrument: str,
     method: str,
     delay_s: float = 0.0,
-    entry_travel_z: float | None = None,
-    safe_approach_height: float | None = None,
-    method_kwargs: Dict[str, Any] = {},
+    measurement_height: float | None = None,
+    entry_travel_height: float | None = None,
+    interwell_travel_height: float | None = None,
+    indentation_limit: float | None = None,
+    method_kwargs: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """Scan every well on *plate* using *instrument*'s *method*.
 
     Iterates wells in row-major order (A1, A2, ..., B1, B2, ...).
     For each well, uses :func:`approach_and_descend` to safely travel
-    above the well (at ``safe_approach_height``) and descend to the
+    above the well (at ``interwell_travel_height``) and descend to the
     action Z (``measurement_height``), then calls the method with any
     provided keyword arguments.
 
@@ -55,14 +58,19 @@ def scan(
         instrument:    Name of the instrument registered on the board.
         method:        Name of the method on the instrument to call per well.
         delay_s:       Seconds to pause between wells (default 0.0).
-        entry_travel_z:
+        measurement_height:
+                       Optional protocol-level action/start Z. Under the
+                       current positive-down convention this is an absolute
+                       Z override; later deck-origin phases will make this a
+                       deck-relative height.
+        entry_travel_height:
                        Optional absolute Z coordinate used only for the
                        initial transit into the first well of the scan.
-        safe_approach_height:
-                       Optional protocol-level override for the XY-travel
-                       absolute Z coordinate used between wells. When
-                       omitted, the instrument's board-configured default
-                       is used.
+        interwell_travel_height:
+                       Optional absolute Z coordinate used between wells.
+                       Defaults to ``measurement_height`` when provided.
+        indentation_limit:
+                       ASMI indentation stopping Z.
         method_kwargs: Keyword arguments passed to the instrument method
                        on each well (e.g. {"intensity": 50, "exposure_time": 10.0}).
 
@@ -87,27 +95,47 @@ def scan(
             f"Instrument '{instrument}' has no method '{method}'."
         )
     callable_method = getattr(instr, method)
+    try:
+        normalized = normalize_scan_arguments(
+            measurement_height=measurement_height,
+            entry_travel_height=entry_travel_height,
+            interwell_travel_height=interwell_travel_height,
+            indentation_limit=indentation_limit,
+            method_kwargs=method_kwargs,
+        )
+    except ValueError as exc:
+        raise ProtocolExecutionError(str(exc)) from exc
 
     results: Dict[str, Any] = {}
     sorted_wells = sorted(plate_obj.wells, key=_row_major_key)
+    sig = inspect.signature(callable_method)
     for i, well_id in enumerate(sorted_wells):
         if i > 0 and delay_s > 0:
             context.logger.info("Pausing %.1fs between wells", delay_s)
             time.sleep(delay_s)
 
         well = plate_obj.get_well_center(well_id)
-        approach_z = entry_travel_z if i == 0 and entry_travel_z is not None else safe_approach_height
+        approach_z = (
+            normalized.entry_travel_z
+            if i == 0 and normalized.entry_travel_z is not None
+            else normalized.interwell_travel_z
+        )
         approach_and_descend(
             context,
             instrument,
             well,
             safe_approach_height=approach_z,
+            measurement_height=normalized.measurement_height,
         )
 
         # Inject gantry if the method accepts it (e.g. ASMI.indentation
         # needs the gantry for Z stepping), then merge with method_kwargs.
-        sig = inspect.signature(callable_method)
-        kwargs: Dict[str, Any] = dict(method_kwargs)
+        kwargs: Dict[str, Any] = dict(normalized.method_kwargs)
+        if (
+            normalized.measurement_height is not None
+            and "measurement_height" in sig.parameters
+        ):
+            kwargs["measurement_height"] = normalized.measurement_height
         if "gantry" in sig.parameters:
             kwargs["gantry"] = context.board.gantry
         result = callable_method(**kwargs)
@@ -139,8 +167,8 @@ def scan(
     if sorted_wells:
         last_well = plate_obj.get_well_center(sorted_wells[-1])
         final_approach_z = (
-            safe_approach_height
-            if safe_approach_height is not None
+            normalized.interwell_travel_z
+            if normalized.interwell_travel_z is not None
             else last_well.z - instr.safe_approach_height
         )
         context.board.move(instrument, (last_well.x, last_well.y, final_approach_z))

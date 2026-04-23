@@ -237,21 +237,21 @@ class ASMI(BaseInstrument):
     @staticmethod
     def _validate_indentation_parameters(
         measurement_height: float,
-        z_limit: float,
+        indentation_limit: float,
         step_size: float,
     ) -> None:
         if step_size <= 0:
             raise ValueError(f"step_size must be positive, got {step_size}")
-        if z_limit <= measurement_height:
+        if indentation_limit <= measurement_height:
             raise ValueError(
-                "z_limit must be greater than measurement_height under the "
+                "indentation_limit must be greater than measurement_height under the "
                 "current positive-down ASMI convention."
             )
 
     def indentation(
         self,
         gantry,
-        z_limit: float | None = None,
+        indentation_limit: float | None = None,
         step_size: float | None = None,
         force_limit: float | None = None,
         measurement_height: float | None = None,
@@ -262,7 +262,7 @@ class ASMI(BaseInstrument):
 
         Coordinate convention (positive-down): user-space Z is 0 at the
         gantry's home position and grows toward the deck. ``measurement_height``
-        is the absolute Z to start the indent; ``z_limit`` must be larger
+        is the absolute Z to start the indent; ``indentation_limit`` must be larger
         (deeper) and is the maximum the descent will reach. Each "down"
         step INCREASES z by ``step_size``.
 
@@ -270,13 +270,12 @@ class ASMI(BaseInstrument):
         this method. Indentation then:
         1. Lowers to measurement_height (descend to start of indent)
         2. Takes baseline force readings
-        3. Steps z toward z_limit (z increases), reading force at each step
-        4. Stops on force_limit or z_limit, whichever fires first
+        3. Steps z toward indentation_limit (z increases), reading force at each step
+        4. Stops on force_limit or indentation_limit, whichever fires first
 
         Args:
             gantry:             Gantry instance for Z movement.
-            z_limit:            Maximum (deepest) Z; descent stops here. Must be
-                                >= measurement_height.
+            indentation_limit:  Preferred name for the maximum (deepest) Z.
             step_size:          Z increment per step in mm (positive).
             force_limit:        Stop when corrected force exceeds this in N.
             measurement_height: Z to descend to before starting (the well-top).
@@ -292,8 +291,9 @@ class ASMI(BaseInstrument):
             force_exceeded, data_points, measure_with_return. Every entry in
             ``measurements`` includes a ``direction`` field.
         """
-        # Allow protocol method_kwargs to override instance defaults
-        _z_target = z_limit if z_limit is not None else self._z_target
+        # Allow protocol method kwargs to override instance defaults.
+        resolved_limit = indentation_limit
+        _z_target = resolved_limit if resolved_limit is not None else self._z_target
         _step_size = step_size if step_size is not None else self._step_size
         _force_limit = force_limit if force_limit is not None else self._force_limit
         _well_top_z = measurement_height if measurement_height is not None else (
@@ -418,14 +418,14 @@ class ASMI(BaseInstrument):
     def _offline_indentation(
         self,
         gantry,
-        z_limit,
+        indentation_limit,
         step_size,
         measurement_height,
         measure_with_return: bool = False,
     ) -> dict:
         """Fast offline indentation — no idle-wait, synthetic data.
 
-        Positive-down convention: descent INCREASES z toward z_limit
+        Positive-down convention: descent INCREASES z toward indentation_limit
         (which is larger than measurement_height); the optional return
         sweep walks z back DOWN to measurement_height.
         """
@@ -434,10 +434,12 @@ class ASMI(BaseInstrument):
         gantry.move_to(cur_x, cur_y, measurement_height)
 
         # Integer step counting avoids float accumulation drift at loop boundaries.
-        n_down = _step_count_bound(measurement_height, z_limit, step_size) - _STEP_COUNT_SAFETY_MARGIN
+        n_down = _step_count_bound(
+            measurement_height, indentation_limit, step_size,
+        ) - _STEP_COUNT_SAFETY_MARGIN
         measurements = []
         for i in range(1, n_down + 1):
-            z = min(measurement_height + i * step_size, z_limit)
+            z = min(measurement_height + i * step_size, indentation_limit)
             gantry.move_to(cur_x, cur_y, z)
             measurements.append({
                 "timestamp": time.time(),
@@ -446,7 +448,7 @@ class ASMI(BaseInstrument):
                 "corrected_force_n": 0.0,
                 "direction": "down",
             })
-            if z >= z_limit:
+            if z >= indentation_limit:
                 break
 
         if measure_with_return:

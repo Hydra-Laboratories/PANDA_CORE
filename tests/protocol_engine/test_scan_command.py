@@ -83,6 +83,19 @@ class _FakeSensor(BaseInstrument):
         self.call_count += 1
         return self._return_value
 
+    def indentation(
+        self,
+        measurement_height: float | None = None,
+        indentation_limit: float | None = None,
+        gantry=None,
+    ) -> dict:
+        self.call_count += 1
+        return {
+            "measurement_height": measurement_height,
+            "indentation_limit": indentation_limit,
+            "gantry": gantry,
+        }
+
 
 def _make_sensor(**kwargs) -> _FakeSensor:
     defaults = dict(name="sensor", offset_x=0.0, offset_y=0.0, depth=0.0)
@@ -176,7 +189,7 @@ class TestScanCommand:
         # Last: approach_z = 75 - 10 = 65 (retract to safe_approach_height).
         assert move_zs == [72.0, 72.0, 72.0, 72.0, 65.0]
 
-    def test_protocol_safe_approach_height_override_is_used_for_every_well(self):
+    def test_interwell_travel_height_is_used_for_every_well(self):
         from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()  # wells at z=75.0
@@ -188,7 +201,7 @@ class TestScanCommand:
             plate="plate_1",
             instrument="uvvis",
             method="measure",
-            safe_approach_height=20.0,
+            interwell_travel_height=20.0,
         )
 
         ctx.board.move_to_labware.assert_not_called()
@@ -200,7 +213,7 @@ class TestScanCommand:
         for call in approach_calls:
             assert call.kwargs["travel_z"] == 20.0
 
-    def test_final_retract_uses_protocol_safe_approach_height_override(self):
+    def test_final_retract_uses_interwell_travel_height(self):
         from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()  # wells at z=75.0
@@ -212,7 +225,7 @@ class TestScanCommand:
             plate="plate_1",
             instrument="uvvis",
             method="measure",
-            safe_approach_height=20.0,
+            interwell_travel_height=20.0,
         )
 
         last_move = ctx.board.move.call_args_list[-1]
@@ -221,7 +234,7 @@ class TestScanCommand:
         assert position == (10.0, 8.0, 20.0)
         assert last_move.kwargs == {}
 
-    def test_entry_travel_z_applies_only_to_first_well(self):
+    def test_entry_travel_height_applies_only_to_first_well(self):
         from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()  # wells at z=75.0
@@ -233,8 +246,8 @@ class TestScanCommand:
             plate="plate_1",
             instrument="uvvis",
             method="measure",
-            entry_travel_z=30.0,
-            safe_approach_height=20.0,
+            entry_travel_height=30.0,
+            interwell_travel_height=20.0,
         )
 
         move_zs = [c.args[1][2] for c in ctx.board.move.call_args_list]
@@ -245,6 +258,79 @@ class TestScanCommand:
         later_approaches = ctx.board.move.call_args_list[2:-1:2]
         for call in later_approaches:
             assert call.kwargs == {"travel_z": 20.0}
+
+    def test_interwell_travel_height_replaces_board_default_for_scan(self):
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x2_plate()
+        sensor = _make_sensor(measurement_height=3.0, safe_approach_height=10.0)
+        ctx = _mock_context(plate=plate, sensor=sensor)
+
+        scan(
+            ctx,
+            plate="plate_1",
+            instrument="uvvis",
+            method="measure",
+            interwell_travel_height=20.0,
+        )
+
+        move_zs = [c.args[1][2] for c in ctx.board.move.call_args_list]
+        assert move_zs == [20.0, 72.0, 20.0, 72.0, 20.0, 72.0, 20.0, 72.0, 20.0]
+
+    def test_measurement_height_defaults_interwell_travel_height(self):
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x2_plate()
+        sensor = _make_sensor(measurement_height=3.0, safe_approach_height=10.0)
+        ctx = _mock_context(plate=plate, sensor=sensor)
+
+        scan(
+            ctx,
+            plate="plate_1",
+            instrument="uvvis",
+            method="measure",
+            measurement_height=72.0,
+        )
+
+        move_zs = [c.args[1][2] for c in ctx.board.move.call_args_list]
+        assert move_zs == [72.0, 72.0, 72.0, 72.0, 72.0, 72.0, 72.0, 72.0, 72.0]
+
+    def test_measurement_height_is_passed_to_method_when_supported(self):
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x2_plate()
+        sensor = _make_sensor(measurement_height=0.0, safe_approach_height=10.0)
+        ctx = _mock_context(plate=plate, sensor=sensor)
+        ctx.board.gantry = object()
+
+        results = scan(
+            ctx,
+            plate="plate_1",
+            instrument="uvvis",
+            method="indentation",
+            measurement_height=73.0,
+            indentation_limit=75.0,
+        )
+
+        assert all(r["measurement_height"] == 73.0 for r in results.values())
+        assert all(r["indentation_limit"] == 75.0 for r in results.values())
+
+    def test_legacy_z_limit_is_rejected_at_runtime(self):
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x2_plate()
+        sensor = _make_sensor(measurement_height=0.0, safe_approach_height=10.0)
+        ctx = _mock_context(plate=plate, sensor=sensor)
+
+        with pytest.raises(ProtocolExecutionError, match="z_limit"):
+            scan(
+                ctx,
+                plate="plate_1",
+                instrument="uvvis",
+                method="indentation",
+                measurement_height=73.0,
+                method_kwargs={"z_limit": 75.0},
+            )
 
     def test_descent_and_retract_moves_do_not_pass_travel_z(self):
         """Regression guard: raw moves (descent per well + final retract)

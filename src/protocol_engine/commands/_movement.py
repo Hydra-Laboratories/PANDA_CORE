@@ -4,9 +4,9 @@ Every command that *engages* with a labware (measure, scan, aspirate,
 dispense, etc.) follows the same two-phase motion:
 
     1. Approach: ``board.move_to_labware`` — retract (if below approach)
-       and travel XY at ``labware.z + safe_approach_height``.
+       and travel XY at the current positive-down approach Z.
     2. Descend: raw ``board.move`` straight down to
-       ``labware.z + measurement_height``.
+       the current positive-down action Z.
 
 Centralising that composition here prevents docstring/behaviour drift
 between command modules.
@@ -37,6 +37,7 @@ def approach_and_descend(
     instrument: str,
     coord: Any,
     safe_approach_height: float | None = None,
+    measurement_height: float | None = None,
 ) -> None:
     """Safely travel above a labware target, then descend to action Z.
 
@@ -48,10 +49,19 @@ def approach_and_descend(
         safe_approach_height:
                     Optional protocol-level override for the XY-travel
                     absolute Z coordinate.
+        measurement_height:
+                    Optional protocol-level override for the action/start
+                    absolute Z coordinate. This is a Phase 1 compatibility
+                    hook; the deck-origin refactor will change the formula in
+                    a later phase.
     """
     instr = context.board.instruments[instrument]
     x, y, z = unpack_xyz(coord)
-    action_z = z - instr.measurement_height
+    action_z = (
+        measurement_height
+        if measurement_height is not None
+        else z - instr.measurement_height
+    )
     if safe_approach_height is None:
         context.board.move_to_labware(instrument, coord)
     else:
