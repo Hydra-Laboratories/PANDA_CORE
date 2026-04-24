@@ -373,11 +373,34 @@ class Gantry:
             self.logger.error("Error clearing G92 offsets: %s", exc)
             raise
 
-    def set_work_coordinates(self, x: float, y: float, z: float) -> None:
+    def set_work_coordinates(
+        self,
+        x: float | None = None,
+        y: float | None = None,
+        z: float | None = None,
+    ) -> None:
         """Assign the current physical pose to the given work coordinates."""
-        x_work, y_work, z_work = to_machine_coordinates(x, y, z)
+        if x is None and y is None and z is None:
+            raise ValueError("At least one work-coordinate axis must be supplied.")
+        x_work, y_work, z_work = (None, None, None)
+        if x is not None or y is not None or z is not None:
+            tx = 0.0 if x is None else x
+            ty = 0.0 if y is None else y
+            tz = 0.0 if z is None else z
+            translated = to_machine_coordinates(tx, ty, tz)
+            if x is not None:
+                x_work = translated[0]
+            if y is not None:
+                y_work = translated[1]
+            if z is not None:
+                z_work = translated[2]
         if self._offline:
-            self._offline_coords = {"x": x_work, "y": y_work, "z": z_work}
+            if x_work is not None:
+                self._offline_coords["x"] = x_work
+            if y_work is not None:
+                self._offline_coords["y"] = y_work
+            if z_work is not None:
+                self._offline_coords["z"] = z_work
             return
         assert self._mill is not None
         try:

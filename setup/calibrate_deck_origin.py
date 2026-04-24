@@ -2,10 +2,13 @@
 
 This is the Phase 2/3 one-instrument calibration path. It does not assume that
 the configured or manufacturer working-volume values are physically correct.
-Instead, it asks the operator to jog one attached reference instrument/TCP to a
-front-left XY reference point on a known-height surface, assigns that pose to
-WPos X=0, Y=0, Z=<surface height>, then re-homes and reads the measured WPos at
-the homed back-right-top corner.
+Instead, it separates XY origining from Z grounding:
+
+1. Jog one attached reference instrument/TCP as far as appropriate toward the
+   physical front-left XY origin/lower reach point, then assign only X/Y to 0.
+2. Jog that TCP to a known-height labware/artifact reference surface, such as
+   well plate A1, then assign only Z to that surface height.
+3. Re-home and read the measured WPos at the homed back-right-top corner.
 
 Usage:
 
@@ -40,10 +43,18 @@ class DeckOriginCalibrationResult:
     """Result of one-instrument deck-origin calibration."""
 
     measured_working_volume: tuple[float, float, float]
-    reference_verification: tuple[float, float, float]
+    xy_origin_verification: tuple[float, float, float]
+    z_reference_verification: tuple[float, float, float]
     reference_surface_z_mm: float
+    z_reference_mode: str
     reachable_z_min_mm: float | None
+    instrument_name: str | None
     plan: DeckOriginCalibrationPlan
+
+    @property
+    def reference_verification(self) -> tuple[float, float, float]:
+        """Backward-compatible alias for the final Z-reference verification."""
+        return self.z_reference_verification
 
 
 class _GantryLike(Protocol):
@@ -51,7 +62,12 @@ class _GantryLike(Protocol):
     def disconnect(self) -> None: ...
     def home(self) -> None: ...
     def clear_g92_offsets(self) -> None: ...
-    def set_work_coordinates(self, x: float, y: float, z: float) -> None: ...
+    def set_work_coordinates(
+        self,
+        x: float | None = None,
+        y: float | None = None,
+        z: float | None = None,
+    ) -> None: ...
     def get_coordinates(self) -> dict[str, float]: ...
     def jog(
         self,
@@ -75,7 +91,7 @@ Jog controls after homing:
   X / Z              +Z up / -Z down
   1 / 2 / 3          Set jog step to 0.1 / 1.0 / 5.0 mm
   SPACE              Cancel any active jog
-  ENTER              Confirm current TCP is on the reference surface
+  ENTER              Confirm the current calibration step
   Q                  Abort calibration
 """
 
@@ -92,25 +108,42 @@ def _coords_tuple(coords: dict[str, float]) -> tuple[float, float, float]:
     return (float(coords["x"]), float(coords["y"]), float(coords["z"]))
 
 
-def _assert_near_reference(
+def _assert_near_xy_origin(
     coords: dict[str, float],
     *,
-    reference_surface_z_mm: float,
     tolerance_mm: float,
 ) -> None:
     expected = {
         "x": 0.0,
         "y": 0.0,
-        "z": reference_surface_z_mm,
     }
     misses = [
         f"{axis}: got {float(coords[axis]):.4f}, expected {expected[axis]:.4f}"
-        for axis in ("x", "y", "z")
+        for axis in ("x", "y")
         if abs(float(coords[axis]) - expected[axis]) > tolerance_mm
     ]
     if misses:
         raise RuntimeError(
-            "Deck-origin reference did not verify within "
+            "Deck-origin XY reference did not verify within "
+            f"{tolerance_mm} mm: " + "; ".join(misses)
+        )
+
+
+def _assert_near_z_reference(
+    coords: dict[str, float],
+    *,
+    reference_surface_z_mm: float,
+    tolerance_mm: float,
+) -> None:
+    expected = {"z": reference_surface_z_mm}
+    misses = [
+        f"{axis}: got {float(coords[axis]):.4f}, expected {expected[axis]:.4f}"
+        for axis in ("z",)
+        if abs(float(coords[axis]) - expected[axis]) > tolerance_mm
+    ]
+    if misses:
+        raise RuntimeError(
+            "Deck-origin Z reference did not verify within "
             f"{tolerance_mm} mm: " + "; ".join(misses)
         )
 
@@ -135,8 +168,11 @@ def _assert_positive_measured_volume(
 def _print_config_patch(
     coords: dict[str, float],
     *,
+    z_reference_coords: dict[str, float],
     reference_surface_z_mm: float,
+    z_reference_mode: str,
     reachable_z_min_mm: float | None,
+    instrument_name: str | None,
     output: Callable[[str], None],
 ) -> None:
     x_max, y_max, z_max = _coords_tuple(coords)
@@ -157,11 +193,30 @@ def _print_config_patch(
     output("")
     output("Also set cnc.total_z_height to:")
     output(f"  total_z_height: {z_max:.3f}")
+    output("")
+    output("Z reference point after XY origining:")
+    output(
+        "  WPos "
+        f"X={z_reference_coords['x']:.3f} "
+        f"Y={z_reference_coords['y']:.3f} "
+        f"Z={z_reference_coords['z']:.3f}"
+    )
+    output(f"  mode: {z_reference_mode}")
+    output(
+        "If that reference was plate A1, use these X/Y/Z values as the "
+        "deck calibration point for A1."
+    )
 
     if reachable_z_min_mm is not None:
+        reach_name = instrument_name or "reference_tcp"
         output("")
         output("Measured one-instrument reachable lower Z:")
-        output(f"  reference_tcp_reachable_z_min: {reachable_z_min_mm:.3f} mm")
+        output(f"  {reach_name}_reachable_z_min: {reachable_z_min_mm:.3f} mm")
+        output("")
+        output("Suggested per-instrument reach note:")
+        output("  instrument_reach:")
+        output(f"    {reach_name}:")
+        output(f"      z_min_reachable: {reachable_z_min_mm:.3f}")
         output(
             "This is a per-instrument reach note. The deck bottom remains "
             "absolute Z=0, but this TCP should not be commanded below the "
@@ -185,12 +240,21 @@ def _print_dry_run(
     plan: DeckOriginCalibrationPlan,
     *,
     reference_surface_z_mm: float | None,
+    z_reference_mode: str,
     measure_reachable_z_min: bool,
+    instrument_name: str | None,
     output: Callable[[str], None],
 ) -> None:
     output(f"Loaded deck-origin gantry config: {gantry_path}")
+    if instrument_name:
+        output(f"Instrument/TCP: {instrument_name}")
+    output(f"Z reference mode: {z_reference_mode}")
     output("Dry run only. Physical calibration flow:")
-    commands = _commands_for_reference_height(plan, reference_surface_z_mm)
+    commands = _commands_for_reference_height(
+        plan,
+        reference_surface_z_mm,
+        z_reference_mode=z_reference_mode,
+    )
     pre_measure_commands = commands[:-2] if measure_reachable_z_min else commands
     post_measure_commands = commands[-2:] if measure_reachable_z_min else ()
     for command in pre_measure_commands:
@@ -208,14 +272,24 @@ def _print_dry_run(
 def _commands_for_reference_height(
     plan: DeckOriginCalibrationPlan,
     reference_surface_z_mm: float | None,
+    *,
+    z_reference_mode: str = "known-height",
 ) -> tuple[str, ...]:
     z_value = (
         "<reference_surface_z_mm>"
         if reference_surface_z_mm is None
         else f"{reference_surface_z_mm:g}"
     )
+    z_reference_jog = (
+        "<interactive jog to true deck-bottom Z contact>"
+        if z_reference_mode == "bottom"
+        else "<interactive jog to labware/artifact Z reference surface>"
+    )
     return tuple(
-        command.replace("<reference_surface_z_mm>", z_value)
+        command.replace("<reference_surface_z_mm>", z_value).replace(
+            "<interactive jog to labware/artifact Z reference surface>",
+            z_reference_jog,
+        )
         for command in plan.commands
     )
 
@@ -227,10 +301,13 @@ def _prompt_reference_surface_z_mm(
 ) -> float:
     output("")
     output(
-        "Reference surface Z height is the known artifact top height above "
-        "true deck/bottom Z=0."
+        "Reference surface Z height is the known labware/artifact surface "
+        "height above true deck/bottom Z=0."
     )
-    output("Use 0 only if the reference TCP can touch the true bottom plane.")
+    output(
+        "Use 0 only if this second Z-reference surface is the true bottom "
+        "plane."
+    )
     while True:
         raw = input_reader("Reference surface Z height in mm: ").strip()
         try:
@@ -242,6 +319,56 @@ def _prompt_reference_surface_z_mm(
             output("Reference surface height must be >= 0 mm.")
             continue
         return value
+
+
+def _prompt_z_reference_mode(
+    *,
+    input_reader: Callable[[str], str],
+    output: Callable[[str], None],
+) -> str:
+    output("")
+    output("Z grounding mode:")
+    output("  y = this TCP can safely touch true deck bottom, so set Z=0 there")
+    output("  n = no/unsure; use a known-height labware/artifact surface, e.g. A1")
+    while True:
+        raw = input_reader(
+            "Can this instrument safely touch true deck bottom? [y/N]: "
+        ).strip().lower()
+        if raw in ("", "n", "no", "u", "unsure"):
+            return "known-height"
+        if raw in ("y", "yes"):
+            return "bottom"
+        output("Enter y for true-bottom contact, or n/Enter for known-height reference.")
+
+
+def _prompt_measure_reachable_z_min(
+    *,
+    input_reader: Callable[[str], str],
+    output: Callable[[str], None],
+    instrument_name: str | None,
+) -> bool:
+    recommended = (
+        (instrument_name or "").strip().lower() in {"asmi", "indentation", "force"}
+    )
+    default = "Y" if recommended else "n"
+    output("")
+    output(
+        "Lowest reachable Z is separate from absolute Z grounding. It records "
+        "how low this one TCP can safely go after WPos is calibrated."
+    )
+    if recommended:
+        output("Recommended for ASMI/indentation because motion can go below A1.")
+    while True:
+        raw = input_reader(
+            f"Measure lowest reachable Z for this instrument? [{default}]: "
+        ).strip().lower()
+        if raw == "":
+            return recommended
+        if raw in ("y", "yes"):
+            return True
+        if raw in ("n", "no"):
+            return False
+        output("Enter y or n.")
 
 
 def _set_serial_timeout_if_available(
@@ -410,10 +537,9 @@ def _interactive_jog_to_reference(
         )
 
 
-def _interactive_jog_to_origin(
+def _interactive_jog_to_xy_origin(
     gantry: _GantryLike,
     *,
-    reference_surface_z_mm: float,
     key_reader: KeyReader,
     output: Callable[[str], None],
     feed_rate: float,
@@ -423,13 +549,53 @@ def _interactive_jog_to_origin(
     return _interactive_jog_to_reference(
         gantry,
         target_description=(
-            "Jog the one reference TCP to the front-left XY reference point, "
-            f"then lower it to the known Z={reference_surface_z_mm:g} mm surface."
+            "Step 1/2: jog the one reference TCP as far as appropriate toward "
+            "the physical front-left XY origin/lower reach point."
         ),
         confirmation_description=(
-            "Press ENTER only when the current point should become "
-            f"WPos (0, 0, {reference_surface_z_mm:g})."
+            "Press ENTER only when the current X/Y should become WPos X=0, "
+            "Y=0. Z will not be assigned in this step."
         ),
+        key_reader=key_reader,
+        output=output,
+        feed_rate=feed_rate,
+        initial_step_mm=initial_step_mm,
+        limit_pull_off_mm=limit_pull_off_mm,
+    )
+
+
+def _interactive_jog_to_z_reference(
+    gantry: _GantryLike,
+    *,
+    reference_surface_z_mm: float,
+    z_reference_mode: str,
+    key_reader: KeyReader,
+    output: Callable[[str], None],
+    feed_rate: float,
+    initial_step_mm: float,
+    limit_pull_off_mm: float,
+) -> dict[str, float]:
+    if z_reference_mode == "bottom":
+        target_description = (
+            "Step 2/2: jog the same reference TCP to true deck-bottom contact."
+        )
+        confirmation_description = (
+            "Press ENTER only when the current Z should become WPos Z=0. "
+            "X/Y will not be reassigned."
+        )
+    else:
+        target_description = (
+            "Step 2/2: jog the same reference TCP to the known-height "
+            "labware/artifact surface, for example plate A1."
+        )
+        confirmation_description = (
+            "Press ENTER only when the current Z should become "
+            f"WPos Z={reference_surface_z_mm:g}. X/Y will not be reassigned."
+        )
+    return _interactive_jog_to_reference(
+        gantry,
+        target_description=target_description,
+        confirmation_description=confirmation_description,
         key_reader=key_reader,
         output=output,
         feed_rate=feed_rate,
@@ -478,7 +644,9 @@ def run_calibration(
     jog_feed_rate: float = 800.0,
     limit_pull_off_mm: float = 2.0,
     reference_surface_z_mm: float | None = 0.0,
-    measure_reachable_z_min: bool = False,
+    z_reference_mode: str = "known-height",
+    measure_reachable_z_min: bool | None = False,
+    instrument_name: str | None = None,
     homing_serial_timeout_s: float = 10.0,
     jog_serial_timeout_s: float = 1.0,
     output: Callable[[str], None] = print,
@@ -494,11 +662,16 @@ def run_calibration(
     plan = build_deck_origin_calibration_plan(gantry_config)
 
     if dry_run:
+        dry_run_reference_z_mm = reference_surface_z_mm
+        if z_reference_mode == "bottom":
+            dry_run_reference_z_mm = 0.0
         _print_dry_run(
             gantry_path,
             plan,
-            reference_surface_z_mm=reference_surface_z_mm,
-            measure_reachable_z_min=measure_reachable_z_min,
+            reference_surface_z_mm=dry_run_reference_z_mm,
+            z_reference_mode=z_reference_mode,
+            measure_reachable_z_min=bool(measure_reachable_z_min),
+            instrument_name=instrument_name,
             output=output,
         )
         return plan
@@ -509,11 +682,14 @@ def run_calibration(
     output("  - $H must home to back-right-top.")
     output("  - +X must jog right, +Y back/away, +Z up.")
     output("  - Attach exactly one reference instrument/TCP for this calibration.")
-    output("  - Use deck bottom as Z=0 if this TCP can reach it.")
-    output("  - Otherwise put a known-height block/artifact at the XY origin.")
-    output("  - This will set G54 WPos X=0, Y=0, Z=<known surface height>.")
-    if measure_reachable_z_min:
+    output("  - Step 1 sets only X/Y at the front-left origin/lower reach point.")
+    output("  - Step 2 sets only Z at true bottom or a known-height surface.")
+    output("  - For ASMI, the second point can be well plate A1.")
+    output("  - This will set G54 WPos X=0, Y=0, then the chosen Z reference.")
+    if measure_reachable_z_min is True:
         output("  - After WPos is set, this will record the TCP's lowest reachable Z.")
+    if instrument_name:
+        output(f"  - Instrument/TCP label for reach output: {instrument_name}")
     output("")
 
     gantry = gantry_factory(config=raw_config)
@@ -529,21 +705,40 @@ def run_calibration(
         gantry.clear_g92_offsets()
         stdin_flusher()
 
-        if reference_surface_z_mm is None:
+        if z_reference_mode not in ("prompt", "bottom", "known-height"):
+            raise ValueError(
+                "z_reference_mode must be one of: prompt, bottom, known-height"
+            )
+        if z_reference_mode == "prompt":
+            z_reference_mode = _prompt_z_reference_mode(
+                input_reader=input_reader,
+                output=output,
+            )
+        if z_reference_mode == "bottom":
+            if reference_surface_z_mm not in (None, 0.0):
+                raise ValueError(
+                    "Bottom Z reference mode must use reference_surface_z_mm=0."
+                )
+            reference_surface_z_mm = 0.0
+        elif reference_surface_z_mm is None:
             reference_surface_z_mm = _prompt_reference_surface_z_mm(
                 input_reader=input_reader,
                 output=output,
             )
         if reference_surface_z_mm < 0:
             raise ValueError("reference_surface_z_mm must be >= 0")
+        if z_reference_mode == "known-height" and reference_surface_z_mm == 0:
+            output(
+                "Reference height is 0 in known-height mode. That is allowed, "
+                "but only if the second Z-reference point is true deck bottom."
+            )
         output(
-            "Reference surface will be assigned as "
-            f"WPos X=0, Y=0, Z={reference_surface_z_mm:g} mm."
+            "Known Z reference surface will be assigned as "
+            f"WPos Z={reference_surface_z_mm:g} mm."
         )
 
-        _interactive_jog_to_origin(
+        _interactive_jog_to_xy_origin(
             gantry,
-            reference_surface_z_mm=reference_surface_z_mm,
             key_reader=key_reader,
             output=output,
             feed_rate=jog_feed_rate,
@@ -551,21 +746,52 @@ def run_calibration(
             limit_pull_off_mm=limit_pull_off_mm,
         )
 
-        output("Setting current physical pose to reference WPos...")
-        gantry.set_work_coordinates(0.0, 0.0, reference_surface_z_mm)
-        reference_coords = gantry.get_coordinates()
-        _assert_near_reference(
-            reference_coords,
+        output("Setting current physical pose to WPos X=0, Y=0...")
+        gantry.set_work_coordinates(x=0.0, y=0.0)
+        xy_origin_coords = dict(gantry.get_coordinates())
+        _assert_near_xy_origin(
+            xy_origin_coords,
+            tolerance_mm=tolerance_mm,
+        )
+        output(
+            "Verified XY origin WPos: "
+            f"X={xy_origin_coords['x']:.3f} "
+            f"Y={xy_origin_coords['y']:.3f} "
+            f"Z={xy_origin_coords['z']:.3f}"
+        )
+
+        _interactive_jog_to_z_reference(
+            gantry,
+            reference_surface_z_mm=reference_surface_z_mm,
+            z_reference_mode=z_reference_mode,
+            key_reader=key_reader,
+            output=output,
+            feed_rate=jog_feed_rate,
+            initial_step_mm=jog_step_mm,
+            limit_pull_off_mm=limit_pull_off_mm,
+        )
+
+        output("Setting current physical pose to reference WPos Z...")
+        gantry.set_work_coordinates(z=reference_surface_z_mm)
+        z_reference_coords = dict(gantry.get_coordinates())
+        _assert_near_z_reference(
+            z_reference_coords,
             reference_surface_z_mm=reference_surface_z_mm,
             tolerance_mm=tolerance_mm,
         )
         output(
-            "Verified reference WPos: "
-            f"X={reference_coords['x']:.3f} "
-            f"Y={reference_coords['y']:.3f} "
-            f"Z={reference_coords['z']:.3f}"
+            "Verified Z reference WPos: "
+            f"X={z_reference_coords['x']:.3f} "
+            f"Y={z_reference_coords['y']:.3f} "
+            f"Z={z_reference_coords['z']:.3f}"
         )
 
+        if measure_reachable_z_min is None:
+            measure_reachable_z_min = _prompt_measure_reachable_z_min(
+                input_reader=input_reader,
+                output=output,
+                instrument_name=instrument_name,
+            )
         reachable_z_min_mm = None
         if measure_reachable_z_min:
             reachable_coords = _interactive_jog_to_reachable_z_min(
@@ -593,16 +819,22 @@ def run_calibration(
         )
         _print_config_patch(
             measured_coords,
+            z_reference_coords=z_reference_coords,
             reference_surface_z_mm=reference_surface_z_mm,
+            z_reference_mode=z_reference_mode,
             reachable_z_min_mm=reachable_z_min_mm,
+            instrument_name=instrument_name,
             output=output,
         )
 
         return DeckOriginCalibrationResult(
             measured_working_volume=_coords_tuple(measured_coords),
-            reference_verification=_coords_tuple(reference_coords),
+            xy_origin_verification=_coords_tuple(xy_origin_coords),
+            z_reference_verification=_coords_tuple(z_reference_coords),
             reference_surface_z_mm=reference_surface_z_mm,
+            z_reference_mode=z_reference_mode,
             reachable_z_min_mm=reachable_z_min_mm,
+            instrument_name=instrument_name,
             plan=plan,
         )
     finally:
@@ -614,8 +846,9 @@ def run_calibration(
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Interactively assign a known-height front-left reference surface "
-            "to WPos, then measure homed WPos as the real work volume."
+            "Interactively assign X/Y at the front-left origin, assign Z at a "
+            "known-height labware/artifact surface, then measure homed WPos as "
+            "the real work volume."
         )
     )
     parser.add_argument(
@@ -634,19 +867,44 @@ def main() -> None:
         type=float,
         default=None,
         help=(
-            "Known reference surface height above true deck/bottom Z=0. "
-            "If omitted, the script prompts after homing. Use 0 only for "
-            "true-bottom contact."
+            "Known labware/artifact Z reference height above true deck/bottom "
+            "Z=0. If omitted, the script prompts after homing. Use 0 only when "
+            "the second Z-reference point is true-bottom contact."
         ),
     )
     parser.add_argument(
-        "--measure-reachable-z-min",
-        action="store_true",
+        "--z-reference-mode",
+        choices=("prompt", "bottom", "known-height"),
+        default="prompt",
         help=(
-            "After setting WPos, prompt for an optional jog to the lowest safe "
-            "reachable Z for the one reference TCP and print that reach note."
+            "How to ground absolute Z. 'prompt' asks after homing; 'bottom' "
+            "sets Z=0 at true-bottom contact; 'known-height' uses "
+            "--reference-z-mm or prompts for an A1/artifact height."
         ),
     )
+    parser.add_argument(
+        "--instrument",
+        dest="instrument_name",
+        default=None,
+        help="Optional instrument/TCP label used in reach-limit output, e.g. asmi.",
+    )
+    reach_group = parser.add_mutually_exclusive_group()
+    reach_group.add_argument(
+        "--measure-reachable-z-min",
+        dest="measure_reachable_z_min",
+        action="store_true",
+        help=(
+            "After setting WPos, jog to the lowest safe reachable Z for the "
+            "one reference TCP and print that reach note."
+        ),
+    )
+    reach_group.add_argument(
+        "--skip-reachable-z-min",
+        dest="measure_reachable_z_min",
+        action="store_false",
+        help="Do not prompt for the one-instrument lowest reachable Z note.",
+    )
+    parser.set_defaults(measure_reachable_z_min=None)
     parser.add_argument(
         "--tolerance-mm",
         type=float,
@@ -694,7 +952,9 @@ def main() -> None:
             jog_feed_rate=args.jog_feed_rate,
             limit_pull_off_mm=args.limit_pull_off_mm,
             reference_surface_z_mm=args.reference_z_mm,
+            z_reference_mode=args.z_reference_mode,
             measure_reachable_z_min=args.measure_reachable_z_min,
+            instrument_name=args.instrument_name,
             homing_serial_timeout_s=args.homing_serial_timeout_s,
             jog_serial_timeout_s=args.jog_serial_timeout_s,
         )

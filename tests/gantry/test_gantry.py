@@ -311,6 +311,16 @@ class TestGantry(unittest.TestCase):
         mock_mill.execute_command.assert_called_with("G10 L20 P1 X400 Y300 Z100")
 
     @patch("gantry.gantry.Mill")
+    def test_set_work_coordinates_can_assign_partial_axes(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        gantry = Gantry(config=self.config)
+        gantry.set_work_coordinates(x=0.0, y=0.0)
+        mock_mill.execute_command.assert_called_with("G10 L20 P1 X0 Y0")
+
+        gantry.set_work_coordinates(z=14.5)
+        mock_mill.execute_command.assert_called_with("G10 L20 P1 Z14.5")
+
+    @patch("gantry.gantry.Mill")
     def test_set_serial_timeout_updates_serial_object(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
         gantry = Gantry(config=self.config)

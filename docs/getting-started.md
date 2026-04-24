@@ -57,25 +57,32 @@ python setup/run_protocol.py \
 
 ## Interactive Jog Test
 
-For deck-origin configs, normalize `$3`/`$23` first, then calibrate WPos using
-a reference surface with a known height above true deck/bottom Z=0:
+For deck-origin configs, normalize `$3`/`$23` first, then calibrate WPos in
+two parts: first jog to the front-left XY origin/lower reach point, then jog to
+a labware/artifact reference surface with a known height above true
+deck/bottom Z=0:
 
 ```bash
-python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml
+python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --instrument asmi
 ```
 
-If the reference TCP touches or focuses on a 43 mm artifact at the front-left
-XY reference point, pass that height explicitly:
+If the reference TCP touches or focuses on a 43 mm A1/artifact surface, pass
+that height explicitly:
 
 ```bash
-python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --reference-z-mm 43
+python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --z-reference-mode known-height --reference-z-mm 43 --instrument asmi
 ```
 
-To also record the lowest safe reachable Z for that one TCP:
+If the TCP can safely touch true deck bottom, use bottom mode instead:
 
 ```bash
-python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --reference-z-mm 43 --measure-reachable-z-min
+python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --z-reference-mode bottom --skip-reachable-z-min
 ```
+
+The guided flow asks whether to measure the lowest safe reachable Z for the
+instrument. This is recommended for ASMI because indentation can move below the
+A1 measurement height. That value is a per-instrument reach note; global
+`working_volume.z_min` remains the deck bottom at `0.0`.
 
 The older jog helper is still available for connectivity checks, but it predates
 the deck-origin bring-up flow:

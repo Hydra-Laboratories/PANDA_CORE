@@ -51,25 +51,48 @@ Correct Phase 2/3 calibration target:
      use the lowest safe instrument or attach instruments one at a time.
    - For Phase 2/3, keep this as a one-instrument workflow.
 3. Home the gantry.
-4. Ask for the known reference surface height above true deck/bottom Z=0.
-   - Use `0` only when the reference TCP can touch the true bottom plane.
-   - If the TCP touches/focuses on a 43 mm artifact, the reference surface
-     height is `43`, not `0`.
-5. Prompt the operator through interactive jogging to the front-left XY
-   reference point on that known-height surface for the reference TCP.
-6. On confirmation, assign current WPos to the reference surface:
+4. Ask whether this TCP can safely touch true deck bottom.
+   - If yes, bottom mode will later set only `Z0` at deck-bottom contact.
+   - If no or unsure, known-height mode will use a labware/artifact reference
+     surface such as A1.
+5. For known-height mode, ask for the labware/artifact reference surface
+   height above true deck/bottom Z=0.
+   - If the TCP touches/focuses on a 43 mm artifact or an A1 surface 14.5 mm
+     above the deck, the reference surface height is `43` or `14.5`, not `0`.
+6. Prompt the operator through interactive jogging to the front-left XY
+   origin/lower reach point for the reference TCP.
+   - This point establishes only X/Y.
+   - Do not infer deck Z=0 from this point. For ASMI, the tool may touch
+     something before the intended labware Z reference is reached.
+7. On confirmation, assign only X/Y:
 
    ```gcode
-   G10 L20 P1 X0 Y0 Z<reference_surface_z_mm>
+   G10 L20 P1 X0 Y0
    ```
 
-7. If desired, jog to the lowest safe reachable Z for that one TCP and record
-   the current WPos Z as a per-instrument reach note. This does not reset WPos,
-   and it does not change the fact that physical deck bottom is absolute Z=0.
-8. Re-home after reference assignment and read the resulting WPos at the homed
+8. Prompt the operator to jog to the Z reference:
+   - bottom mode: true deck-bottom contact.
+   - known-height mode: the known-height Z reference surface, such as well
+     plate A1 or a calibration artifact that is not at the front-left origin
+     point.
+9. On confirmation, assign only Z:
+
+   ```gcode
+   G10 L20 P1 Z<reference_surface_z_mm>
+   ```
+
+   In bottom mode this is `G10 L20 P1 Z0`.
+10. Ask whether to jog to the lowest safe reachable Z for that one TCP and
+   record the current WPos Z as a per-instrument reach note.
+   - ASMI defaults to yes because indentation can move below A1.
+   - This does not reset WPos, and it does not change the fact that physical
+     deck bottom is absolute Z=0.
+   - Keep global `working_volume.z_min: 0.0`; encode this as instrument reach,
+     e.g. `instrument_reach.asmi.z_min_reachable`.
+11. Re-home after reference assignment and read the resulting WPos at the homed
    back-right-top corner. That measured WPos is the real working volume
    `(x_max, y_max, z_max)` for the setup.
-9. Use the measured values to update or print the gantry YAML working-volume
+12. Use the measured values to update or print the gantry YAML working-volume
    bounds. Do not treat nominal `400 x 300 x 100` values as physical truth.
 
 Multi-instrument calibration is intentionally deferred to a later Phase 3.5.
@@ -126,12 +149,15 @@ The expected direction is:
 - `src/deck/loader.py`: `height` is a direct deck-frame Z value, not `total_z_height - height`.
 - `src/instruments/base_instrument.py` and board schema docs: updated to absolute `measurement_height` / `safe_approach_height` semantics.
 - `src/gantry/origin.py` / `setup/calibrate_deck_origin.py`: revised to the
-  one-instrument interactive reference-surface workflow. The script homes,
-  clears transient `G92`, asks for the known reference surface height, prompts
-  the operator to jog one reference TCP to the front-left XY reference and
-  known Z surface, sets `G10 L20 P1 X0 Y0 Z<reference_surface_z_mm>`, can
-  optionally record the lowest safe reachable Z for that TCP, re-homes, and
-  reports measured physical `(x_max, y_max, z_max)`.
+  one-instrument interactive XY-then-Z calibration workflow. The script homes,
+  clears transient `G92`, asks whether the TCP can safely touch true deck
+  bottom, then either uses bottom mode or prompts for a known labware/artifact
+  Z reference height. It prompts the operator to jog one reference TCP to the
+  front-left XY origin/lower reach point and sets only `G10 L20 P1 X0 Y0`,
+  then prompts the operator to jog to the Z reference surface and sets only
+  `G10 L20 P1 Z<reference_surface_z_mm>`. It can record the lowest safe
+  reachable Z for that TCP as an instrument reach note, re-homes, and reports
+  measured physical `(x_max, y_max, z_max)`.
 - `src/protocol_engine/commands/home.py`: deck-origin contexts now preserve the
   calibrated persistent WPos frame. They do not zero coordinates and do not
   assign homed WPos from configured maxima.
@@ -269,35 +295,46 @@ PYTHONPATH=src python setup/calibrate_deck_origin.py --gantry configs_new/gantry
 ```
 
 Result: printed the expected physical calibration flow:
-`$H`, `G92.1`, interactive jog to front-left XY/known Z reference surface,
-`G10 L20 P1 X0 Y0 Z<reference_surface_z_mm>`, `$H`, `?`.
+`$H`, `G92.1`, interactive jog to front-left XY origin/lower reach point,
+`G10 L20 P1 X0 Y0`, interactive jog to labware/artifact Z reference surface,
+`G10 L20 P1 Z<reference_surface_z_mm>`, `$H`, `?`.
 
 Deck-origin calibration dry run with a 43 mm artifact:
 
 ```bash
-PYTHONPATH=src python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --dry-run --reference-z-mm 43
+PYTHONPATH=src python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --dry-run --z-reference-mode known-height --reference-z-mm 43 --instrument asmi
 ```
 
-Result: printed `G10 L20 P1 X0 Y0 Z43` for the reference assignment.
+Result: printed `G10 L20 P1 X0 Y0` for the XY assignment and
+`G10 L20 P1 Z43` for the Z-reference assignment.
 
 Deck-origin calibration dry run with a 10 mm artifact and optional reachable-Z
 recording:
 
 ```bash
-PYTHONPATH=src python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --dry-run --reference-z-mm 10 --measure-reachable-z-min
+PYTHONPATH=src python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --dry-run --z-reference-mode known-height --reference-z-mm 10 --measure-reachable-z-min --instrument asmi
 ```
 
-Result: printed `G10 L20 P1 X0 Y0 Z10`, then the optional lowest-safe-reachable-Z
-jog step before re-homing.
+Result: printed `G10 L20 P1 X0 Y0`, then `G10 L20 P1 Z10`, then the optional
+lowest-safe-reachable-Z jog step before re-homing.
 
-Focused calibration/homing/driver tests:
+Focused calibration/gantry-wrapper tests:
 
 ```bash
-PYTHONPATH=src pytest tests/setup/test_calibrate_deck_origin.py tests/protocol_engine/test_home_command.py tests/gantry/driver/test_gantry_driver.py -q
+PYTHONPATH=src pytest tests/setup/test_calibrate_deck_origin.py tests/gantry/test_gantry.py -q
 ```
 
-Result after one-instrument artifact/reachable-Z calibration revision:
-`33 passed`.
+Result after XY-then-Z plus guided reach-prompt revision:
+`50 passed` for `tests/setup/test_calibrate_deck_origin.py tests/gantry/test_gantry.py`.
+
+Focused calibration/home/driver tests:
+
+```bash
+PYTHONPATH=src pytest tests/setup/test_calibrate_deck_origin.py tests/protocol_engine/test_home_command.py tests/gantry/driver/test_gantry_driver.py tests/gantry/test_gantry.py -q
+```
+
+Result after guided bottom-vs-artifact Z grounding:
+`74 passed`.
 
 Protocol engine plus calibration-script tests:
 
@@ -322,7 +359,7 @@ PYTHONPATH=src pytest -q
 ```
 
 Result after one-instrument artifact/reachable-Z calibration revision:
-`962 passed`.
+`966 passed` after guided bottom-vs-artifact Z grounding.
 
 ASMI candidate setup validation:
 
@@ -354,13 +391,14 @@ Required hardware validation before trusting real runs:
 
 - With tools removed or raised, verify homing corner and jog directions in the deck-origin frame.
 - Run the revised interactive deck-origin calibration flow after `$3`/`$23`
-  are normalized: home, enter known reference surface height above true
-  deck/bottom Z=0, jog one reference TCP to that front-left XY reference
-  surface, set `G10 L20 P1 X0 Y0 Z<reference_surface_z_mm>`, then re-home and
-  record measured `(x_max, y_max, z_max)`.
-- If the TCP cannot touch true deck/bottom Z=0, use a known-height artifact
-  and run `--measure-reachable-z-min` to record the lowest safe reachable Z
-  for that one-instrument setup before commanding low-Z motions.
+  are normalized: home, jog one reference TCP to the front-left XY origin/lower
+  reach point and set `G10 L20 P1 X0 Y0`, choose bottom contact or known-height
+  A1/artifact mode for Z grounding, set `G10 L20 P1 Z<reference_surface_z_mm>`,
+  then re-home and record measured `(x_max, y_max, z_max)`.
+- If the TCP cannot touch true deck/bottom Z=0, use known-height A1/artifact
+  mode and record the lowest safe reachable Z for that one-instrument setup
+  before commanding low-Z motions. For ASMI, the guided CLI defaults this reach
+  prompt to yes.
 - Verify commanded `+Z` moves up and `-Z` moves down at the user/API level after the cutover.
 - Dry-run ASMI protocol above the deck with no sample contact and confirm entry travel, interwell travel, measurement, and indentation Z planes.
 - Confirm high-clearance homing/first-entry/park moves clear Y rails and tall mounted tools on the multi-instrument board.

@@ -59,9 +59,19 @@ class _FakeGantry:
     def clear_g92_offsets(self) -> None:
         self.calls.append(("clear_g92_offsets",))
 
-    def set_work_coordinates(self, x: float, y: float, z: float) -> None:
+    def set_work_coordinates(
+        self,
+        x: float | None = None,
+        y: float | None = None,
+        z: float | None = None,
+    ) -> None:
         self.calls.append(("set_work_coordinates", x, y, z))
-        self.coords = {"x": x, "y": y, "z": z}
+        if x is not None:
+            self.coords["x"] = x
+        if y is not None:
+            self.coords["y"] = y
+        if z is not None:
+            self.coords["z"] = z
 
     def get_coordinates(self) -> dict[str, float]:
         self.calls.append(("get_coordinates",))
@@ -136,7 +146,7 @@ def _key_reader(keys):
     return read
 
 
-def test_run_calibration_jogs_origin_zeroes_wpos_and_measures_home(tmp_path):
+def test_run_calibration_sets_xy_then_z_and_measures_home(tmp_path):
     path = _write_gantry(tmp_path / "gantry.yaml")
     messages: list[str] = []
 
@@ -150,13 +160,19 @@ def test_run_calibration_jogs_origin_zeroes_wpos_and_measures_home(tmp_path):
                 ("DOWN", 2),
                 ("Z", 3),
                 ("\r", 1),
+                ("RIGHT", 10),
+                ("UP", 20),
+                ("X", 3),
+                ("\r", 1),
             ]
         ),
         stdin_flusher=lambda: None,
     )
 
     assert isinstance(result, DeckOriginCalibrationResult)
-    assert result.reference_verification == (0.0, 0.0, 0.0)
+    assert result.xy_origin_verification == (0.0, 0.0, -3.0)
+    assert result.z_reference_verification == (10.0, 20.0, 0.0)
+    assert result.reference_verification == (10.0, 20.0, 0.0)
     assert result.reference_surface_z_mm == 0.0
     assert result.reachable_z_min_mm is None
     assert result.measured_working_volume == (398.5, 299.25, 96.75)
@@ -174,7 +190,16 @@ def test_run_calibration_jogs_origin_zeroes_wpos_and_measures_home(tmp_path):
         ("jog", 0.0, 0.0, -3.0, 800.0),
         ("get_coordinates",),
         ("get_coordinates",),
-        ("set_work_coordinates", 0.0, 0.0, 0.0),
+        ("set_work_coordinates", 0.0, 0.0, None),
+        ("get_coordinates",),
+        ("jog", 10.0, 0.0, 0.0, 800.0),
+        ("get_coordinates",),
+        ("jog", 0.0, 20.0, 0.0, 800.0),
+        ("get_coordinates",),
+        ("jog", 0.0, 0.0, 3.0, 800.0),
+        ("get_coordinates",),
+        ("get_coordinates",),
+        ("set_work_coordinates", None, None, 0.0),
         ("get_coordinates",),
         ("set_serial_timeout", 10.0),
         ("home",),
@@ -183,7 +208,8 @@ def test_run_calibration_jogs_origin_zeroes_wpos_and_measures_home(tmp_path):
         ("set_serial_timeout", 0.05),
         ("disconnect",),
     ]
-    assert any("Z=0 mm surface" in message for message in messages)
+    assert any("WPos Z=0" in message for message in messages)
+    assert any("Z reference point after XY origining" in message for message in messages)
     assert any("Measured physical working volume" in message for message in messages)
 
 
@@ -195,17 +221,26 @@ def test_run_calibration_assigns_known_artifact_height_to_reference_z(tmp_path):
         path,
         output=messages.append,
         gantry_factory=_FakeGantry,
-        key_reader=_key_reader([("\r", 1)]),
+        key_reader=_key_reader(
+            [
+                ("\r", 1),
+                ("RIGHT", 11),
+                ("UP", 22),
+                ("\r", 1),
+            ]
+        ),
         stdin_flusher=lambda: None,
         reference_surface_z_mm=43.0,
     )
 
     assert isinstance(result, DeckOriginCalibrationResult)
-    assert result.reference_verification == (0.0, 0.0, 43.0)
+    assert result.xy_origin_verification == (0.0, 0.0, 0.0)
+    assert result.z_reference_verification == (11.0, 22.0, 43.0)
     assert result.reference_surface_z_mm == 43.0
     assert result.reachable_z_min_mm is None
-    assert ("set_work_coordinates", 0.0, 0.0, 43.0) in _FakeGantry.instance.calls
-    assert any("Z=43 mm surface" in message for message in messages)
+    assert ("set_work_coordinates", 0.0, 0.0, None) in _FakeGantry.instance.calls
+    assert ("set_work_coordinates", None, None, 43.0) in _FakeGantry.instance.calls
+    assert any("WPos Z=43" in message for message in messages)
 
 
 def test_run_calibration_prompts_for_reference_height_when_omitted(tmp_path):
@@ -221,14 +256,89 @@ def test_run_calibration_prompts_for_reference_height_when_omitted(tmp_path):
         output=lambda message: None,
         input_reader=input_reader,
         gantry_factory=_FakeGantry,
-        key_reader=_key_reader([("\r", 1)]),
+        key_reader=_key_reader([("\r", 1), ("\r", 1)]),
         stdin_flusher=lambda: None,
         reference_surface_z_mm=None,
     )
 
     assert isinstance(result, DeckOriginCalibrationResult)
-    assert result.reference_verification == (0.0, 0.0, 12.5)
+    assert result.xy_origin_verification == (0.0, 0.0, 0.0)
+    assert result.z_reference_verification == (0.0, 0.0, 12.5)
     assert prompts == ["Reference surface Z height in mm: "]
+
+
+def test_run_calibration_prompt_mode_can_ground_z_on_bottom_contact(tmp_path):
+    path = _write_gantry(tmp_path / "gantry.yaml")
+    prompts: list[str] = []
+    responses = iter(["y", "n"])
+
+    def input_reader(prompt: str) -> str:
+        prompts.append(prompt)
+        return next(responses)
+
+    result = run_calibration(
+        path,
+        output=lambda message: None,
+        input_reader=input_reader,
+        gantry_factory=_FakeGantry,
+        key_reader=_key_reader([("\r", 1), ("\r", 1)]),
+        stdin_flusher=lambda: None,
+        reference_surface_z_mm=None,
+        z_reference_mode="prompt",
+        measure_reachable_z_min=None,
+    )
+
+    assert isinstance(result, DeckOriginCalibrationResult)
+    assert result.z_reference_mode == "bottom"
+    assert result.reference_surface_z_mm == 0.0
+    assert result.z_reference_verification == (0.0, 0.0, 0.0)
+    assert prompts == [
+        "Can this instrument safely touch true deck bottom? [y/N]: ",
+        "Measure lowest reachable Z for this instrument? [n]: ",
+    ]
+
+
+def test_run_calibration_prompt_mode_grounds_on_a1_and_defaults_asmi_reach(tmp_path):
+    path = _write_gantry(tmp_path / "gantry.yaml")
+    messages: list[str] = []
+    prompts: list[str] = []
+    responses = iter(["", "14.5", ""])
+
+    def input_reader(prompt: str) -> str:
+        prompts.append(prompt)
+        return next(responses)
+
+    result = run_calibration(
+        path,
+        output=messages.append,
+        input_reader=input_reader,
+        gantry_factory=_FakeGantry,
+        key_reader=_key_reader(
+            [
+                ("\r", 1),
+                ("\r", 1),
+                ("Z", 5),
+                ("\r", 1),
+            ]
+        ),
+        stdin_flusher=lambda: None,
+        reference_surface_z_mm=None,
+        z_reference_mode="prompt",
+        measure_reachable_z_min=None,
+        instrument_name="asmi",
+    )
+
+    assert isinstance(result, DeckOriginCalibrationResult)
+    assert result.z_reference_mode == "known-height"
+    assert result.reference_surface_z_mm == 14.5
+    assert result.z_reference_verification == (0.0, 0.0, 14.5)
+    assert result.reachable_z_min_mm == pytest.approx(9.5)
+    assert prompts == [
+        "Can this instrument safely touch true deck bottom? [y/N]: ",
+        "Reference surface Z height in mm: ",
+        "Measure lowest reachable Z for this instrument? [Y]: ",
+    ]
+    assert any("asmi_reachable_z_min: 9.500" in message for message in messages)
 
 
 def test_run_calibration_records_optional_lowest_reachable_z(tmp_path):
@@ -241,6 +351,7 @@ def test_run_calibration_records_optional_lowest_reachable_z(tmp_path):
         gantry_factory=_FakeGantry,
         key_reader=_key_reader(
             [
+                ("\r", 1),  # confirm X/Y origin
                 ("\r", 1),  # confirm 43 mm artifact/reference surface
                 ("Z", 10),  # lower 10 mm from the known surface
                 ("\r", 1),
@@ -252,7 +363,8 @@ def test_run_calibration_records_optional_lowest_reachable_z(tmp_path):
     )
 
     assert isinstance(result, DeckOriginCalibrationResult)
-    assert result.reference_verification == (0.0, 0.0, 43.0)
+    assert result.xy_origin_verification == (0.0, 0.0, 0.0)
+    assert result.z_reference_verification == (0.0, 0.0, 43.0)
     assert result.reachable_z_min_mm == pytest.approx(33.0)
     assert ("jog", 0.0, 0.0, -10.0, 800.0) in _FakeGantry.instance.calls
     assert any("Optional reachable-Z measurement" in message for message in messages)
@@ -271,6 +383,7 @@ def test_run_calibration_recovers_from_limit_alarm_during_jog(tmp_path):
             [
                 ("DOWN", 1),
                 ("DOWN", 1),
+                ("\r", 1),
                 ("\r", 1),
             ]
         ),
@@ -305,6 +418,7 @@ def test_run_calibration_continues_when_recovery_readback_is_unavailable(tmp_pat
                 ("DOWN", 1),
                 ("DOWN", 1),
                 ("\r", 1),
+                ("\r", 1),
             ]
         ),
         stdin_flusher=lambda: None,
@@ -334,8 +448,10 @@ def test_dry_run_prints_commands_without_connecting(tmp_path):
 
     assert "  $H" in messages
     assert "  G92.1" in messages
-    assert "  <interactive jog to front-left XY/known Z reference surface>" in messages
-    assert "  G10 L20 P1 X0 Y0 Z0" in messages
+    assert "  <interactive jog to front-left XY origin/lower reach point>" in messages
+    assert "  G10 L20 P1 X0 Y0" in messages
+    assert "  <interactive jog to labware/artifact Z reference surface>" in messages
+    assert "  G10 L20 P1 Z0" in messages
     assert "No configured max travel values will be trusted as measured volume." in messages
 
 
@@ -352,6 +468,21 @@ def test_dry_run_prints_optional_lowest_reachable_z_step(tmp_path):
 
     assert "  <optional jog to lowest safe reachable Z for this TCP>" in messages
     assert any("per-instrument lower bound" in message for message in messages)
+
+
+def test_dry_run_prints_bottom_reference_step(tmp_path):
+    path = _write_gantry(tmp_path / "gantry.yaml")
+    messages: list[str] = []
+
+    run_calibration(
+        path,
+        dry_run=True,
+        output=messages.append,
+        z_reference_mode="bottom",
+    )
+
+    assert "  <interactive jog to true deck-bottom Z contact>" in messages
+    assert "  G10 L20 P1 Z0" in messages
 
 
 def test_rejects_legacy_negative_space_config(tmp_path):

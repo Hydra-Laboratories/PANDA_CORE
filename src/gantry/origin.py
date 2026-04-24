@@ -24,14 +24,22 @@ def format_gcode_number(value: float) -> str:
     return formatted if formatted and formatted != "-0" else "0"
 
 
-def format_set_work_position_command(x: float, y: float, z: float) -> str:
+def format_set_work_position_command(
+    x: float | None = None,
+    y: float | None = None,
+    z: float | None = None,
+) -> str:
     """Return a G10 command that assigns WPos at the current machine pose."""
-    return (
-        "G10 L20 P1 "
-        f"X{format_gcode_number(x)} "
-        f"Y{format_gcode_number(y)} "
-        f"Z{format_gcode_number(z)}"
-    )
+    parts = ["G10 L20 P1"]
+    if x is not None:
+        parts.append(f"X{format_gcode_number(x)}")
+    if y is not None:
+        parts.append(f"Y{format_gcode_number(y)}")
+    if z is not None:
+        parts.append(f"Z{format_gcode_number(z)}")
+    if len(parts) == 1:
+        raise ValueError("At least one axis must be supplied.")
+    return " ".join(parts)
 
 
 def validate_deck_origin_minima(config: GantryConfig) -> None:
@@ -61,9 +69,10 @@ def build_deck_origin_calibration_plan(
     """Build the GRBL command skeleton for deck-origin calibration.
 
     The physical travel values are intentionally not included here. They must
-    be measured by jogging to a front-left XY reference and known-height Z surface,
-    assigning that pose to X=0, Y=0, Z=<reference_surface_z_mm>, then re-homing
-    and reading WPos at the homed back-right-top corner.
+    be measured by jogging to a front-left XY reference, assigning only X/Y to
+    zero, jogging to a known-height labware/artifact Z reference surface,
+    assigning only Z to that surface height, then re-homing and reading WPos at
+    the homed back-right-top corner.
     """
     validate_deck_origin_minima(config)
     return DeckOriginCalibrationPlan(
@@ -71,8 +80,10 @@ def build_deck_origin_calibration_plan(
         commands=(
             "$H",
             "G92.1",
-            "<interactive jog to front-left XY/known Z reference surface>",
-            "G10 L20 P1 X0 Y0 Z<reference_surface_z_mm>",
+            "<interactive jog to front-left XY origin/lower reach point>",
+            "G10 L20 P1 X0 Y0",
+            "<interactive jog to labware/artifact Z reference surface>",
+            "G10 L20 P1 Z<reference_surface_z_mm>",
             "$H",
             "?",
         ),

@@ -251,10 +251,12 @@ SQLite-backed persistence layer for self-driving lab campaigns. All state lives 
 ### Setup (`setup/`)
 First-run scripts for verifying hardware after unboxing.
 
-- **`calibrate_deck_origin.py`**: One-instrument deck-origin calibration utility for issue #87-style configs. Homes the machine at the normalized back-right-top homing corner, clears transient `G92` offsets, asks for a known reference surface height above true deck/bottom Z=0, prompts the operator to jog one reference TCP to the front-left XY reference and known Z surface, sets that pose to `G10 L20 P1 X0 Y0 Z<reference_height>`, then re-homes and reports the measured physical working volume `(x_max, y_max, z_max)`. Use `--reference-z-mm 0` only when the TCP can touch the true bottom; use a known-height block/artifact otherwise. `--measure-reachable-z-min` can record the lowest safe reachable Z for that one TCP without resetting WPos.
-    - **Usage**: `python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml`
-    - **Known-height artifact**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --reference-z-mm 10`
-    - **Reach note**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --reference-z-mm 10 --measure-reachable-z-min`
+- **`calibrate_deck_origin.py`**: One-instrument deck-origin calibration utility for issue #87-style configs. Homes the machine at the normalized back-right-top homing corner, clears transient `G92` offsets, then separates calibration into two operator-jogged points: first jog the reference TCP as far as appropriate toward the physical front-left XY origin/lower reach point and set only `G10 L20 P1 X0 Y0`; then choose whether the TCP can safely touch true deck bottom or must use a known-height labware/artifact Z reference surface such as well plate A1. Bottom mode sets only `G10 L20 P1 Z0`; known-height mode sets only `G10 L20 P1 Z<reference_height>`. It then can record a per-instrument `z_min_reachable`, re-homes, and reports the measured physical working volume `(x_max, y_max, z_max)`. Keep global `working_volume.z_min` at `0.0`; lower reach belongs to the instrument, not the gantry volume.
+    - **Guided usage**: `python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --instrument asmi`
+    - **Known-height A1/artifact**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --z-reference-mode known-height --reference-z-mm 10 --instrument asmi`
+    - **Bottom contact**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --z-reference-mode bottom`
+    - **Reach note**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --z-reference-mode known-height --reference-z-mm 10 --measure-reachable-z-min --instrument asmi`
+    - **Skip reach prompt**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --skip-reachable-z-min`
     - **Dry run**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --dry-run`
     - **Safety**: only use with deck-origin gantry configs whose working-volume minima are all `0.0`; old negative-space configs are rejected.
 - **`hello_world.py`**: Interactive jog test. Connects to the gantry (auto-scan, no config), homes the gantry, then lets you move the router with arrow keys and see live position updates.
@@ -282,7 +284,7 @@ First-run scripts for verifying hardware after unboxing.
 ### Calibration (`calibration/`)
 - **`home_gantry.py`**: CNC homing wrapper that loads `configs/gantry/cub_xl.yaml`, connects to the gantry, and runs the configured homing sequence.
     - **Usage**: `python calibration/home_gantry.py`
-    - **TODO**: Replace or remove this legacy wrapper; deck-origin calibration should use `setup/calibrate_deck_origin.py` so a known-height front-left reference surface is explicitly jogged and assigned before homed WPos is treated as measured working volume.
+    - **TODO**: Replace or remove this legacy wrapper; deck-origin calibration should use `setup/calibrate_deck_origin.py` so X/Y origining and known-height Z grounding are explicitly jogged before homed WPos is treated as measured working volume.
 
 ### Development Commands
 - **Install for development**:

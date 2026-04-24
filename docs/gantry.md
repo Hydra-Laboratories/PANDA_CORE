@@ -72,9 +72,10 @@ Working volume bounds are inclusive and use the CubOS deck frame:
 
 - CubOS `(0, 0, 0)` is the front-left-bottom reachable work volume. Because
   normalized machines home at the opposite top-back-right corner, run the
-  deck-origin calibration script to jog to a known-height front-left reference
-  surface, assign that pose as `X=0`, `Y=0`, `Z=<reference_height>`, then
-  measure the homed pose as `(x_max, y_max, z_max)`.
+  deck-origin calibration script to jog first to the front-left XY origin/lower
+  reach point and assign only `X=0`, `Y=0`, then jog to a known-height
+  labware/artifact Z reference surface and assign only `Z=<reference_height>`.
+  The homed pose after both steps is measured as `(x_max, y_max, z_max)`.
 - `+X` moves right from the operator perspective.
 - `+Y` moves away from the operator, toward the back of the deck.
 - `+Z` moves up, away from the deck.
@@ -182,33 +183,38 @@ Record `$3` and `$23` before changing anything.
 10. Calibrate the CubOS work origin using the deck-origin script:
 
    ```bash
-   python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml
+   python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --instrument asmi
    ```
 
    The script sends `$H`, clears transient `G92` offsets, asks for a known
    reference surface height above true deck/bottom Z=0, prompts the operator to
-   jog one reference TCP to the front-left XY reference and known Z surface,
-   sets that pose with `G10 L20 P1 X0 Y0 Z<reference_height>`, then re-homes
-   and reads WPos at the homed back-right-top corner. That measured WPos is the
-   physical working volume for the setup. Do not treat nominal or configured
-   max-travel values as physical truth until this measurement is done.
+   jog one reference TCP to the front-left XY origin/lower reach point and sets
+   only `G10 L20 P1 X0 Y0`, then prompts the operator to jog to the
+   labware/artifact Z reference surface and sets only
+   `G10 L20 P1 Z<reference_height>`. It then re-homes and reads WPos at the
+   homed back-right-top corner. That measured WPos is the physical working
+   volume for the setup. Do not treat nominal or configured max-travel values
+   as physical truth until this measurement is done.
 
-   Use `--reference-z-mm 0` only when the reference TCP can touch the true
-   bottom plane. If it cannot, place a known-height block or artifact at the
-   front-left XY reference and pass that height:
-
-   ```bash
-   python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --reference-z-mm 10
-   ```
-
-   To also record the lowest safe reachable Z for that one TCP, add:
+   In guided mode, the script asks whether the TCP can safely touch true deck
+   bottom. If yes, it sets Z with bottom contact. If no or unsure, use A1 or a
+   known-height artifact and pass that height explicitly:
 
    ```bash
-   python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --reference-z-mm 10 --measure-reachable-z-min
+   python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --z-reference-mode known-height --reference-z-mm 10 --instrument asmi
    ```
 
-   This reach note is per-instrument. The deck bottom remains absolute Z=0
-   even when the mounted TCP cannot physically reach it.
+   For instruments that can touch true deck bottom:
+
+   ```bash
+   python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --z-reference-mode bottom
+   ```
+
+   The guided flow asks whether to record the lowest safe reachable Z for that
+   one TCP; ASMI defaults to yes because indentation can go below A1. This
+   reach note is per-instrument. The deck bottom remains absolute Z=0, so
+   `working_volume.z_min` stays `0.0` even when the mounted TCP cannot
+   physically reach it.
 
 ### Acceptance Criteria
 
