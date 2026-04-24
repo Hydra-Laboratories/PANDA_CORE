@@ -17,6 +17,7 @@ serial_port: /dev/cu.usbserial-2130
 cnc:
   homing_strategy: xy_hard_limits
   total_z_height: 90.0
+  structure_clearance_z: 75.0
 working_volume:
   x_min: 0.0
   x_max: 300.0
@@ -56,6 +57,7 @@ class TestLoadGantryFromYaml:
             assert vol.z_min == 0.0
             assert vol.z_max == 80.0
             assert config.total_z_height == 90.0
+            assert config.structure_clearance_z == 75.0
         finally:
             os.unlink(path)
 

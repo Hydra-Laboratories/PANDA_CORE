@@ -57,10 +57,29 @@ python setup/run_protocol.py \
 
 ## Interactive Jog Test
 
-To verify hardware connectivity, connect the CNC gantry via USB and run:
+For deck-origin configs, normalize `$3`/`$23` first, then calibrate WPos using
+a reference surface with a known height above true deck/bottom Z=0:
+
+```bash
+python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml
+```
+
+If the reference TCP touches or focuses on a 43 mm artifact at the front-left
+XY reference point, pass that height explicitly:
+
+```bash
+python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --reference-z-mm 43
+```
+
+To also record the lowest safe reachable Z for that one TCP:
+
+```bash
+python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --reference-z-mm 43 --measure-reachable-z-min
+```
+
+The older jog helper is still available for connectivity checks, but it predates
+the deck-origin bring-up flow:
 
 ```bash
 python setup/hello_world.py
 ```
-
-This homes the gantry and drops into an interactive jog mode (arrow keys for XY, Z/X keys for Z).

@@ -1,8 +1,15 @@
+# LEGACY ASMI indentation protocol.
+#
+# This file is retained as the pre-issue-87 positive-down ASMI example and is
+# not a post-cutover runnable deck-origin config. Use
+# configs_new/protocol/asmi_indentation_deck_origin.yaml with the matching
+# configs_new gantry/deck/board files for the deck-origin motion contract.
+#
 # ASMI indentation protocol.
 # Scans the well plate, performing step-by-step indentation at each well.
 # Uses CubOS protocol engine.
 #
-# Coordinate convention (positive-down): user-space Z is 0 at the gantry's
+# Legacy coordinate convention (positive-down): user-space Z is 0 at the gantry's
 # home position and grows toward the deck. "Above" = smaller z; "below" =
 # larger z. Indentation steps descend by INCREASING z, capped at
 # indentation_limit.
@@ -36,7 +43,7 @@ protocol:
       method_kwargs:
         # Absolute Zs (not offsets). measurement_height is where the
         # indent starts; indentation_limit is the deepest the tip is allowed to
-        # reach (must be > measurement_height in positive-down space).
+        # reach (legacy positive-down file: must be > measurement_height).
         measurement_height: 73.0
         indentation_limit: 75.0
         step_size: 0.1 # usually .01, .1 for testing

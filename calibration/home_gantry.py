@@ -1,3 +1,10 @@
+"""Legacy homing wrapper.
+
+Use setup/calibrate_deck_origin.py for deck-origin configs; this wrapper only
+runs the configured homing sequence and does not assign the top-back-right home
+pose to working-volume maxima.
+"""
+
 import sys
 from pathlib import Path
 

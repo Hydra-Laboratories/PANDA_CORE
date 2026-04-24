@@ -2,6 +2,10 @@
 
 Welcomes the user, homes the CNC gantry, then lets them jog the
 router interactively with keyboard keys while displaying position.
+
+Legacy note: this script predates the deck-origin calibration scheme. Use
+setup/calibrate_deck_origin.py before trusting deck-origin configs, and replace
+this jog UI before relying on it for +Z-up hardware bring-up.
 """
 
 import logging

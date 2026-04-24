@@ -26,9 +26,8 @@ def normalize_scan_arguments(
 ) -> NormalizedScanArguments:
     """Normalize the supported scan naming surface.
 
-    Phase 1 does not change the current positive-down coordinate semantics. The
-    normalized ``entry_travel_z`` and ``interwell_travel_z`` values are still
-    absolute Z coordinates consumed by the existing scan implementation.
+    The normalized ``entry_travel_z`` and ``interwell_travel_z`` values are
+    absolute deck-frame Z coordinates consumed by the scan implementation.
     """
     kwargs = dict(method_kwargs or {})
 

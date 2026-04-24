@@ -21,6 +21,7 @@ Gantry YAML defines:
 - total Z reference height
 - Y-axis motion mode
 - working volume
+- optional structure-clearance Z
 - optional GRBL settings expectations
 
 Representative example:
@@ -31,6 +32,7 @@ cnc:
   homing_strategy: xy_hard_limits
   total_z_height: 90.0
   y_axis_motion: head
+  structure_clearance_z: 75.0
 
 working_volume:
   x_min: 0.0
@@ -51,6 +53,7 @@ Use this file when:
 ## Deck Config
 
 Deck YAML defines labware positions. Well plates use calibration anchors, while single-location labware such as vials store a direct position.
+All deck Z values use the CubOS deck-origin frame: `+Z` is up, and a labware `height` field is a direct absolute deck-frame Z value.
 
 Representative well plate example:
 
@@ -66,11 +69,11 @@ labware:
       a1:
         x: -17.88
         y: -42.23
-        z: -20.0
+        z: 20.0
       a2:
         x: -17.88
         y: -51.23
-        z: -20.0
+        z: 20.0
     x_offset_mm: -9.0
     y_offset_mm: -9.0
     capacity_ul: 360.0
@@ -86,6 +89,7 @@ Use this file when:
 ## Board Config
 
 Board YAML defines mounted instruments and their offsets relative to the gantry/router.
+`measurement_height` and `safe_approach_height` are absolute deck-frame Z planes, not labware-relative offsets.
 
 Representative example:
 

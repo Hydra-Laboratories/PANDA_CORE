@@ -93,11 +93,17 @@ class CncYaml(BaseModel):
     homing_strategy: Literal["xy_hard_limits", "standard", "manual_origin"]
     total_z_height: float
     y_axis_motion: Literal["head", "bed"] = "head"
+    structure_clearance_z: Optional[float] = None
 
     @model_validator(mode="after")
     def _validate_total_z_height_positive(self) -> "CncYaml":
         if self.total_z_height <= 0:
             raise ValueError("total_z_height must be > 0.")
+        if (
+            self.structure_clearance_z is not None
+            and self.structure_clearance_z < 0
+        ):
+            raise ValueError("structure_clearance_z must be >= 0.")
         return self
 
 

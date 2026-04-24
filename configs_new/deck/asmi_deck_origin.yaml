@@ -1,0 +1,31 @@
+# Candidate ASMI deck for the deck-origin refactor.
+#
+# Estimated from photos plus the current ASMI calibration converted from the
+# old top/back/right positive-down frame into a 400 x 300 x 100 mm deck-origin
+# volume:
+#
+#   old A1 = (-51.25, -238.25, 73.0)
+#   new A1 = (400 - 51.25, 300 - 238.25, 100 - 73.0)
+#          = (348.75, 61.75, 27.0)
+#
+# Plate orientation from the photo:
+# - A1 is near the front-right.
+# - Columns increase toward the left, so x_offset_mm is negative.
+# - Rows increase toward the back, so y_offset_mm is positive.
+
+labware:
+  plate:
+    load_name: sbs_96_wellplate
+    name: asmi_96_well_deck_origin_candidate
+    model_name: asmi_96_well_deck_origin_candidate
+    calibration:
+      a1:
+        x: 348.75
+        y: 61.75
+        z: 27.0
+      a2:
+        x: 339.75
+        y: 61.75
+        z: 27.0
+    x_offset_mm: -9.0
+    y_offset_mm: 9.0

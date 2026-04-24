@@ -197,7 +197,9 @@ def run_validation(
 
     # 7. Protocol semantic validation
     out("Validating protocol semantics...")
-    semantic_violations = validate_protocol_semantics(protocol, board, deck)
+    semantic_violations = validate_protocol_semantics(
+        protocol, board, deck, gantry_config,
+    )
     if semantic_violations:
         out(f"  FAIL — {len(semantic_violations)} violation(s):")
         for v in semantic_violations:

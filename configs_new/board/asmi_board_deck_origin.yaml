@@ -1,0 +1,22 @@
+# Candidate ASMI board config for the deck-origin refactor.
+#
+# The ASMI TCP offset is left at zero because the current ASMI setup appears to
+# have been calibrated directly to the ASMI probe/tip. Measure and update
+# offset_x, offset_y, and depth if the gantry reference point differs from the
+# actual indentation TCP.
+
+instruments:
+  asmi:
+    type: asmi
+    vendor: vernier
+    offset_x: 0.0
+    offset_y: 0.0
+    depth: 0.0
+    # Deck-origin convention: measurement_height and safe_approach_height are
+    # absolute deck-frame Z planes, not labware-relative offsets. The estimated
+    # plate/well top is z=27.0, so measurement_height=26.0 starts 1 mm below it.
+    measurement_height: 26.0
+    safe_approach_height: 35.0
+    # Sensor hardware.
+    force_threshold: -50
+    sensor_channels: [1]

@@ -51,7 +51,7 @@ class TestASMIOffline(unittest.TestCase):
         gantry = Gantry(offline=True)
 
         result = self.asmi.indentation(
-            gantry, indentation_limit=12.0, measurement_height=10.0, step_size=0.1,
+            gantry, indentation_limit=8.0, measurement_height=10.0, step_size=0.1,
         )
 
         self.assertIn("measurements", result)
@@ -69,7 +69,7 @@ class TestASMIOffline(unittest.TestCase):
 
         result = self.asmi.indentation(
             gantry,
-            indentation_limit=12.0,
+            indentation_limit=8.0,
             measurement_height=10.0,
             step_size=0.1,
             measure_with_return=True,
@@ -86,7 +86,7 @@ class TestASMIOffline(unittest.TestCase):
         gantry = Gantry(offline=True)
 
         result = self.asmi.indentation(
-            gantry, indentation_limit=12.0, measurement_height=10.0, step_size=0.1,
+            gantry, indentation_limit=8.0, measurement_height=10.0, step_size=0.1,
         )
 
         self.assertGreater(len(result["measurements"]), 0)
@@ -94,14 +94,14 @@ class TestASMIOffline(unittest.TestCase):
             self.assertEqual(step["direction"], "down")
 
     def test_indentation_offline_return_preserves_ordering_and_monotonicity(self):
-        """All down samples must precede all up samples. Positive-down: descent
-        increases z toward indentation_limit, return decreases z back to measurement_height."""
+        """All down samples must precede all up samples. Deck-origin +Z-up:
+        descent decreases z toward indentation_limit, return increases z back to measurement_height."""
         from gantry.gantry import Gantry
         gantry = Gantry(offline=True)
 
         result = self.asmi.indentation(
             gantry,
-            indentation_limit=12.0,
+            indentation_limit=8.0,
             measurement_height=10.0,
             step_size=0.1,
             measure_with_return=True,
@@ -115,12 +115,12 @@ class TestASMIOffline(unittest.TestCase):
 
         down_z = [s["z_mm"] for s in steps if s["direction"] == "down"]
         up_z = [s["z_mm"] for s in steps if s["direction"] == "up"]
-        # Down: each z strictly larger than the previous (gantry descends).
+        # Down: each z strictly smaller than the previous (gantry descends).
         for prev, curr in zip(down_z, down_z[1:]):
-            self.assertGreater(curr, prev)
-        # Up: each z strictly smaller than the previous (gantry retracts).
-        for prev, curr in zip(up_z, up_z[1:]):
             self.assertLess(curr, prev)
+        # Up: each z strictly larger than the previous (gantry retracts).
+        for prev, curr in zip(up_z, up_z[1:]):
+            self.assertGreater(curr, prev)
         # Return terminates at measurement_height (well top), never overshoots.
         self.assertAlmostEqual(up_z[-1], 10.0, places=6)
 
@@ -133,7 +133,7 @@ class TestASMIOffline(unittest.TestCase):
         # 0.03 does not evenly divide 2.0 (66.67 steps → ceil to 67).
         result = self.asmi.indentation(
             gantry,
-            indentation_limit=12.0,
+            indentation_limit=8.0,
             measurement_height=10.0,
             step_size=0.03,
             measure_with_return=True,
@@ -141,7 +141,7 @@ class TestASMIOffline(unittest.TestCase):
 
         down_z = [s["z_mm"] for s in result["measurements"] if s["direction"] == "down"]
         up_z = [s["z_mm"] for s in result["measurements"] if s["direction"] == "up"]
-        self.assertAlmostEqual(down_z[-1], 12.0, places=6)
+        self.assertAlmostEqual(down_z[-1], 8.0, places=6)
         self.assertAlmostEqual(up_z[-1], 10.0, places=6)
 
     def test_indentation_offline_step_larger_than_span_takes_one_step(self):
@@ -151,7 +151,7 @@ class TestASMIOffline(unittest.TestCase):
 
         result = self.asmi.indentation(
             gantry,
-            indentation_limit=10.05,
+            indentation_limit=9.95,
             measurement_height=10.0,
             step_size=0.5,
             measure_with_return=True,
@@ -160,7 +160,7 @@ class TestASMIOffline(unittest.TestCase):
         down_z = [s["z_mm"] for s in result["measurements"] if s["direction"] == "down"]
         up_z = [s["z_mm"] for s in result["measurements"] if s["direction"] == "up"]
         self.assertEqual(len(down_z), 1)
-        self.assertAlmostEqual(down_z[0], 10.05, places=6)
+        self.assertAlmostEqual(down_z[0], 9.95, places=6)
         self.assertEqual(len(up_z), 1)
         self.assertAlmostEqual(up_z[0], 10.0, places=6)
 
@@ -170,7 +170,7 @@ class TestASMIOffline(unittest.TestCase):
 
         with self.assertRaises(ValueError, msg="indentation_limit"):
             self.asmi.indentation(
-                gantry, indentation_limit=9.0, measurement_height=10.0, step_size=0.1,
+                gantry, indentation_limit=12.0, measurement_height=10.0, step_size=0.1,
             )
 
     def test_indentation_limit_is_supported(self):
@@ -179,13 +179,13 @@ class TestASMIOffline(unittest.TestCase):
 
         result = self.asmi.indentation(
             gantry,
-            indentation_limit=10.2,
+            indentation_limit=9.8,
             measurement_height=10.0,
             step_size=0.1,
         )
 
         self.assertEqual(result["data_points"], 2)
-        self.assertAlmostEqual(result["measurements"][-1]["z_mm"], 10.2)
+        self.assertAlmostEqual(result["measurements"][-1]["z_mm"], 9.8)
 
     def test_indentation_rejects_non_positive_step_size(self):
         from gantry.gantry import Gantry
@@ -193,7 +193,7 @@ class TestASMIOffline(unittest.TestCase):
 
         with self.assertRaises(ValueError, msg="step_size"):
             self.asmi.indentation(
-                gantry, indentation_limit=12.0, measurement_height=10.0, step_size=0.0,
+                gantry, indentation_limit=8.0, measurement_height=10.0, step_size=0.0,
             )
 
 
@@ -237,7 +237,7 @@ class TestASMIOnlineIndentation(unittest.TestCase):
              patch.object(asmi, "get_force_reading", return_value=0.1):
             result = asmi.indentation(
                 gantry,
-                indentation_limit=10.5,
+                indentation_limit=9.5,
                 measurement_height=10.0,
                 step_size=0.1,
                 force_limit=100.0,
@@ -279,7 +279,7 @@ class TestASMIOnlineIndentation(unittest.TestCase):
              patch.object(asmi, "get_force_reading", return_value=0.0):
             result = asmi.indentation(
                 gantry,
-                indentation_limit=10.1,
+                indentation_limit=9.9,
                 measurement_height=10.0,
                 step_size=0.1,
                 force_limit=100.0,

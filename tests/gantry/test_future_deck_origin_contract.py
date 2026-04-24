@@ -1,23 +1,15 @@
-"""Future deck-origin coordinate contract tests.
-
-These intentionally describe the target convention from issue #87. They are
-xfail during Phase 0 because the implementation still uses the current
-positive-down user-space Z translation.
-"""
+"""Deck-origin coordinate contract tests."""
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from board.board import Board
 from gantry.gantry import Gantry
 
 
-@pytest.mark.xfail(strict=True, reason="deck-origin coordinate refactor pending")
 @patch("gantry.gantry.Mill")
-def test_future_gantry_move_to_sends_deck_origin_z_without_sign_flip(mock_mill_cls):
+def test_gantry_move_to_sends_deck_origin_z_without_sign_flip(mock_mill_cls):
     gantry = Gantry(config={})
 
     gantry.move_to(10.0, 20.0, -5.0)
@@ -30,8 +22,7 @@ def test_future_gantry_move_to_sends_deck_origin_z_without_sign_flip(mock_mill_c
     )
 
 
-@pytest.mark.xfail(strict=True, reason="deck-origin coordinate refactor pending")
-def test_future_board_move_to_labware_uses_positive_clearance_above_deck():
+def test_board_move_to_labware_uses_positive_clearance_above_deck():
     instr = MagicMock()
     instr.name = "probe"
     instr.offset_x = 0.0

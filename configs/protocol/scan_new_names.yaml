@@ -1,6 +1,5 @@
-# Generic scan protocol using the Phase 1 scan naming surface.
-# With the current positive-down convention these heights are absolute Z
-# coordinates. The deck-origin refactor will update the underlying formula.
+# Generic scan protocol using deck-origin scan naming.
+# Scan heights are absolute deck-frame Z planes, not labware-relative offsets.
 
 protocol:
   - move:

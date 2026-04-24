@@ -89,9 +89,9 @@ assembly notes, and 3D-printable STEP/STL files where applicable.
 Labware positions can define Z in either of two ways:
 
 - Provide explicit `z` values on calibration or location points.
-- Provide `height` on the labware entry and load the deck with the gantry `total_z_height`; CubOS computes Z as `total_z_height - height`.
+- Provide `height` on the labware entry. Under the CubOS deck-origin frame, `height` is used directly as the absolute deck-frame Z value.
 
-If `height` is used, `total_z_height` must be available from the gantry config. If `height` is not used, explicit Z coordinates are required.
+If `height` is not used, explicit Z coordinates are required.
 
 ## Well Plate Calibration
 

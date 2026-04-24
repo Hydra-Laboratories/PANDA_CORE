@@ -76,7 +76,7 @@ def validate_gantry_positions(
     Gantry formula (from board.py Board.move), all in user-facing coordinates:
         gantry_x = position_x - instrument.offset_x
         gantry_y = position_y - instrument.offset_y
-        gantry_z = position_z - instrument.depth
+        gantry_z = position_z + instrument.depth
 
     Returns a list of violations (empty if all pass).
     """
@@ -86,7 +86,7 @@ def validate_gantry_positions(
         for lw_key, pos_id, x, y, z in _get_all_positions(deck):
             gx = x - instrument.offset_x
             gy = y - instrument.offset_y
-            gz = z - instrument.depth
+            gz = z + instrument.depth
             for axis, bound_name, bound_value in _check_point(volume, gx, gy, gz):
                 violations.append(BoundsViolation(
                     labware_key=lw_key,

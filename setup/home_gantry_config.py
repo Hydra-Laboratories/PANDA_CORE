@@ -1,9 +1,13 @@
-"""One-shot gantry homing from a gantry YAML file.
+"""Legacy one-shot gantry homing from a gantry YAML file.
+
+Do not use this script to calibrate deck-origin configs. It can still apply
+``G92 X0 Y0 Z0`` at the homed corner, which is the opposite of the new
+front-left-bottom origin scheme. Use ``setup/calibrate_deck_origin.py`` for
+deck-origin machines.
 
 Loads a gantry config (default ``configs/gantry/cub.yaml``), connects, runs the
 configured homing strategy (e.g. ``standard`` → GRBL ``$H``), optionally sets
-work zero with ``G92 X0 Y0 Z0`` (same as the protocol ``home`` command), then
-disconnects.
+work zero with ``G92 X0 Y0 Z0``, then disconnects.
 
 Usage::
 

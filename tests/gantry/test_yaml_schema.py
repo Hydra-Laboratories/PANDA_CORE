@@ -122,6 +122,18 @@ class TestGantryYamlSchema:
         with pytest.raises(ValidationError, match="total_z_height"):
             GantryYamlSchema.model_validate(data)
 
+    def test_structure_clearance_z_is_optional_and_parsed(self):
+        data = _valid_gantry_dict()
+        data["cnc"]["structure_clearance_z"] = 75.0
+        schema = GantryYamlSchema.model_validate(data)
+        assert schema.cnc.structure_clearance_z == 75.0
+
+    def test_structure_clearance_z_must_not_be_negative(self):
+        data = _valid_gantry_dict()
+        data["cnc"]["structure_clearance_z"] = -1.0
+        with pytest.raises(ValidationError, match="structure_clearance_z"):
+            GantryYamlSchema.model_validate(data)
+
     def test_extra_top_level_key_rejected(self):
         data = _valid_gantry_dict()
         data["unknown_field"] = "value"

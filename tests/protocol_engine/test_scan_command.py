@@ -171,8 +171,8 @@ class TestScanCommand:
         assert zs == [75.0, 75.0, 75.0, 75.0]
 
     def test_descends_to_action_z_after_approach_per_well(self):
-        """scan must emit the descent raw-move per well at
-        well.z - measurement_height. A regression dropping this line
+        """scan must emit the descent raw-move per well at the absolute
+        measurement_height. A regression dropping this line
         would leave the instrument floating at safe_approach_height."""
         from protocol_engine.commands.scan import scan
 
@@ -185,9 +185,8 @@ class TestScanCommand:
         # 4 wells => 4 descent calls + 1 retract after last well.
         assert ctx.board.move.call_count == 5
         move_zs = [c.args[1][2] for c in ctx.board.move.call_args_list]
-        # First 4: action_z = 75 - 3 = 72 (descent to measurement_height).
-        # Last: approach_z = 75 - 10 = 65 (retract to safe_approach_height).
-        assert move_zs == [72.0, 72.0, 72.0, 72.0, 65.0]
+        # First 4: action_z = 3. Last: safe_approach_height = 10.
+        assert move_zs == [3.0, 3.0, 3.0, 3.0, 10.0]
 
     def test_interwell_travel_height_is_used_for_every_well(self):
         from protocol_engine.commands.scan import scan
@@ -208,7 +207,7 @@ class TestScanCommand:
         # 4 wells => 4 approach calls + 4 descent calls + 1 final retract.
         assert ctx.board.move.call_count == 9
         move_zs = [c.args[1][2] for c in ctx.board.move.call_args_list]
-        assert move_zs == [20.0, 72.0, 20.0, 72.0, 20.0, 72.0, 20.0, 72.0, 20.0]
+        assert move_zs == [20.0, 3.0, 20.0, 3.0, 20.0, 3.0, 20.0, 3.0, 20.0]
         approach_calls = ctx.board.move.call_args_list[:-1:2]
         for call in approach_calls:
             assert call.kwargs["travel_z"] == 20.0
@@ -251,7 +250,7 @@ class TestScanCommand:
         )
 
         move_zs = [c.args[1][2] for c in ctx.board.move.call_args_list]
-        assert move_zs == [30.0, 72.0, 20.0, 72.0, 20.0, 72.0, 20.0, 72.0, 20.0]
+        assert move_zs == [30.0, 3.0, 20.0, 3.0, 20.0, 3.0, 20.0, 3.0, 20.0]
 
         first_move = ctx.board.move.call_args_list[0]
         assert first_move.kwargs == {"travel_z": 30.0}
@@ -275,7 +274,7 @@ class TestScanCommand:
         )
 
         move_zs = [c.args[1][2] for c in ctx.board.move.call_args_list]
-        assert move_zs == [20.0, 72.0, 20.0, 72.0, 20.0, 72.0, 20.0, 72.0, 20.0]
+        assert move_zs == [20.0, 3.0, 20.0, 3.0, 20.0, 3.0, 20.0, 3.0, 20.0]
 
     def test_measurement_height_defaults_interwell_travel_height(self):
         from protocol_engine.commands.scan import scan
@@ -309,11 +308,11 @@ class TestScanCommand:
             instrument="uvvis",
             method="indentation",
             measurement_height=73.0,
-            indentation_limit=75.0,
+            indentation_limit=70.0,
         )
 
         assert all(r["measurement_height"] == 73.0 for r in results.values())
-        assert all(r["indentation_limit"] == 75.0 for r in results.values())
+        assert all(r["indentation_limit"] == 70.0 for r in results.values())
 
     def test_legacy_z_limit_is_rejected_at_runtime(self):
         from protocol_engine.commands.scan import scan
@@ -381,8 +380,7 @@ class TestScanCommand:
         instr_name, position = last_move.args
         assert instr_name == "uvvis"
         # Last well in row-major order is B2 at (10, 8, 75).
-        # Retract z = 75 - 10 = 65.
-        assert position == (10.0, 8.0, 65.0)
+        assert position == (10.0, 8.0, 10.0)
 
     def test_returns_dict_of_results_per_well(self):
         from protocol_engine.commands.scan import scan

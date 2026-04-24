@@ -126,17 +126,15 @@ class TestAspirateCommand:
         ctx.board.move_to_labware.assert_called_once_with("pipette", coord)
 
     def test_descends_to_action_z_after_approach(self):
-        """aspirate: descent raw-move must target labware.z - measurement_height."""
+        """aspirate: descent raw-move must target absolute measurement_height."""
         from protocol_engine.commands.pipette import aspirate
 
         coord = Coordinate3D(x=10.0, y=20.0, z=75.0)
         ctx = _mock_context(resolve_return=coord)
-        # Contact pipette dips 5mm below the labware reference.
+        # Contact pipette uses a low absolute deck-frame action plane.
         _get_pipette(ctx).measurement_height = -5.0
         aspirate(ctx, position="plate_1.A1", volume_ul=100.0)
-        # User-space is positive-down, so descent target =
-        # labware.z - measurement_height = 75 - (-5) = 80.
-        ctx.board.move.assert_called_once_with("pipette", (10.0, 20.0, 80.0))
+        ctx.board.move.assert_called_once_with("pipette", (10.0, 20.0, -5.0))
 
     def test_approach_then_descend_then_aspirate(self):
         """Ordering: approach (move_to_labware) -> descent (move) -> aspirate."""

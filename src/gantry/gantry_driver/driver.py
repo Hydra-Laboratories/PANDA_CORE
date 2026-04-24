@@ -514,7 +514,11 @@ class Mill:
         self.logger.debug("Jog command: %s", cmd)
         self.ser_mill.write((cmd + "\n").encode("ascii"))
         response = self.read().lower()
-        if "error" in response:
+        if (
+            "error" in response
+            or "alarm" in response
+            or "check limits" in response
+        ):
             # error:8 = "not idle" (planner buffer full) — safe to ignore
             if "error:8" in response:
                 self.logger.debug("Jog buffer full, skipping")
@@ -566,13 +570,25 @@ class Mill:
         self.execute_command("$H")
         time.sleep(1)
         start_time = time.time()
+        last_status_error = None
 
         while True:
-            status = self.current_status()
-
             if time.time() - start_time > timeout:
                 self.logger.warning("Homing timed out")
+                if last_status_error is not None:
+                    raise StatusReturnError(
+                        f"Homing timed out after {timeout} seconds; "
+                        f"last status error: {last_status_error}"
+                    ) from last_status_error
                 raise StatusReturnError(f"Homing timed out after {timeout} seconds")
+
+            try:
+                status = self.current_status()
+            except StatusReturnError as exc:
+                last_status_error = exc
+                self.logger.warning("No valid status during homing; retrying: %s", exc)
+                time.sleep(0.5)
+                continue
 
             if "Idle" in status:
                 self.logger.info("Homing completed")

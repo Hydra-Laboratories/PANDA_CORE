@@ -20,7 +20,7 @@ class Board:
     Holds a single Gantry instance and a dictionary of named instruments.
     Each instrument's offset_x, offset_y, and depth describe its position
     relative to the router so the board can calculate absolute positions
-    in user-facing positive coordinates.
+    in CubOS deck-frame coordinates.
     """
 
     def __init__(
@@ -65,9 +65,9 @@ class Board:
             )
         gantry_x = x - instr.offset_x
         gantry_y = y - instr.offset_y
-        gantry_z = z - instr.depth
+        gantry_z = z + instr.depth
         gantry_travel_z = (
-            travel_z - instr.depth if travel_z is not None else None
+            travel_z + instr.depth if travel_z is not None else None
         )
         self.logger.info(
             "Moving %s to (%.3f, %.3f, %.3f) → gantry (%.3f, %.3f, %.3f)",
@@ -82,8 +82,8 @@ class Board:
     ) -> None:
         """Travel *instrument* to the approach height above a labware target.
 
-        Emits a single ``move`` with ``travel_z = labware.z +
-        safe_approach_height``. The gantry lifts/lowers to approach Z at
+        Emits a single ``move`` with ``travel_z = safe_approach_height``.
+        The gantry lifts/lowers to that absolute deck-frame Z plane at
         the current XY, travels XY at approach Z, and ends above the
         target — not engaged with it. Higher-level commands
         (``measure``, ``aspirate``, ``scan``, ...) follow up with a raw
@@ -98,9 +98,9 @@ class Board:
         """
         instr = self._resolve_instrument(instrument)
         x, y, z = self._resolve_position(labware)
-        # User-space Z is positive-down (home at z=0, deck at larger z), so
-        # "safely above the labware" is a smaller z than the labware surface.
-        approach_z = z - instr.safe_approach_height
+        self._validate_finite_xyz(x, y, z, instr.name)
+        del z
+        approach_z = instr.safe_approach_height
         self.move(instr, (x, y, approach_z), travel_z=approach_z)
 
     def _validate_finite_xyz(self, x: float, y: float, z: float, instr_name: str) -> None:

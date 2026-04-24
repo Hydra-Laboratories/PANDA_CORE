@@ -76,7 +76,9 @@ def setup_protocol(
     if violations:
         raise SetupValidationError(violations)
 
-    semantic_violations = validate_protocol_semantics(protocol, board, deck)
+    semantic_violations = validate_protocol_semantics(
+        protocol, board, deck, gantry_config,
+    )
     if semantic_violations:
         raise ProtocolSemanticValidationError(semantic_violations)
 

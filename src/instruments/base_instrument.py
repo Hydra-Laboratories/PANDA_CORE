@@ -15,28 +15,20 @@ class BaseInstrument(ABC):
     are no-ops, health_check returns True, and instrument-specific methods
     return synthetic data without touching hardware.
 
-    Z-offset convention
-    -------------------
-    User-space Z is positive-down in this system: z=0 at the gantry's home
-    position (top of travel), larger z moves closer to the deck. Both
-    offsets below are signed heights ABOVE the labware reference z:
-    Board/commands subtract the offset from the labware z to get the
-    tip's target z. Bigger offset = smaller z = higher above the labware.
+    Deck-origin Z convention
+    ------------------------
+    CubOS Z is positive-up in the deck frame: z=0 is the bottom/front-left
+    work-volume origin, larger z moves away from the deck, and lower z moves
+    toward the deck. Both heights below are absolute deck-frame Z planes, not
+    labware-relative offsets.
 
-    * ``measurement_height`` — signed offset above the labware reference
-      during the measurement/action. Positive = above the reference
-      (tip held over the sample); negative = below (tip dipped into the
-      sample). Non-contact instruments (uvvis, filmetrics, uv_curing) use
-      a small positive value for probe clearance. Contact instruments
-      (pipette, asmi, potentiostat) use 0 (touch) or negative (dip).
-      Applied by each *engaging* command (measure/scan/aspirate/etc.)
-      when it descends after approach.
-    * ``safe_approach_height`` — signed offset above the labware reference
-      during XY travel. Must be >= ``measurement_height`` (enforced in
-      __init__) so the instrument never travels *lower* than its own
-      action height. Defaults to ``measurement_height`` (correct for
-      non-contact tools); contact instruments should set a larger positive
-      value explicitly. Applied by ``Board.move_to_labware``.
+    * ``measurement_height`` — absolute Z where the instrument performs its
+      action when a command does not provide an explicit protocol-level
+      ``measurement_height``.
+    * ``safe_approach_height`` — absolute Z used by ``Board.move_to_labware``
+      for XY travel. Must be >= ``measurement_height`` (enforced in
+      __init__) so the instrument travels at or above its action plane.
+      Defaults to ``measurement_height``.
     """
 
     def __init__(
@@ -58,8 +50,8 @@ class BaseInstrument(ABC):
                 f"measurement_height ({measurement_height}) for "
                 f"{self.__class__.__name__}. Board.move_to_labware travels "
                 f"XY at safe_approach_height and then descends to "
-                f"measurement_height; if the travel height sits below the "
-                f"action height, that 'descent' would lift the instrument "
+                f"measurement_height; in the deck-origin +Z-up frame, if the "
+                f"travel height sits below the action height, that 'descent' would lift the instrument "
                 f"instead — defeating the approach-above-then-descend contract."
             )
         self.name = name or self.__class__.__name__

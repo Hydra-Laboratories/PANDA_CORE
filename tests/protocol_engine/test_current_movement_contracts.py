@@ -1,4 +1,4 @@
-"""Current positive-down movement contracts before the deck-origin refactor."""
+"""Deck-origin movement contracts."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def _plate() -> WellPlate:
     )
 
 
-def test_board_move_to_labware_current_positive_down_contract():
+def test_board_move_to_labware_uses_absolute_safe_approach_height():
     gantry = MagicMock()
     instr = _instrument(measurement_height=3.0)
     instr.safe_approach_height = 10.0
@@ -49,10 +49,10 @@ def test_board_move_to_labware_current_positive_down_contract():
 
     board.move_to_labware("tool", Coordinate3D(x=10.0, y=20.0, z=75.0))
 
-    gantry.move_to.assert_called_once_with(10.0, 20.0, 65.0, travel_z=65.0)
+    gantry.move_to.assert_called_once_with(10.0, 20.0, 10.0, travel_z=10.0)
 
 
-def test_measure_current_positive_down_contract():
+def test_measure_uses_absolute_measurement_height():
     from protocol_engine.commands.measure import measure
 
     instr = _instrument(name="uvvis", measurement_height=3.0)
@@ -66,10 +66,10 @@ def test_measure_current_positive_down_contract():
     measure(ctx, instrument="uvvis", position="plate_1.A1")
 
     board.move_to_labware.assert_called_once_with("uvvis", deck.resolve.return_value)
-    board.move.assert_called_once_with("uvvis", (10.0, 20.0, 72.0))
+    board.move.assert_called_once_with("uvvis", (10.0, 20.0, 3.0))
 
 
-def test_scan_new_travel_names_current_positive_down_contract():
+def test_scan_new_travel_names_are_absolute_deck_frame_planes():
     from protocol_engine.commands.scan import scan
 
     instr = _instrument(name="uvvis", measurement_height=3.0)
@@ -97,7 +97,7 @@ def test_scan_new_travel_names_current_positive_down_contract():
     assert ctx.board.move.call_args_list[-1].args == ("uvvis", (19.0, 20.0, 20.0))
 
 
-def test_pipette_aspirate_current_positive_down_contract():
+def test_pipette_aspirate_uses_absolute_measurement_height():
     from protocol_engine.commands.pipette import aspirate
 
     pipette = _instrument(name="pipette", measurement_height=-5.0)
@@ -111,7 +111,7 @@ def test_pipette_aspirate_current_positive_down_contract():
     aspirate(ctx, position="plate_1.A1", volume_ul=10.0)
 
     board.move_to_labware.assert_called_once_with("pipette", deck.resolve.return_value)
-    board.move.assert_called_once_with("pipette", (10.0, 20.0, 80.0))
+    board.move.assert_called_once_with("pipette", (10.0, 20.0, -5.0))
 
 
 def test_move_named_park_position_current_contract():

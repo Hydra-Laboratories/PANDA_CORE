@@ -18,6 +18,23 @@ When opening or updating a PR, include a hardware impact section that lists:
 - Offline validation performed.
 - Required hardware validation still pending for the user.
 
+## Large-Refactor Checkpoint Rule
+
+For large refactors, hardware-facing motion changes, or any task likely to outlive one agent context window, create and maintain an explicit checkpoint file under `progress/` before making broad edits. Use a descriptive name such as `progress/issue-87-phase-2-3-checkpoint.md`.
+
+The checkpoint file should be the short-lived source of truth for the active task and should include:
+
+- Current branch, issue/PR link, and task scope.
+- Non-negotiable semantic contracts and safety assumptions.
+- Files/configs already changed and files likely to change next.
+- Tests and validation already run, including exact commands when useful.
+- Hardware touched or potentially affected, plus required hardware validation still pending.
+- Open risks, blockers, and next steps.
+
+Update the checkpoint whenever the plan changes, before a handoff to another agent, and after each meaningful implementation/validation milestone. If context compacts, read the checkpoint before continuing.
+
+When the task is complete, clean up the checkpoint before final handoff or merge: move any durable information into the issue, PR description, docs, or tests, then delete the temporary checkpoint file. If the checkpoint must remain because the task is still active or being handed to another agent, state that explicitly in the final response.
+
 ## Key Components
 
 ### Source Code (`src/instrument_drivers/cnc_driver`)
@@ -36,9 +53,8 @@ When opening or updating a PR, include a hardware impact section that lists:
 
 1.  **Connecting**: Always use the context manager `with Mill() as mill:` to ensure proper connection and cleanup.
 2.  **Moving**: Use `mill.move_to_position(x, y, z)` for safe moves. At the repo/user level, always think and communicate in positive `X`, `Y`, and `Z`.
-    - **Coordinates**: The physical/workcell convention is positive `X`, positive `Y`, positive `Z`. Do not pre-flip signs in calling code to match raw CNC coordinates.
-    - **Current XYZ convention**: In the high-level `src/gantry` wrapper, we keep user-facing `X/Y/Z` positive. The underlying boundary code translates `Z` to negative machine `Z` before sending commands to the controller, similar to CNC mode. We do not manually compensate for that translation in higher-level code.
-    - **TODO**: In a later PR, redefine `Z` from the base deck reference instead of the gantry head/top reference.
+    - **Coordinates**: The physical/workcell convention is positive `X`, positive `Y`, positive `Z` in the CubOS deck frame. Do not pre-flip signs in calling code to match raw CNC coordinates.
+    - **Current XYZ convention**: In the high-level `src/gantry` wrapper, CubOS uses a front-left-bottom deck origin: `+X` operator-right, `+Y` away/back, `+Z` up, `-Z` down. The gantry boundary no longer applies a hidden `Z` sign flip; controller settings must make WPos match the CubOS deck frame.
 3.  **Offsets**: Instruments have offsets managed by `InstrumentManager`.
 
 ### Instruments (`src/instruments`)
@@ -78,11 +94,11 @@ Driver for the Vernier GoDirect force sensor used for ASMI indentation/force mea
     - **Lifecycle**: `connect()`, `disconnect()`, `health_check()`
     - **Commands**: `measure(n_samples=1)`, `get_status()`, `get_force_reading()`, `get_baseline_force(samples)`, `indentation(gantry, ...)`
     - **Important semantic split**:
-        - Board/instrument `measurement_height` on the ASMI mount is the generic `BaseInstrument` relative offset used by shared protocol movement helpers.
-        - `ASMI.indentation(..., measurement_height=...)` is a protocol/runtime absolute Z for the start of the indentation, not a relative offset.
+        - Board/instrument `measurement_height` is the generic absolute deck-frame action Z used by shared protocol movement helpers when no protocol-level override is supplied.
+        - `ASMI.indentation(..., measurement_height=...)` is the protocol/runtime absolute deck-frame Z for the start of the indentation.
     - **ASMI scan motion model**:
-        - `scan.entry_travel_z` is an absolute Z used only for the initial transit into the first well (e.g. A1).
-        - `scan.safe_approach_height` is an absolute Z used only for well-to-well travel inside the scan.
+        - `scan.entry_travel_height` is an absolute deck-frame Z used only for the initial transit into the first well (e.g. A1).
+        - `scan.interwell_travel_height` is an absolute deck-frame Z used for well-to-well travel inside the scan.
         - After the within-scan transit, `indentation()` moves to its own absolute `measurement_height`, collects baseline force, then performs the stepwise indentation.
 - **`models.py`**: `MeasurementResult` and `ASMIStatus` frozen dataclasses.
 - **`exceptions.py`**: `ASMIError` hierarchy.
@@ -132,16 +148,16 @@ A modular system for executing experiment sequences defined in code or YAML.
 - **`registry.py`**: `CommandRegistry` singleton and `@protocol_command()` decorator for registering commands.
 - **`setup.py`**: `setup_protocol(gantry_path, deck_path, board_path, protocol_path)` — loads all configs, validates bounds, and returns `(Protocol, ProtocolContext)` ready to run. Uses an offline `Gantry` by default for offline validation.
 - **`commands/`**: Protocol command implementations:
-  - `home`: home the gantry and zero coordinates.
+  - `home`: home the gantry. With deck-origin configs it preserves the calibrated WPos frame; legacy non-deck-origin configs still zero at the homed pose.
   - `move`: move an instrument to a named position, raw `[x, y, z]`, or deck target.
     - Named/literal XYZ moves may also supply `travel_z` to force a retract-first transit (`Z -> XY -> final Z`).
-    - Deck targets ignore `travel_z` and use `Board.move_to_labware()` with the instrument's board-configured relative `safe_approach_height`.
-    - Named positions such as `safe_z` live in protocol YAML `positions:`; they are not deck/labware entries.
+    - Deck targets ignore `travel_z` and use `Board.move_to_labware()` with the instrument's board-configured absolute `safe_approach_height`.
+    - Named positions such as `park_position` live in protocol YAML `positions:`; they are not deck/labware entries.
   - `scan`: iterate all wells on a plate, call an instrument method per well, and persist measurements when a `DataStore` is configured.
-    - For generic instruments, omitted scan overrides fall back to the instrument's board-configured relative `safe_approach_height`.
-    - `scan.entry_travel_z` is an absolute Z used only for the initial move into the first well.
-    - `scan.safe_approach_height` is an absolute Z used only for well-to-well travel inside the scan.
-    - This `scan.safe_approach_height` field name is historical; despite the name, the scan override is an absolute Z coordinate, not a relative offset.
+    - For generic instruments, omitted scan overrides fall back to the instrument's board-configured absolute `measurement_height` / `safe_approach_height`.
+    - `scan.entry_travel_height` is an absolute deck-frame Z used only for the initial move into the first well.
+    - `scan.interwell_travel_height` is an absolute deck-frame Z used only for well-to-well travel inside the scan.
+    - Legacy scan names `entry_travel_z` and scan-level `safe_approach_height` are rejected before motion.
   - `measure`: move to one deck position and call an instrument method once.
   - `pause`: sleep for a fixed number of seconds.
   - `breakpoint`: pause until the user presses Enter.
@@ -151,17 +167,16 @@ A modular system for executing experiment sequences defined in code or YAML.
 ### Gantry Config (`src/gantry`)
 Gantry YAML loader and domain model for CNC gantry working volume and homing strategy.
 
-- **Coordinate convention**: At the repo/user level we work in positive `X`, `Y`, and `Z`. The underlying `Gantry` boundary code currently translates user-facing `Z` to machine `-Z` before sending commands to the controller, and converts machine `Z` back on reads. Do not manually apply that translation in higher-level code.
-- **TODO**: In a later PR, redefine `Z` from the base deck reference instead of the gantry head/top reference.
+- **Coordinate convention**: At the repo/user level we work in the CubOS deck frame: front-left-bottom origin, `+X` operator-right, `+Y` back/away, `+Z` up, `-Z` down. The `Gantry` boundary does not apply a hidden `Z` sign flip; controller settings must make WPos match this frame.
 - **`yaml_schema.py`**: `GantryYamlSchema` with strict Pydantic validation (working volume bounds, homing strategy, serial port, and `cnc.total_z_height`).
-- **`gantry_config.py`**: `GantryConfig` and `WorkingVolume` frozen dataclasses. `WorkingVolume.contains(x, y, z)` checks if a point is within bounds (inclusive). `GantryConfig.total_z_height` is the top-reference height used for labware height conversion. `HomingStrategy` enum: `STANDARD`, `XY_HARD_LIMITS`, `MANUAL_ORIGIN`.
+- **`gantry_config.py`**: `GantryConfig` and `WorkingVolume` frozen dataclasses. `WorkingVolume.contains(x, y, z)` checks if a point is within bounds (inclusive). `GantryConfig.total_z_height` is the configured vertical envelope; deck `height` values are direct deck-frame Z values, not `total_z_height - height`. `GantryConfig.structure_clearance_z` is an optional absolute Z plane for home/park/edge-risk clearance. `HomingStrategy` enum: `STANDARD`, `XY_HARD_LIMITS`, `MANUAL_ORIGIN`.
 - **`loader.py`**: `load_gantry_from_yaml(path)` and `load_gantry_from_yaml_safe(path)`.
 - **Config files**: `configs/gantry/` (e.g., `cub_xl.yaml`).
 
 ### Validation (`src/validation`)
 Bounds validation for protocol setup — ensures all deck positions and gantry-computed positions are within the gantry's working volume before the protocol runs.
 
-- **`bounds.py`**: `validate_deck_positions(gantry, deck)` and `validate_gantry_positions(gantry, deck, board)`. Returns lists of `BoundsViolation` objects. Gantry formula: `gantry_pos = deck_pos - instrument_offset`.
+- **`bounds.py`**: `validate_deck_positions(gantry, deck)` and `validate_gantry_positions(gantry, deck, board)`. Returns lists of `BoundsViolation` objects. Gantry formula: `gantry_x = target_x - offset_x`, `gantry_y = target_y - offset_y`, and `gantry_z = target_z + instrument.depth` in the +Z-up deck frame.
 - **`errors.py`**: `BoundsViolation` dataclass and `SetupValidationError` exception with all violations listed.
 
 ### Deck and Labware (`src/deck`)
@@ -236,10 +251,17 @@ SQLite-backed persistence layer for self-driving lab campaigns. All state lives 
 ### Setup (`setup/`)
 First-run scripts for verifying hardware after unboxing.
 
+- **`calibrate_deck_origin.py`**: One-instrument deck-origin calibration utility for issue #87-style configs. Homes the machine at the normalized back-right-top homing corner, clears transient `G92` offsets, asks for a known reference surface height above true deck/bottom Z=0, prompts the operator to jog one reference TCP to the front-left XY reference and known Z surface, sets that pose to `G10 L20 P1 X0 Y0 Z<reference_height>`, then re-homes and reports the measured physical working volume `(x_max, y_max, z_max)`. Use `--reference-z-mm 0` only when the TCP can touch the true bottom; use a known-height block/artifact otherwise. `--measure-reachable-z-min` can record the lowest safe reachable Z for that one TCP without resetting WPos.
+    - **Usage**: `python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml`
+    - **Known-height artifact**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --reference-z-mm 10`
+    - **Reach note**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --reference-z-mm 10 --measure-reachable-z-min`
+    - **Dry run**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --dry-run`
+    - **Safety**: only use with deck-origin gantry configs whose working-volume minima are all `0.0`; old negative-space configs are rejected.
 - **`hello_world.py`**: Interactive jog test. Connects to the gantry (auto-scan, no config), homes the gantry, then lets you move the router with arrow keys and see live position updates.
     - **Usage**: `python3 setup/hello_world.py`
     - **Controls**: Arrow keys (X/Y ±1mm), Z key (Z down 1mm), X key (Z up 1mm), Q (quit)
     - **Dependencies**: `src/hardware/gantry.py` (Gantry class)
+    - **TODO**: Replace or remove this legacy flow for the deck-origin scheme; its prompts/control text predate the new `+Z up` convention.
 - **`home_manual.py`**: Manual origin homing script for the Genmitsu Desktop CNC (CUB). Connects to the CNC, runs the `manual_origin` homing strategy (interactive keyboard jogging to set work zero), and prints the working volume bounds.
     - **Usage**: `python setup/home_manual.py`
     - **Controls**: Arrow keys (X/Y ±1mm), Z key (Z down 1mm), X key (Z up 1mm), Enter (confirm origin)
@@ -260,6 +282,7 @@ First-run scripts for verifying hardware after unboxing.
 ### Calibration (`calibration/`)
 - **`home_gantry.py`**: CNC homing wrapper that loads `configs/gantry/cub_xl.yaml`, connects to the gantry, and runs the configured homing sequence.
     - **Usage**: `python calibration/home_gantry.py`
+    - **TODO**: Replace or remove this legacy wrapper; deck-origin calibration should use `setup/calibrate_deck_origin.py` so a known-height front-left reference surface is explicitly jogged and assigned before homed WPos is treated as measured working volume.
 
 ### Development Commands
 - **Install for development**:

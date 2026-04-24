@@ -29,20 +29,20 @@ class TestGantry(unittest.TestCase):
         mock_mill.move_to_position.assert_called_with(
             x_coordinate=10.0,
             y_coordinate=20.0,
-            z_coordinate=-30.0,
+            z_coordinate=30.0,
             travel_z=None,
         )
 
     @patch("gantry.gantry.Mill")
-    def test_move_with_travel_z_passes_through_translated(self, mock_mill_cls):
+    def test_move_with_travel_z_passes_through_deck_frame_z(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
         gantry = Gantry(config=self.config)
         gantry.move_to(10, 20, 30, travel_z=50)
         mock_mill.move_to_position.assert_called_with(
             x_coordinate=10.0,
             y_coordinate=20.0,
-            z_coordinate=-30.0,
-            travel_z=-50.0,
+            z_coordinate=30.0,
+            travel_z=50.0,
         )
 
     @patch("gantry.gantry.Mill")
@@ -295,6 +295,20 @@ class TestGantry(unittest.TestCase):
         gantry = Gantry(config=self.config)
         gantry.zero_coordinates()
         mock_mill.execute_command.assert_called_with("G92 X0 Y0 Z0")
+
+    @patch("gantry.gantry.Mill")
+    def test_clear_g92_offsets_sends_g92_1(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        gantry = Gantry(config=self.config)
+        gantry.clear_g92_offsets()
+        mock_mill.execute_command.assert_called_with("G92.1")
+
+    @patch("gantry.gantry.Mill")
+    def test_set_work_coordinates_sends_g10_l20(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        gantry = Gantry(config=self.config)
+        gantry.set_work_coordinates(400.0, 300.0, 100.0)
+        mock_mill.execute_command.assert_called_with("G10 L20 P1 X400 Y300 Z100")
 
     @patch("gantry.gantry.Mill")
     def test_set_serial_timeout_updates_serial_object(self, mock_mill_cls):

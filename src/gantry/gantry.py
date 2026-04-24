@@ -16,6 +16,7 @@ from .gantry_driver.exceptions import (
     MillConnectionError,
     StatusReturnError,
 )
+from .origin import format_set_work_position_command
 
 _STATUS_RE = re.compile(r"<([^|>]+)")
 
@@ -25,9 +26,9 @@ logger = logging.getLogger(__name__)
 class Gantry:
     """High-level gantry wrapper around the low-level Mill driver.
 
-    X/Y coordinates are passed to the controller unchanged. Z remains
-    inverted at the boundary so higher-level code can keep the existing
-    vertical convention without depending directly on the low-level driver.
+    CubOS coordinates use the deck-origin frame at this boundary:
+    front-left-bottom origin, +X operator-right, +Y back, +Z up.
+    Controller GRBL settings are expected to make WPos match that frame.
     """
 
     def __init__(
@@ -242,7 +243,7 @@ class Gantry:
             return
         assert self._mill is not None
         try:
-            self._mill.jog(x=x, y=y, z=-z, feed_rate=feed_rate)
+            self._mill.jog(x=x, y=y, z=z, feed_rate=feed_rate)
         except (MillConnectionError, CommandExecutionError) as exc:
             self.logger.error("Jog error: %s", exc)
             raise
@@ -358,6 +359,39 @@ class Gantry:
             self.logger.info("Work coordinates zeroed")
         except (MillConnectionError, CommandExecutionError) as exc:
             self.logger.error("Error zeroing coordinates: %s", exc)
+            raise
+
+    def clear_g92_offsets(self) -> None:
+        """Clear transient G92 offsets before assigning a durable WPos."""
+        if self._offline:
+            return
+        assert self._mill is not None
+        try:
+            self._mill.execute_command("G92.1")
+            self.logger.info("G92 offsets cleared")
+        except (MillConnectionError, CommandExecutionError) as exc:
+            self.logger.error("Error clearing G92 offsets: %s", exc)
+            raise
+
+    def set_work_coordinates(self, x: float, y: float, z: float) -> None:
+        """Assign the current physical pose to the given work coordinates."""
+        x_work, y_work, z_work = to_machine_coordinates(x, y, z)
+        if self._offline:
+            self._offline_coords = {"x": x_work, "y": y_work, "z": z_work}
+            return
+        assert self._mill is not None
+        try:
+            self._mill.execute_command(
+                format_set_work_position_command(x_work, y_work, z_work)
+            )
+            self.logger.info(
+                "Work coordinates set to X=%s Y=%s Z=%s",
+                x_work,
+                y_work,
+                z_work,
+            )
+        except (MillConnectionError, CommandExecutionError) as exc:
+            self.logger.error("Error setting work coordinates: %s", exc)
             raise
 
     def configure_speeds(
