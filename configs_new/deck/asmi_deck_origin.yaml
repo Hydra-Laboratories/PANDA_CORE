@@ -20,12 +20,12 @@ labware:
     model_name: asmi_96_well_deck_origin_candidate
     calibration:
       a1:
-        x: 348.75
-        y: 61.75
-        z: 27.0
+        x: 358
+        y: 52
+        z: 30.0 #actual 25
       a2:
-        x: 339.75
-        y: 61.75
-        z: 27.0
+        x: 358
+        y: 52
+        z: 30.0
     x_offset_mm: -9.0
     y_offset_mm: 9.0

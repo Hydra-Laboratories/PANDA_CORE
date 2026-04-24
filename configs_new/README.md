@@ -61,6 +61,10 @@ them to `labware_z`.
 ## Files
 
 - `gantry/cub_xl_asmi_deck_origin.yaml`
+- `gantry/cub_xl_asmi_deck_origin_2026-04-24.yaml` — dated ASMI measured
+  working volume from deck-origin calibration:
+  `X[0.0, 399.0]`, `Y[0.0, 280.0]`, `Z[0.0, 87.0]`,
+  `cnc.total_z_height: 87.0`.
 - `deck/asmi_deck_origin.yaml`
 - `board/asmi_board_deck_origin.yaml`
 - `protocol/asmi_indentation_deck_origin.yaml`

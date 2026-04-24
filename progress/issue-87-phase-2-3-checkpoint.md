@@ -112,6 +112,13 @@ The expected direction is:
 
 - `configs_new/README.md` documents the candidate deck-origin coordinate frame, ASMI estimates, PANDA estimates, and validation status.
 - `configs_new/gantry/cub_xl_asmi_deck_origin.yaml` and `configs_new/gantry/cub_xl_panda_deck_origin.yaml` model an approximate `400 x 300 x 100 mm` Cub XL reachable work volume.
+- `configs_new/gantry/cub_xl_asmi_deck_origin_2026-04-24.yaml` is a dated
+  ASMI measured gantry config from the deck-origin calibration flow:
+  - working volume: `X[0.0, 399.0]`, `Y[0.0, 280.0]`, `Z[0.0, 87.0]`
+  - `cnc.total_z_height: 87.0`
+  - Z reference mode: bottom contact with WPos `(0.0, 0.0, 0.0)`
+  - unchanged settings copied from `cub_xl_asmi_deck_origin.yaml` remain
+    provisional until controller settings and physical validation are checked.
 - `configs_new/deck/asmi_deck_origin.yaml` places the ASMI 96-well plate from the old ASMI calibration estimate:
   - A1: `(348.75, 61.75, 27.0)`
   - A2: `(339.75, 61.75, 27.0)`
@@ -365,6 +372,14 @@ ASMI candidate setup validation:
 
 ```bash
 PYTHONPATH=src python setup/validate_setup.py configs_new/gantry/cub_xl_asmi_deck_origin.yaml configs_new/deck/asmi_deck_origin.yaml configs_new/board/asmi_board_deck_origin.yaml configs_new/protocol/asmi_indentation_deck_origin.yaml
+```
+
+Result: `PASS — all positions within gantry bounds`.
+
+Dated ASMI measured gantry setup validation:
+
+```bash
+PYTHONPATH=src python -m setup.validate_setup configs_new/gantry/cub_xl_asmi_deck_origin_2026-04-24.yaml configs_new/deck/asmi_deck_origin.yaml configs_new/board/asmi_board_deck_origin.yaml configs_new/protocol/asmi_indentation_deck_origin.yaml
 ```
 
 Result: `PASS — all positions within gantry bounds`.
