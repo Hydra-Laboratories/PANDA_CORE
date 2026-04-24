@@ -8,10 +8,10 @@
 #   new A1 = (400 - 51.25, 300 - 238.25, 100 - 73.0)
 #          = (348.75, 61.75, 27.0)
 #
-# Plate orientation from the photo:
-# - A1 is near the front-right.
-# - Columns increase toward the left, so x_offset_mm is negative.
-# - Rows increase toward the back, so y_offset_mm is positive.
+# Current physical calibration:
+# - A1 is the first well reference.
+# - A2 shares X with A1 and is one column step higher in Y.
+# - Rows advance toward lower X.
 
 labware:
   plate:
@@ -25,7 +25,7 @@ labware:
         z: 30.0 #actual 25
       a2:
         x: 358
-        y: 52
+        y: 61.0
         z: 30.0
     x_offset_mm: -9.0
     y_offset_mm: 9.0

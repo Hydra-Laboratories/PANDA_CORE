@@ -67,6 +67,7 @@ them to `labware_z`.
   `cnc.total_z_height: 87.0`.
 - `deck/asmi_deck_origin.yaml`
 - `board/asmi_board_deck_origin.yaml`
+- `protocol/asmi_move_a1_deck_origin.yaml`
 - `protocol/asmi_indentation_deck_origin.yaml`
 
 ## PANDA Estimate Basis

@@ -120,11 +120,19 @@ The expected direction is:
   - unchanged settings copied from `cub_xl_asmi_deck_origin.yaml` remain
     provisional until controller settings and physical validation are checked.
 - `configs_new/deck/asmi_deck_origin.yaml` places the ASMI 96-well plate from the old ASMI calibration estimate:
-  - A1: `(348.75, 61.75, 27.0)`
-  - A2: `(339.75, 61.75, 27.0)`
+  - Current A1: `(358.0, 52.0, 30.0)`
+  - Current A2: `(358.0, 61.0, 30.0)`
+  - A2 is one adjacent column step along +Y from A1; B1 advances to lower X.
 - `configs_new/board/asmi_board_deck_origin.yaml` uses absolute ASMI action/approach planes:
   - `measurement_height: 26.0`
   - `safe_approach_height: 35.0`
+- `configs_new/protocol/asmi_move_a1_deck_origin.yaml` is a minimal hardware
+  bring-up protocol:
+  - `home`
+  - deck-target `move` for `asmi` to `plate.A1`
+  - The move uses `Board.move_to_labware()`, so it stops at the ASMI
+    board-configured `safe_approach_height`; it does not descend to
+    `measurement_height` or perform indentation.
 - `configs_new/protocol/asmi_indentation_deck_origin.yaml` uses absolute scan/action planes:
   - `entry_travel_height: 85.0`
   - `interwell_travel_height: 35.0`
@@ -380,6 +388,14 @@ Dated ASMI measured gantry setup validation:
 
 ```bash
 PYTHONPATH=src python -m setup.validate_setup configs_new/gantry/cub_xl_asmi_deck_origin_2026-04-24.yaml configs_new/deck/asmi_deck_origin.yaml configs_new/board/asmi_board_deck_origin.yaml configs_new/protocol/asmi_indentation_deck_origin.yaml
+```
+
+Result: `PASS — all positions within gantry bounds`.
+
+ASMI A1 move bring-up validation:
+
+```bash
+PYTHONPATH=src python setup/validate_setup.py configs_new/gantry/cub_xl_asmi_deck_origin_2026-04-24.yaml configs_new/deck/asmi_deck_origin.yaml configs_new/board/asmi_board_deck_origin.yaml configs_new/protocol/asmi_move_a1_deck_origin.yaml
 ```
 
 Result: `PASS — all positions within gantry bounds`.
