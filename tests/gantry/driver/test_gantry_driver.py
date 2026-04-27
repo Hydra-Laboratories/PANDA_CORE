@@ -276,6 +276,22 @@ class TestCNCDriverLogic(unittest.TestCase):
         self.assertEqual(settings["$130"], "400.000")
         self.assertEqual(mill.config["$130"], "400.000")
 
+    @patch('gantry.gantry_driver.driver.time.sleep')
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_current_coordinates_does_not_require_homing_pull_off_setting(
+        self, mock_cmd_logger, mock_mill_logger, mock_serial, mock_sleep,
+    ):
+        mill = Mill()
+        mill.ser_mill = MagicMock()
+        mill.read = MagicMock(return_value="<Idle|WPos:1.000,2.000,3.000|FS:0,0>")
+        mill.config = {"$10": "0"}
+
+        coords = mill.current_coordinates()
+
+        self.assertEqual(coords, Coordinates(1.0, 2.0, 3.0))
+
     @patch('gantry.gantry_driver.driver.serial.Serial')
     @patch('gantry.gantry_driver.driver.set_up_mill_logger')
     @patch('gantry.gantry_driver.driver.set_up_command_logger')

@@ -68,6 +68,27 @@ class TestBoardYamlSchema:
         with pytest.raises(Exception):
             BoardYamlSchema.model_validate({})
 
+    def test_allows_grbl_settings_root_key(self):
+        schema = BoardYamlSchema.model_validate({
+            "grbl_settings": {
+                "status_report": 0,
+                "soft_limits": True,
+                "homing_enable": True,
+                "max_travel_x": 306.0,
+            },
+            "instruments": {"a": {"type": "uvvis_ccs", "vendor": "thorlabs"}},
+        })
+        assert schema.grbl_settings is not None
+        assert schema.grbl_settings.soft_limits is True
+        assert schema.grbl_settings.max_travel_x == 306.0
+
+    def test_rejects_unknown_grbl_setting(self):
+        with pytest.raises(Exception):
+            BoardYamlSchema.model_validate({
+                "grbl_settings": {"unknown_setting": 1},
+                "instruments": {"a": {"type": "uvvis_ccs", "vendor": "thorlabs"}},
+            })
+
 
 # --- Loader: valid YAML ------------------------------------------------------
 
@@ -216,6 +237,26 @@ class TestLoadBoardGantry:
         gantry = _mock_gantry()
         board = load_board_from_yaml(yaml_path, gantry)
         assert board.gantry is gantry
+
+    def test_grbl_settings_are_attached_to_board(self, tmp_path):
+        yaml_path = _write_yaml(tmp_path, """\
+            grbl_settings:
+              status_report: 0
+              soft_limits: true
+              homing_enable: true
+              max_travel_x: 306.0
+            instruments:
+              uvvis:
+                type: uvvis_ccs
+                vendor: thorlabs
+        """)
+        board = load_board_from_yaml(yaml_path, _mock_gantry())
+        assert board.expected_grbl_settings == {
+            "$10": 0.0,
+            "$20": 1.0,
+            "$22": 1.0,
+            "$130": 306.0,
+        }
 
 
 # --- Loader: error cases -----------------------------------------------------

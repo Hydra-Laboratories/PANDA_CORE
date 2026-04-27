@@ -304,6 +304,20 @@ class TestGantry(unittest.TestCase):
         mock_mill.execute_command.assert_called_with("G92.1")
 
     @patch("gantry.gantry.Mill")
+    def test_enforce_work_position_reporting_delegates_to_mill(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        gantry = Gantry(config=self.config)
+        gantry.enforce_work_position_reporting()
+        mock_mill._enforce_wpos_mode.assert_called_once_with()
+
+    @patch("gantry.gantry.Mill")
+    def test_activate_work_coordinate_system_sends_g54(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        gantry = Gantry(config=self.config)
+        gantry.activate_work_coordinate_system()
+        mock_mill.execute_command.assert_called_with("G54")
+
+    @patch("gantry.gantry.Mill")
     def test_set_work_coordinates_sends_g10_l20(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
         gantry = Gantry(config=self.config)
@@ -327,6 +341,34 @@ class TestGantry(unittest.TestCase):
         gantry.set_serial_timeout(0.5)
         self.assertEqual(mock_mill.ser_mill.timeout, 0.5)
 
+    @patch("gantry.gantry.Mill")
+    def test_configure_soft_limits_writes_and_verifies_settings(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        mock_mill.grbl_settings.return_value = {
+            "$20": "1",
+            "$22": "1",
+            "$130": "306.000",
+            "$131": "306.000",
+            "$132": "113.000",
+        }
+        gantry = Gantry(config=self.config)
+        gantry.configure_soft_limits_from_spans(
+            max_travel_x=306.0,
+            max_travel_y=306.0,
+            max_travel_z=113.0,
+        )
+        self.assertEqual(
+            mock_mill.set_grbl_setting.call_args_list,
+            [
+                unittest.mock.call("20", "0"),
+                unittest.mock.call("130", "306"),
+                unittest.mock.call("131", "306"),
+                unittest.mock.call("132", "113"),
+                unittest.mock.call("22", "1"),
+                unittest.mock.call("20", "1"),
+            ],
+        )
+
 
 class TestGrblSettingsValidation(unittest.TestCase):
     @patch("gantry.gantry.Mill")
@@ -348,6 +390,21 @@ class TestGrblSettingsValidation(unittest.TestCase):
                 },
             }
         )
+        gantry._validate_grbl_settings()
+
+    @patch("gantry.gantry.Mill")
+    def test_board_expected_settings_override_gantry_settings(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        mock_mill.grbl_settings.return_value = {"$3": "1", "$130": "306.000"}
+        gantry = Gantry(
+            config={
+                "grbl_settings": {
+                    "dir_invert_mask": 2,
+                    "max_travel_x": 300.0,
+                },
+            }
+        )
+        gantry.set_expected_grbl_settings({"$3": 1.0, "$130": 306.0})
         gantry._validate_grbl_settings()
 
     @patch("gantry.gantry.Mill")

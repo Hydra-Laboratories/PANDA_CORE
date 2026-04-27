@@ -6,6 +6,8 @@ from typing import Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from gantry.grbl_settings import GrblSettingsYaml
+
 
 class InstrumentYamlEntry(BaseModel):
     """Schema for one instrument in board YAML.
@@ -46,8 +48,9 @@ class InstrumentYamlEntry(BaseModel):
 
 
 class BoardYamlSchema(BaseModel):
-    """Root board YAML schema: only 'instruments' key allowed."""
+    """Root board YAML schema."""
 
     model_config = ConfigDict(extra="forbid")
 
+    grbl_settings: Optional[GrblSettingsYaml] = None
     instruments: Dict[str, InstrumentYamlEntry]

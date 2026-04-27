@@ -27,9 +27,13 @@ class Board:
         self,
         gantry: Gantry,
         instruments: dict[str, BaseInstrument] | None = None,
+        expected_grbl_settings: dict[str, float] | None = None,
     ):
         self.gantry = gantry
         self.instruments: dict[str, BaseInstrument] = instruments or {}
+        self.expected_grbl_settings = (
+            dict(expected_grbl_settings) if expected_grbl_settings else None
+        )
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     def move(

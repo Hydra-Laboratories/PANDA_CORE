@@ -1,0 +1,24 @@
+grbl_settings:
+  dir_invert_mask: 1
+  status_report: 0
+  homing_enable: true
+  homing_dir_mask: 0
+  steps_per_mm_x: 400.0
+  steps_per_mm_y: 400.0
+  steps_per_mm_z: 400.0
+  max_travel_x: 308.0
+  max_travel_y: 300.0
+  max_travel_z: 112.0
+  soft_limits: true
+instruments:
+  asmi:
+    type: asmi
+    vendor: vernier
+    offset_x: 0.0
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 26.0
+    safe_approach_height: 35.0
+    force_threshold: -50
+    sensor_channels:
+    - 1

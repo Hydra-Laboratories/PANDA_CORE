@@ -9,7 +9,8 @@ from pydantic import ValidationError
 
 from .errors import GantryLoaderError
 from .gantry_config import GantryConfig, HomingStrategy, WorkingVolume, YAxisMotion
-from .yaml_schema import GRBL_FIELD_TO_SETTING, GantryYamlSchema
+from .grbl_settings import normalize_expected_grbl_settings
+from .yaml_schema import GantryYamlSchema
 
 
 def _format_loader_exception(path: Path, error: Exception) -> str:
@@ -66,13 +67,7 @@ def load_gantry_from_yaml(path: str | Path) -> GantryConfig:
 
     schema = GantryYamlSchema.model_validate(raw)
 
-    expected_grbl = None
-    if schema.grbl_settings:
-        expected_grbl = {}
-        for field_name, grbl_code in GRBL_FIELD_TO_SETTING.items():
-            value = getattr(schema.grbl_settings, field_name)
-            if value is not None:
-                expected_grbl[grbl_code] = float(value)
+    expected_grbl = normalize_expected_grbl_settings(schema.grbl_settings)
 
     return GantryConfig(
         serial_port=schema.serial_port,

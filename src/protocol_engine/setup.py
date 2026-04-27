@@ -68,6 +68,11 @@ def setup_protocol(
     board: Board = load_board_from_yaml_safe(
         board_path, gantry, mock_mode=mock_mode,
     )
+    if hasattr(gantry, "set_expected_grbl_settings"):
+        gantry.set_expected_grbl_settings(
+            board.expected_grbl_settings,
+            source="board",
+        )
 
     protocol: Protocol = load_protocol_from_yaml_safe(protocol_path)
 

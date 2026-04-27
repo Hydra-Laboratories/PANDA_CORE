@@ -972,8 +972,6 @@ class Mill:
             raise ValueError("Invalid status mode")
 
         max_attempts = 3
-        homing_pull_off = float(self.config["$27"])
-
         pattern = wpos_pattern if status_mode in [0, 2] else mpos_pattern
         coord_type = "WPos" if status_mode in [0, 2] else "MPos"
 

@@ -5,6 +5,20 @@
 # offset_x, offset_y, and depth if the gantry reference point differs from the
 # actual indentation TCP.
 
+grbl_settings:
+  # Controller settings for the Cub XL ASMI deck-origin workcell. Re-verify
+  # live settings and recalibrate soft limits before trusting physical motion.
+  dir_invert_mask: 1
+  status_report: 0
+  homing_enable: true
+  homing_dir_mask: 0
+  steps_per_mm_x: 400.0
+  steps_per_mm_y: 400.0
+  steps_per_mm_z: 400.0
+  max_travel_x: 400.0
+  max_travel_y: 300.0
+  max_travel_z: 100.0
+
 instruments:
   asmi:
     type: asmi

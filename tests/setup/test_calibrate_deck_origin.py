@@ -59,6 +59,12 @@ class _FakeGantry:
     def clear_g92_offsets(self) -> None:
         self.calls.append(("clear_g92_offsets",))
 
+    def enforce_work_position_reporting(self) -> None:
+        self.calls.append(("enforce_work_position_reporting",))
+
+    def activate_work_coordinate_system(self, system: str = "G54") -> None:
+        self.calls.append(("activate_work_coordinate_system", system))
+
     def set_work_coordinates(
         self,
         x: float | None = None,
@@ -102,6 +108,24 @@ class _FakeGantry:
 
     def set_serial_timeout(self, timeout: float) -> None:
         self.calls.append(("set_serial_timeout", timeout))
+
+    def configure_soft_limits_from_spans(
+        self,
+        *,
+        max_travel_x: float,
+        max_travel_y: float,
+        max_travel_z: float,
+        tolerance_mm: float = 0.001,
+    ) -> None:
+        self.calls.append(
+            (
+                "configure_soft_limits_from_spans",
+                max_travel_x,
+                max_travel_y,
+                max_travel_z,
+                tolerance_mm,
+            )
+        )
 
 
 class _LimitRecoveringFakeGantry(_FakeGantry):
@@ -172,18 +196,21 @@ def test_run_calibration_sets_xy_then_z_and_measures_home(tmp_path):
     assert result.z_min_mm == 0.0
     assert result.reachable_z_min_mm == 0.0
     assert result.measured_working_volume == (398.5, 299.25, 96.75)
+    assert result.grbl_max_travel == (398.5, 299.25, 96.75)
     assert result.plan.origin_wpos == (0.0, 0.0, 0.0)
     assert _FakeGantry.instance.calls == [
         ("connect",),
         ("set_serial_timeout", 10.0),
         ("home",),
         ("set_serial_timeout", 1.0),
+        ("enforce_work_position_reporting",),
+        ("activate_work_coordinate_system", "G54"),
         ("clear_g92_offsets",),
-        ("jog", -1.0, 0.0, 0.0, 800.0),
+        ("jog", -1.0, 0.0, 0.0, 2500.0),
         ("get_coordinates",),
-        ("jog", 0.0, -2.0, 0.0, 800.0),
+        ("jog", 0.0, -2.0, 0.0, 2500.0),
         ("get_coordinates",),
-        ("jog", 0.0, 0.0, -3.0, 800.0),
+        ("jog", 0.0, 0.0, -3.0, 2500.0),
         ("get_coordinates",),
         ("get_coordinates",),
         ("set_work_coordinates", 0.0, 0.0, None),
@@ -193,6 +220,13 @@ def test_run_calibration_sets_xy_then_z_and_measures_home(tmp_path):
         ("set_serial_timeout", 10.0),
         ("home",),
         ("set_serial_timeout", 1.0),
+        ("get_coordinates",),
+        ("configure_soft_limits_from_spans", 398.5, 299.25, 96.75, 0.25),
+        ("set_serial_timeout", 10.0),
+        ("home",),
+        ("set_serial_timeout", 1.0),
+        ("activate_work_coordinate_system", "G54"),
+        ("set_work_coordinates", 398.5, 299.25, 96.75),
         ("get_coordinates",),
         ("set_serial_timeout", 0.05),
         ("disconnect",),
@@ -225,10 +259,86 @@ def test_run_calibration_assigns_ruler_gap_to_lower_reach_z(tmp_path):
     assert result.z_reference_verification == (0.0, 0.0, 43.0)
     assert result.z_min_mm == 43.0
     assert result.reachable_z_min_mm == 43.0
+    assert result.grbl_max_travel == (398.5, 299.25, 53.75)
     assert ("set_work_coordinates", 0.0, 0.0, None) in _FakeGantry.instance.calls
     assert ("set_work_coordinates", None, None, 43.0) in _FakeGantry.instance.calls
     assert any("WPos Z=43" in message for message in messages)
     assert any("z_min: 43.000" in message for message in messages)
+
+
+def test_run_calibration_prints_full_board_yaml_with_grbl_settings(tmp_path):
+    path = _write_gantry(tmp_path / "gantry.yaml")
+    board_path = tmp_path / "board.yaml"
+    board_path.write_text(
+        """\
+instruments:
+  asmi:
+    type: asmi
+    vendor: vernier
+    measurement_height: 26.0
+grbl_settings:
+  dir_invert_mask: 1
+  steps_per_mm_x: 400.0
+""",
+        encoding="utf-8",
+    )
+    messages: list[str] = []
+
+    result = run_calibration(
+        path,
+        output=messages.append,
+        gantry_factory=_FakeGantry,
+        key_reader=_key_reader([("\r", 1)]),
+        stdin_flusher=lambda: None,
+        tip_gap_mm=24.0,
+        z_reference_mode="ruler-gap",
+        board_path=board_path,
+        skip_soft_limit_config=True,
+    )
+
+    assert isinstance(result, DeckOriginCalibrationResult)
+    output_text = "\n".join(messages)
+    assert "Full board YAML to copy/paste:" in output_text
+    assert "dir_invert_mask: 1" in output_text
+    assert "steps_per_mm_x: 400.0" in output_text
+    assert "soft_limits: true" in output_text
+    assert "homing_enable: true" in output_text
+    assert "max_travel_x: 398.5" in output_text
+    assert "max_travel_y: 299.25" in output_text
+    assert "max_travel_z: 72.75" in output_text
+
+
+def test_run_calibration_can_prompt_and_write_board_yaml(tmp_path):
+    path = _write_gantry(tmp_path / "gantry.yaml")
+    board_path = tmp_path / "board.yaml"
+    board_path.write_text(
+        """\
+instruments:
+  asmi:
+    type: asmi
+    vendor: vernier
+""",
+        encoding="utf-8",
+    )
+    output_path = tmp_path / "written_board.yaml"
+    responses = iter([str(output_path), "y"])
+
+    run_calibration(
+        path,
+        output=lambda message: None,
+        input_reader=lambda prompt: next(responses),
+        gantry_factory=_FakeGantry,
+        key_reader=_key_reader([("\r", 1)]),
+        stdin_flusher=lambda: None,
+        board_path=board_path,
+        write_board_yaml=True,
+        skip_soft_limit_config=True,
+    )
+
+    written = output_path.read_text(encoding="utf-8")
+    assert "grbl_settings:" in written
+    assert "soft_limits: true" in written
+    assert "max_travel_z: 96.75" in written
 
 
 def test_run_calibration_prompts_for_tip_gap_when_omitted(tmp_path):
@@ -348,7 +458,7 @@ def test_run_calibration_deprecated_reach_flag_does_not_add_extra_jog(tmp_path):
     assert result.xy_origin_verification == (0.0, 0.0, 0.0)
     assert result.z_reference_verification == (0.0, 0.0, 43.0)
     assert result.reachable_z_min_mm == pytest.approx(43.0)
-    assert ("jog", 0.0, 0.0, -10.0, 800.0) not in _FakeGantry.instance.calls
+    assert ("jog", 0.0, 0.0, -10.0, 2500.0) not in _FakeGantry.instance.calls
     assert any("deprecated" in message.lower() for message in messages)
     assert any("reference_tcp_reachable_z_min: 43.000" in message for message in messages)
 
@@ -375,13 +485,13 @@ def test_run_calibration_recovers_from_limit_alarm_during_jog(tmp_path):
 
     assert isinstance(result, DeckOriginCalibrationResult)
     assert (
-        ("jog", 0.0, -1.0, 0.0, 800.0)
+        ("jog", 0.0, -1.0, 0.0, 2500.0)
         in _LimitRecoveringFakeGantry.instance.calls
     )
     assert ("jog_cancel",) in _LimitRecoveringFakeGantry.instance.calls
     assert ("unlock",) in _LimitRecoveringFakeGantry.instance.calls
     assert (
-        ("jog", 0.0, 2.0, 0.0, 800.0)
+        ("jog", 0.0, 2.0, 0.0, 2500.0)
         in _LimitRecoveringFakeGantry.instance.calls
     )
     assert any("Limit alarm detected" in message for message in messages)
@@ -429,11 +539,20 @@ def test_dry_run_prints_commands_without_connecting(tmp_path):
     )
 
     assert "  $H" in messages
+    assert "  $10=0" in messages
+    assert "  G90" in messages
+    assert "  G54" in messages
     assert "  G92.1" in messages
     assert "  <interactive jog to front-left XY origin/lower reach point>" in messages
     assert "  G10 L20 P1 X0 Y0" in messages
     assert "  <confirm true deck-bottom contact>" in messages
     assert "  G10 L20 P1 Z0" in messages
+    assert "  $20=0" in messages
+    assert "  $130=<x_span_mm>" in messages
+    assert "  $131=<y_span_mm>" in messages
+    assert "  $132=<z_span_mm>" in messages
+    assert "  $22=1" in messages
+    assert "  $20=1" in messages
     assert "No configured max travel values will be trusted as measured volume." in messages
 
 

@@ -20,10 +20,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import copy
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Any, Callable, Protocol
 
 import yaml
 
@@ -31,6 +32,7 @@ project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
+from board.yaml_schema import BoardYamlSchema  # noqa: E402
 from gantry import Gantry, load_gantry_from_yaml  # noqa: E402
 from gantry.origin import (  # noqa: E402
     DeckOriginCalibrationPlan,
@@ -49,6 +51,7 @@ class DeckOriginCalibrationResult:
     z_min_mm: float
     z_reference_mode: str
     reachable_z_min_mm: float | None
+    grbl_max_travel: tuple[float, float, float] | None
     instrument_name: str | None
     plan: DeckOriginCalibrationPlan
 
@@ -67,6 +70,8 @@ class _GantryLike(Protocol):
     def connect(self) -> None: ...
     def disconnect(self) -> None: ...
     def home(self) -> None: ...
+    def enforce_work_position_reporting(self) -> None: ...
+    def activate_work_coordinate_system(self, system: str = "G54") -> None: ...
     def clear_g92_offsets(self) -> None: ...
     def set_work_coordinates(
         self,
@@ -85,6 +90,14 @@ class _GantryLike(Protocol):
     def jog_cancel(self) -> None: ...
     def stop(self) -> None: ...
     def unlock(self) -> None: ...
+    def configure_soft_limits_from_spans(
+        self,
+        *,
+        max_travel_x: float,
+        max_travel_y: float,
+        max_travel_z: float,
+        tolerance_mm: float = 0.001,
+    ) -> None: ...
 
 
 KeyReader = Callable[[], tuple[str, int]]
@@ -95,7 +108,7 @@ Jog controls after homing:
   RIGHT / LEFT       +X right / -X left
   UP / DOWN          +Y back-away / -Y front-toward-operator
   X / Z              +Z up / -Z down
-  1 / 2 / 3          Set jog step to 0.1 / 1.0 / 5.0 mm
+  1 / 2 / 3 / 4 / 5  Set jog step to 0.1 / 1 / 5 / 10 / 25 mm
   SPACE              Cancel any active jog
   ENTER              Confirm the current calibration step
   Q                  Abort calibration
@@ -110,8 +123,166 @@ def _load_raw_config(path: Path) -> dict:
     return config
 
 
+def _load_raw_yaml_dict(path: Path, *, label: str) -> dict[str, Any]:
+    with path.open(encoding="utf-8") as handle:
+        data = yaml.safe_load(handle)
+    if not isinstance(data, dict):
+        raise ValueError(f"{label} YAML is empty or invalid: {path}")
+    return data
+
+
 def _coords_tuple(coords: dict[str, float]) -> tuple[float, float, float]:
     return (float(coords["x"]), float(coords["y"]), float(coords["z"]))
+
+
+def _round_mm(value: float) -> float:
+    return round(float(value), 3)
+
+
+def _calculate_grbl_max_travel(
+    measured_coords: dict[str, float],
+    *,
+    z_min_mm: float,
+    tolerance_mm: float,
+) -> dict[str, float]:
+    x_span = _round_mm(float(measured_coords["x"]))
+    y_span = _round_mm(float(measured_coords["y"]))
+    z_span = _round_mm(float(measured_coords["z"]) - float(z_min_mm))
+    spans = {
+        "max_travel_x": x_span,
+        "max_travel_y": y_span,
+        "max_travel_z": z_span,
+    }
+    invalid = [f"{key}={value}" for key, value in spans.items() if value <= tolerance_mm]
+    if invalid:
+        raise RuntimeError(
+            "Measured travel span is not positive enough for GRBL soft limits: "
+            + ", ".join(invalid)
+        )
+    return spans
+
+
+def _assert_near_xyz(
+    coords: dict[str, float],
+    *,
+    expected: dict[str, float],
+    tolerance_mm: float,
+    label: str,
+) -> None:
+    misses = [
+        f"{axis}: got {float(coords[axis]):.4f}, expected {float(expected[axis]):.4f}"
+        for axis in ("x", "y", "z")
+        if abs(float(coords[axis]) - float(expected[axis])) > tolerance_mm
+    ]
+    if misses:
+        raise RuntimeError(
+            f"{label} did not verify within {tolerance_mm} mm: "
+            + "; ".join(misses)
+        )
+
+
+def _updated_gantry_yaml_text(
+    raw_config: dict[str, Any],
+    *,
+    measured_coords: dict[str, float],
+    z_min_mm: float,
+) -> str:
+    updated = copy.deepcopy(raw_config)
+    updated.setdefault("cnc", {})["total_z_height"] = _round_mm(measured_coords["z"])
+    updated["working_volume"] = {
+        "x_min": 0.0,
+        "x_max": _round_mm(measured_coords["x"]),
+        "y_min": 0.0,
+        "y_max": _round_mm(measured_coords["y"]),
+        "z_min": _round_mm(z_min_mm),
+        "z_max": _round_mm(measured_coords["z"]),
+    }
+    updated.pop("grbl_settings", None)
+    return yaml.safe_dump(updated, sort_keys=False)
+
+
+def _build_board_grbl_settings(
+    *,
+    board_raw: dict[str, Any],
+    gantry_raw: dict[str, Any],
+    max_travel: dict[str, float],
+) -> dict[str, Any]:
+    settings: dict[str, Any] = {}
+    gantry_settings = gantry_raw.get("grbl_settings")
+    if isinstance(gantry_settings, dict):
+        settings.update(gantry_settings)
+    board_settings = board_raw.get("grbl_settings")
+    if isinstance(board_settings, dict):
+        settings.update(board_settings)
+    settings.update(
+        {
+            "status_report": 0,
+            "soft_limits": True,
+            "homing_enable": True,
+            "max_travel_x": max_travel["max_travel_x"],
+            "max_travel_y": max_travel["max_travel_y"],
+            "max_travel_z": max_travel["max_travel_z"],
+        }
+    )
+    return settings
+
+
+def _updated_board_yaml_text(
+    board_path: Path,
+    *,
+    gantry_raw: dict[str, Any],
+    max_travel: dict[str, float],
+) -> str:
+    board_raw = _load_raw_yaml_dict(board_path, label="Board")
+    updated = copy.deepcopy(board_raw)
+    updated["grbl_settings"] = _build_board_grbl_settings(
+        board_raw=board_raw,
+        gantry_raw=gantry_raw,
+        max_travel=max_travel,
+    )
+    BoardYamlSchema.model_validate(updated)
+    return yaml.safe_dump(updated, sort_keys=False)
+
+
+def _print_yaml_block(
+    *,
+    title: str,
+    yaml_text: str,
+    output: Callable[[str], None],
+) -> None:
+    output("")
+    output(title)
+    output("```yaml")
+    for line in yaml_text.rstrip().splitlines():
+        output(line)
+    output("```")
+
+
+def _maybe_write_board_yaml(
+    *,
+    yaml_text: str,
+    output_path: Path | None,
+    write_requested: bool,
+    input_reader: Callable[[str], str],
+    output: Callable[[str], None],
+) -> None:
+    if output_path is None and not write_requested:
+        return
+    if output_path is None:
+        raw = input_reader("Output board YAML filename: ").strip()
+        if not raw:
+            output("No board YAML filename supplied; skipping write.")
+            return
+        output_path = Path(raw)
+    confirm = input_reader(
+        f"Write updated board YAML to {output_path}? [y/N]: "
+    ).strip().lower()
+    if confirm not in ("y", "yes"):
+        output("Skipping board YAML write.")
+        return
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(yaml_text, encoding="utf-8")
+    output(f"Wrote updated board YAML: {output_path}")
 
 
 def _assert_near_xy_origin(
@@ -440,6 +611,14 @@ def _interactive_jog_to_reference(
             step_mm = 5.0
             output("Jog step set to 5.0 mm.")
             continue
+        if key == "4":
+            step_mm = 10.0
+            output("Jog step set to 10.0 mm.")
+            continue
+        if key == "5":
+            step_mm = 25.0
+            output("Jog step set to 25.0 mm.")
+            continue
 
         delta = {"x": 0.0, "y": 0.0, "z": 0.0}
         if key == "LEFT":
@@ -516,13 +695,17 @@ def run_calibration(
     dry_run: bool = False,
     tolerance_mm: float = 0.25,
     jog_step_mm: float = 1.0,
-    jog_feed_rate: float = 800.0,
+    jog_feed_rate: float = 2500.0,
     limit_pull_off_mm: float = 2.0,
     tip_gap_mm: float | None = None,
     reference_surface_z_mm: float | None = None,
     z_reference_mode: str = "bottom",
     measure_reachable_z_min: bool | None = False,
     instrument_name: str | None = None,
+    board_path: Path | None = None,
+    skip_soft_limit_config: bool = False,
+    write_board_yaml: bool = False,
+    output_board_path: Path | None = None,
     homing_serial_timeout_s: float = 10.0,
     jog_serial_timeout_s: float = 1.0,
     output: Callable[[str], None] = print,
@@ -535,6 +718,13 @@ def run_calibration(
     gantry_path = gantry_path.resolve()
     gantry_config = load_gantry_from_yaml(gantry_path)
     raw_config = _load_raw_config(gantry_path)
+    if board_path is not None:
+        board_path = board_path.resolve()
+        BoardYamlSchema.model_validate(_load_raw_yaml_dict(board_path, label="Board"))
+    if output_board_path is not None:
+        output_board_path = output_board_path.resolve()
+    if (write_board_yaml or output_board_path is not None) and board_path is None:
+        raise ValueError("--board is required when writing updated board YAML.")
     plan = build_deck_origin_calibration_plan(gantry_config)
     if reference_surface_z_mm is not None:
         if tip_gap_mm is not None:
@@ -586,7 +776,9 @@ def run_calibration(
         output(f"  - Instrument/TCP label for reach output: {instrument_name}")
     output("")
 
-    gantry = gantry_factory(config=raw_config)
+    gantry_runtime_config = copy.deepcopy(raw_config)
+    gantry_runtime_config.pop("grbl_settings", None)
+    gantry = gantry_factory(config=gantry_runtime_config)
     try:
         output("Connecting to gantry...")
         gantry.connect()
@@ -595,6 +787,10 @@ def run_calibration(
         _set_serial_timeout_if_available(gantry, homing_serial_timeout_s)
         gantry.home()
         _set_serial_timeout_if_available(gantry, jog_serial_timeout_s)
+        output("Forcing GRBL WPos status reporting ($10=0) and G90...")
+        gantry.enforce_work_position_reporting()
+        output("Activating G54 work coordinate system...")
+        gantry.activate_work_coordinate_system("G54")
         output("Clearing transient G92 offsets before origin calibration...")
         gantry.clear_g92_offsets()
         stdin_flusher()
@@ -667,6 +863,56 @@ def run_calibration(
             measured_coords,
             tolerance_mm=tolerance_mm,
         )
+        max_travel = _calculate_grbl_max_travel(
+            measured_coords,
+            z_min_mm=z_min_mm,
+            tolerance_mm=tolerance_mm,
+        )
+        output("")
+        output("Measured GRBL max-travel spans for soft limits:")
+        output(f"  $130 X max travel: {max_travel['max_travel_x']:.3f} mm")
+        output(f"  $131 Y max travel: {max_travel['max_travel_y']:.3f} mm")
+        output(f"  $132 Z max travel: {max_travel['max_travel_z']:.3f} mm")
+
+        if skip_soft_limit_config:
+            output("Skipping GRBL soft-limit programming by request.")
+        else:
+            output("Programming GRBL soft limits from measured travel spans...")
+            gantry.configure_soft_limits_from_spans(
+                max_travel_x=max_travel["max_travel_x"],
+                max_travel_y=max_travel["max_travel_y"],
+                max_travel_z=max_travel["max_travel_z"],
+                tolerance_mm=tolerance_mm,
+            )
+            output("Re-homing after updating GRBL travel settings...")
+            _set_serial_timeout_if_available(gantry, homing_serial_timeout_s)
+            gantry.home()
+            _set_serial_timeout_if_available(gantry, jog_serial_timeout_s)
+            output("Reassigning G54 at homed pose to measured WPos maxima...")
+            gantry.activate_work_coordinate_system("G54")
+            gantry.set_work_coordinates(
+                x=float(measured_coords["x"]),
+                y=float(measured_coords["y"]),
+                z=float(measured_coords["z"]),
+            )
+            final_homed_coords = dict(gantry.get_coordinates())
+            _assert_near_xyz(
+                final_homed_coords,
+                expected={
+                    "x": float(measured_coords["x"]),
+                    "y": float(measured_coords["y"]),
+                    "z": float(measured_coords["z"]),
+                },
+                tolerance_mm=tolerance_mm,
+                label="Final homed WPos after soft-limit setup",
+            )
+            output(
+                "Verified final homed WPos: "
+                f"X={final_homed_coords['x']:.3f} "
+                f"Y={final_homed_coords['y']:.3f} "
+                f"Z={final_homed_coords['z']:.3f}"
+            )
+
         _print_config_patch(
             measured_coords,
             z_reference_coords=z_reference_coords,
@@ -675,6 +921,37 @@ def run_calibration(
             instrument_name=instrument_name,
             output=output,
         )
+        _print_yaml_block(
+            title="Full gantry YAML to copy/paste:",
+            yaml_text=_updated_gantry_yaml_text(
+                raw_config,
+                measured_coords=measured_coords,
+                z_min_mm=z_min_mm,
+            ),
+            output=output,
+        )
+
+        if board_path is not None:
+            board_yaml_text = _updated_board_yaml_text(
+                board_path,
+                gantry_raw=raw_config,
+                max_travel=max_travel,
+            )
+            _print_yaml_block(
+                title="Full board YAML to copy/paste:",
+                yaml_text=board_yaml_text,
+                output=output,
+            )
+            _maybe_write_board_yaml(
+                yaml_text=board_yaml_text,
+                output_path=output_board_path,
+                write_requested=write_board_yaml,
+                input_reader=input_reader,
+                output=output,
+            )
+        else:
+            output("")
+            output("No --board supplied; skipping full board YAML output.")
 
         return DeckOriginCalibrationResult(
             measured_working_volume=_coords_tuple(measured_coords),
@@ -683,6 +960,11 @@ def run_calibration(
             z_min_mm=z_min_mm,
             z_reference_mode=z_reference_mode,
             reachable_z_min_mm=reachable_z_min_mm,
+            grbl_max_travel=(
+                max_travel["max_travel_x"],
+                max_travel["max_travel_y"],
+                max_travel["max_travel_z"],
+            ),
             instrument_name=instrument_name,
             plan=plan,
         )
@@ -746,6 +1028,28 @@ def main() -> None:
         default=None,
         help="Optional instrument/TCP label used in reach-limit output, e.g. asmi.",
     )
+    parser.add_argument(
+        "--board",
+        type=Path,
+        default=None,
+        help="Board YAML to merge calibrated GRBL settings into for copy/paste output.",
+    )
+    parser.add_argument(
+        "--skip-soft-limit-config",
+        action="store_true",
+        help="Do not program GRBL soft limits after measuring the working volume.",
+    )
+    parser.add_argument(
+        "--write-board-yaml",
+        action="store_true",
+        help="Prompt for a filename and write the updated board YAML after confirmation.",
+    )
+    parser.add_argument(
+        "--output-board",
+        type=Path,
+        default=None,
+        help="Write updated board YAML to this path after confirmation.",
+    )
     reach_group = parser.add_mutually_exclusive_group()
     reach_group.add_argument(
         "--measure-reachable-z-min",
@@ -778,7 +1082,7 @@ def main() -> None:
     parser.add_argument(
         "--jog-feed-rate",
         type=float,
-        default=800.0,
+        default=2500.0,
         help="Feed rate used for interactive jog moves.",
     )
     parser.add_argument(
@@ -814,6 +1118,10 @@ def main() -> None:
             z_reference_mode=args.z_reference_mode,
             measure_reachable_z_min=args.measure_reachable_z_min,
             instrument_name=args.instrument_name,
+            board_path=args.board,
+            skip_soft_limit_config=args.skip_soft_limit_config,
+            write_board_yaml=args.write_board_yaml,
+            output_board_path=args.output_board,
             homing_serial_timeout_s=args.homing_serial_timeout_s,
             jog_serial_timeout_s=args.jog_serial_timeout_s,
         )
