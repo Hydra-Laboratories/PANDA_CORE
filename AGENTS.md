@@ -251,14 +251,12 @@ SQLite-backed persistence layer for self-driving lab campaigns. All state lives 
 ### Setup (`setup/`)
 First-run scripts for verifying hardware after unboxing.
 
-- **`calibrate_deck_origin.py`**: One-instrument deck-origin calibration utility for issue #87-style configs. Homes the machine at the normalized back-right-top homing corner, clears transient `G92` offsets, then separates calibration into two operator-jogged points: first jog the reference TCP as far as appropriate toward the physical front-left XY origin/lower reach point and set only `G10 L20 P1 X0 Y0`; then choose whether the TCP can safely touch true deck bottom or must use a known-height labware/artifact Z reference surface such as well plate A1. Bottom mode sets only `G10 L20 P1 Z0`; known-height mode sets only `G10 L20 P1 Z<reference_height>`. It then can record a per-instrument `z_min_reachable`, re-homes, and reports the measured physical working volume `(x_max, y_max, z_max)`. Keep global `working_volume.z_min` at `0.0`; lower reach belongs to the instrument, not the gantry volume.
+- **`calibrate_deck_origin.py`**: One-instrument deck-origin calibration utility for issue #87-style configs. Homes the machine at the normalized back-right-top homing corner, clears transient `G92` offsets, then prompts the operator to jog the reference TCP as far as appropriate toward the physical front-left XY origin and its lowest safe reachable Z. It sets only `G10 L20 P1 X0 Y0`, then assigns Z at the same pose. If the TCP touches true deck bottom, bottom mode sets `G10 L20 P1 Z0`. If the TCP cannot reach bottom, ruler-gap mode asks for the measured deck-to-TCP gap and sets `G10 L20 P1 Z<gap_mm>`. It then re-homes and reports measured physical maxima `(x_max, y_max, z_max)`. For one-instrument configs, use the lower-reach value as `working_volume.z_min`; for future multi-instrument configs, model lower reach per instrument instead of using one global Z minimum.
     - **Guided usage**: `python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --instrument asmi`
-    - **Known-height A1/artifact**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --z-reference-mode known-height --reference-z-mm 10 --instrument asmi`
+    - **Ruler gap for non-bottom-reaching TCP**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --z-reference-mode ruler-gap --tip-gap-mm 5 --instrument filmetrics`
     - **Bottom contact**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --z-reference-mode bottom`
-    - **Reach note**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --z-reference-mode known-height --reference-z-mm 10 --measure-reachable-z-min --instrument asmi`
-    - **Skip reach prompt**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --skip-reachable-z-min`
     - **Dry run**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --dry-run`
-    - **Safety**: only use with deck-origin gantry configs whose working-volume minima are all `0.0`; old negative-space configs are rejected.
+    - **Safety**: only use with deck-origin gantry configs whose X/Y working-volume minima are `0.0` and whose Z minimum is non-negative; old negative-space configs are rejected.
 - **`hello_world.py`**: Interactive jog test. Connects to the gantry (auto-scan, no config), homes the gantry, then lets you move the router with arrow keys and see live position updates.
     - **Usage**: `python3 setup/hello_world.py`
     - **Controls**: Arrow keys (X/Y ±1mm), Z key (Z down 1mm), X key (Z up 1mm), Q (quit)
@@ -284,7 +282,7 @@ First-run scripts for verifying hardware after unboxing.
 ### Calibration (`calibration/`)
 - **`home_gantry.py`**: CNC homing wrapper that loads `configs/gantry/cub_xl.yaml`, connects to the gantry, and runs the configured homing sequence.
     - **Usage**: `python calibration/home_gantry.py`
-    - **TODO**: Replace or remove this legacy wrapper; deck-origin calibration should use `setup/calibrate_deck_origin.py` so X/Y origining and known-height Z grounding are explicitly jogged before homed WPos is treated as measured working volume.
+    - **TODO**: Replace or remove this legacy wrapper; deck-origin calibration should use `setup/calibrate_deck_origin.py` so X/Y origining and bottom/ruler-gap Z assignment are explicitly completed before homed WPos is treated as measured working volume.
 
 ### Development Commands
 - **Install for development**:

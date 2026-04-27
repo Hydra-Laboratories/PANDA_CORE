@@ -58,31 +58,31 @@ python setup/run_protocol.py \
 ## Interactive Jog Test
 
 For deck-origin configs, normalize `$3`/`$23` first, then calibrate WPos in
-two parts: first jog to the front-left XY origin/lower reach point, then jog to
-a labware/artifact reference surface with a known height above true
-deck/bottom Z=0:
+two parts: first jog to the front-left XY origin and lowest safe reachable Z
+for the active TCP, then assign Z from bottom contact or a ruler-measured
+deck-to-TCP gap:
 
 ```bash
 python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --instrument asmi
 ```
 
-If the reference TCP touches or focuses on a 43 mm A1/artifact surface, pass
-that height explicitly:
+If the TCP cannot reach true deck bottom, measure the vertical gap from deck to
+TCP with a ruler and pass that gap explicitly:
 
 ```bash
-python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --z-reference-mode known-height --reference-z-mm 43 --instrument asmi
+python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --z-reference-mode ruler-gap --tip-gap-mm 5 --instrument filmetrics
 ```
 
 If the TCP can safely touch true deck bottom, use bottom mode instead:
 
 ```bash
-python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --z-reference-mode bottom --skip-reachable-z-min
+python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --z-reference-mode bottom
 ```
 
-The guided flow asks whether to measure the lowest safe reachable Z for the
-instrument. This is recommended for ASMI because indentation can move below the
-A1 measurement height. That value is a per-instrument reach note; global
-`working_volume.z_min` remains the deck bottom at `0.0`.
+For one-instrument configs, use the measured lower-reach Z as
+`working_volume.z_min`. For example, a TCP that stops 5 mm above deck and homes
+to `Z=105` should use `z_min: 5.0`, `z_max: 105.0`. Multi-instrument configs
+will need per-instrument lower-reach limits instead of one global Z minimum.
 
 The older jog helper is still available for connectivity checks, but it predates
 the deck-origin bring-up flow:

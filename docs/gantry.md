@@ -72,10 +72,12 @@ Working volume bounds are inclusive and use the CubOS deck frame:
 
 - CubOS `(0, 0, 0)` is the front-left-bottom reachable work volume. Because
   normalized machines home at the opposite top-back-right corner, run the
-  deck-origin calibration script to jog first to the front-left XY origin/lower
-  reach point and assign only `X=0`, `Y=0`, then jog to a known-height
-  labware/artifact Z reference surface and assign only `Z=<reference_height>`.
-  The homed pose after both steps is measured as `(x_max, y_max, z_max)`.
+  deck-origin calibration script to jog to the front-left XY origin and lowest
+  safe reachable Z for the active TCP, assign only `X=0`, `Y=0`, then assign
+  Z from either bottom contact (`Z=0`) or a ruler-measured deck-to-TCP gap.
+  If the TCP cannot reach bottom, the one-instrument config should use that
+  gap as `working_volume.z_min`. The homed pose after assignment is measured
+  as `(x_max, y_max, z_max)`.
 - `+X` moves right from the operator perspective.
 - `+Y` moves away from the operator, toward the back of the deck.
 - `+Z` moves up, away from the deck.
@@ -186,22 +188,22 @@ Record `$3` and `$23` before changing anything.
    python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --instrument asmi
    ```
 
-   The script sends `$H`, clears transient `G92` offsets, asks for a known
-   reference surface height above true deck/bottom Z=0, prompts the operator to
-   jog one reference TCP to the front-left XY origin/lower reach point and sets
-   only `G10 L20 P1 X0 Y0`, then prompts the operator to jog to the
-   labware/artifact Z reference surface and sets only
-   `G10 L20 P1 Z<reference_height>`. It then re-homes and reads WPos at the
-   homed back-right-top corner. That measured WPos is the physical working
+   The script sends `$H`, clears transient `G92` offsets, prompts the operator
+   to jog one reference TCP to the front-left XY origin and lowest safe
+   reachable Z, then sets only `G10 L20 P1 X0 Y0`. It then asks whether the
+   TCP is touching true deck bottom. If yes, it sets `G10 L20 P1 Z0`. If no,
+   measure the vertical gap from deck to TCP with a ruler and enter that gap;
+   the script sets `G10 L20 P1 Z<gap_mm>`. It then re-homes and reads WPos at
+   the homed back-right-top corner. That measured WPos is the physical working
    volume for the setup. Do not treat nominal or configured max-travel values
    as physical truth until this measurement is done.
 
    In guided mode, the script asks whether the TCP can safely touch true deck
-   bottom. If yes, it sets Z with bottom contact. If no or unsure, use A1 or a
-   known-height artifact and pass that height explicitly:
+   bottom at the current lower-reach pose. If no or unsure, enter the measured
+   deck-to-TCP gap explicitly:
 
    ```bash
-   python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --z-reference-mode known-height --reference-z-mm 10 --instrument asmi
+   python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --z-reference-mode ruler-gap --tip-gap-mm 5 --instrument filmetrics
    ```
 
    For instruments that can touch true deck bottom:
@@ -210,11 +212,11 @@ Record `$3` and `$23` before changing anything.
    python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --z-reference-mode bottom
    ```
 
-   The guided flow asks whether to record the lowest safe reachable Z for that
-   one TCP; ASMI defaults to yes because indentation can go below A1. This
-   reach note is per-instrument. The deck bottom remains absolute Z=0, so
-   `working_volume.z_min` stays `0.0` even when the mounted TCP cannot
-   physically reach it.
+   For one-instrument configs, use the measured lower-reach Z as
+   `working_volume.z_min`. For example, if the TCP stops 5 mm above deck and
+   the homed WPos reads `Z=105`, use `z_min: 5.0`, `z_max: 105.0`. A future
+   multi-instrument config should move this into per-instrument lower-reach
+   limits rather than one global `z_min` for every tool.
 
 ### Acceptance Criteria
 

@@ -45,21 +45,26 @@ def format_set_work_position_command(
 def validate_deck_origin_minima(config: GantryConfig) -> None:
     """Validate that a gantry config is in the deck-origin frame shape."""
     volume = config.working_volume
-    non_zero_mins = [
+    non_zero_xy_mins = [
         (axis, value)
         for axis, value in (
             ("x_min", volume.x_min),
             ("y_min", volume.y_min),
-            ("z_min", volume.z_min),
         )
         if abs(value) > _ZERO_TOLERANCE
     ]
-    if non_zero_mins:
-        formatted = ", ".join(f"{axis}={value}" for axis, value in non_zero_mins)
+    if non_zero_xy_mins:
+        formatted = ", ".join(f"{axis}={value}" for axis, value in non_zero_xy_mins)
         raise ValueError(
-            "Deck-origin calibration requires working_volume minima at 0.0; "
+            "Deck-origin calibration requires working_volume X/Y minima at 0.0; "
             f"got {formatted}. Use a deck-origin gantry config before setting "
             "front-left-bottom origin."
+        )
+    if volume.z_min < -_ZERO_TOLERANCE:
+        raise ValueError(
+            "Deck-origin calibration requires working_volume.z_min >= 0.0; "
+            f"got z_min={volume.z_min}. Use a deck-origin gantry config before "
+            "setting front-left-bottom origin."
         )
 
 
@@ -69,10 +74,10 @@ def build_deck_origin_calibration_plan(
     """Build the GRBL command skeleton for deck-origin calibration.
 
     The physical travel values are intentionally not included here. They must
-    be measured by jogging to a front-left XY reference, assigning only X/Y to
-    zero, jogging to a known-height labware/artifact Z reference surface,
-    assigning only Z to that surface height, then re-homing and reading WPos at
-    the homed back-right-top corner.
+    be measured by jogging to a front-left XY reference at the lowest safe
+    reachable Z, assigning only X/Y to zero, assigning Z either to true deck
+    bottom or to the ruler-measured deck-to-TCP gap, then re-homing and reading
+    WPos at the homed back-right-top corner.
     """
     validate_deck_origin_minima(config)
     return DeckOriginCalibrationPlan(
@@ -82,8 +87,8 @@ def build_deck_origin_calibration_plan(
             "G92.1",
             "<interactive jog to front-left XY origin/lower reach point>",
             "G10 L20 P1 X0 Y0",
-            "<interactive jog to labware/artifact Z reference surface>",
-            "G10 L20 P1 Z<reference_surface_z_mm>",
+            "<confirm deck-bottom contact or enter ruler-measured TCP gap>",
+            "G10 L20 P1 Z<z_min_mm>",
             "$H",
             "?",
         ),

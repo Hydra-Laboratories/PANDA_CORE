@@ -44,6 +44,30 @@ def test_home_preserves_calibrated_wpos_for_deck_origin_config():
     assert gantry.set_serial_timeout.call_args_list[-1].args == (0.05,)
 
 
+def test_home_preserves_calibrated_wpos_for_one_instrument_nonzero_z_min():
+    config = GantryConfig(
+        serial_port="/dev/ttyUSB0",
+        homing_strategy=HomingStrategy.STANDARD,
+        total_z_height=105.0,
+        working_volume=WorkingVolume(
+            x_min=0.0,
+            x_max=400.0,
+            y_min=0.0,
+            y_max=300.0,
+            z_min=5.0,
+            z_max=105.0,
+        ),
+    )
+    context, gantry = _context(config)
+
+    home(context)
+
+    gantry.home.assert_called_once_with()
+    gantry.zero_coordinates.assert_not_called()
+    gantry.clear_g92_offsets.assert_not_called()
+    gantry.set_work_coordinates.assert_not_called()
+
+
 def test_home_keeps_legacy_zero_behavior_without_deck_origin_config():
     config = GantryConfig(
         serial_port="/dev/ttyUSB0",

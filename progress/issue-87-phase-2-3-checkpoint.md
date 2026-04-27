@@ -51,49 +51,39 @@ Correct Phase 2/3 calibration target:
      use the lowest safe instrument or attach instruments one at a time.
    - For Phase 2/3, keep this as a one-instrument workflow.
 3. Home the gantry.
-4. Ask whether this TCP can safely touch true deck bottom.
-   - If yes, bottom mode will later set only `Z0` at deck-bottom contact.
-   - If no or unsure, known-height mode will use a labware/artifact reference
-     surface such as A1.
-5. For known-height mode, ask for the labware/artifact reference surface
-   height above true deck/bottom Z=0.
-   - If the TCP touches/focuses on a 43 mm artifact or an A1 surface 14.5 mm
-     above the deck, the reference surface height is `43` or `14.5`, not `0`.
-6. Prompt the operator through interactive jogging to the front-left XY
+4. Prompt the operator through interactive jogging to the front-left XY
    origin/lower reach point for the reference TCP.
-   - This point establishes only X/Y.
-   - Do not infer deck Z=0 from this point. For ASMI, the tool may touch
-     something before the intended labware Z reference is reached.
-7. On confirmation, assign only X/Y:
+   - This point establishes X/Y and the lowest safe reachable Z for this one
+     active TCP.
+   - Do not assume this point is deck Z=0 unless the TCP is actually touching
+     true deck bottom.
+5. On confirmation, assign only X/Y:
 
    ```gcode
    G10 L20 P1 X0 Y0
    ```
 
-8. Prompt the operator to jog to the Z reference:
-   - bottom mode: true deck-bottom contact.
-   - known-height mode: the known-height Z reference surface, such as well
-     plate A1 or a calibration artifact that is not at the front-left origin
-     point.
-9. On confirmation, assign only Z:
+6. Ask whether the TCP is touching true deck bottom at that pose.
+   - If yes, bottom mode uses `z_min=0.0`.
+   - If no, ruler-gap mode asks the operator to measure the vertical gap from
+     deck to TCP and uses that gap as the one-instrument lower Z.
+7. Assign only Z:
 
    ```gcode
-   G10 L20 P1 Z<reference_surface_z_mm>
+   G10 L20 P1 Z<z_min_mm>
    ```
 
-   In bottom mode this is `G10 L20 P1 Z0`.
-10. Ask whether to jog to the lowest safe reachable Z for that one TCP and
-   record the current WPos Z as a per-instrument reach note.
-   - ASMI defaults to yes because indentation can move below A1.
-   - This does not reset WPos, and it does not change the fact that physical
-     deck bottom is absolute Z=0.
-   - Keep global `working_volume.z_min: 0.0`; encode this as instrument reach,
-     e.g. `instrument_reach.asmi.z_min_reachable`.
-11. Re-home after reference assignment and read the resulting WPos at the homed
+   In bottom mode this is `G10 L20 P1 Z0`; in ruler-gap mode it is
+   `G10 L20 P1 Z<gap_mm>`.
+8. Re-home after reference assignment and read the resulting WPos at the homed
    back-right-top corner. That measured WPos is the real working volume
    `(x_max, y_max, z_max)` for the setup.
-12. Use the measured values to update or print the gantry YAML working-volume
+9. Use the measured values to update or print the gantry YAML working-volume
    bounds. Do not treat nominal `400 x 300 x 100` values as physical truth.
+   - For one-instrument bottom contact, use `z_min: 0.0`.
+   - For one-instrument ruler-gap mode, use `z_min: <gap_mm>` and measured
+     homed `z_max`. Example: if the TCP stops 5 mm above deck and has 100 mm
+     upward travel, expect about `z_min: 5.0`, `z_max: 105.0`.
 
 Multi-instrument calibration is intentionally deferred to a later Phase 3.5.
 The expected direction is:
@@ -107,6 +97,11 @@ The expected direction is:
   bottom-plane contact would risk collisions.
 - Add future checks for inactive-tool collisions and, if deck/labware placement
   is not mechanically constrained, extra targets/fiducials for rotation or tilt.
+- Do not rely on a one-instrument global `working_volume.z_min` for
+  mixed-depth tools. Multi-instrument configs need per-instrument lower-reach
+  limits, e.g. `instrument_reach.<tool>.z_min_reachable`, plus motion planning
+  that prevents inactive lower-hanging tools from colliding while another TCP
+  is active.
 
 ## Candidate Config State
 
@@ -136,8 +131,10 @@ The expected direction is:
 - `configs_new/protocol/asmi_indentation_deck_origin.yaml` uses absolute scan/action planes:
   - `entry_travel_height: 85.0`
   - `interwell_travel_height: 35.0`
-  - `measurement_height: 26.0`
-  - `indentation_limit: 24.0`
+  - current local workspace `measurement_height: 32.0`
+  - current local workspace `indentation_limit: 30.0`
+  - those ASMI protocol height edits are currently unstaged user/hardware-tuning
+    changes; do not revert them.
 - `configs_new/deck/panda_deck_origin.yaml` is a visual estimate from the PANDA images:
   - well plate and tip racks use A1 to A2 along Y, with X unchanged between A1 and A2.
   - vial holder includes placeholder vials.
@@ -164,15 +161,13 @@ The expected direction is:
 - `src/deck/loader.py`: `height` is a direct deck-frame Z value, not `total_z_height - height`.
 - `src/instruments/base_instrument.py` and board schema docs: updated to absolute `measurement_height` / `safe_approach_height` semantics.
 - `src/gantry/origin.py` / `setup/calibrate_deck_origin.py`: revised to the
-  one-instrument interactive XY-then-Z calibration workflow. The script homes,
-  clears transient `G92`, asks whether the TCP can safely touch true deck
-  bottom, then either uses bottom mode or prompts for a known labware/artifact
-  Z reference height. It prompts the operator to jog one reference TCP to the
-  front-left XY origin/lower reach point and sets only `G10 L20 P1 X0 Y0`,
-  then prompts the operator to jog to the Z reference surface and sets only
-  `G10 L20 P1 Z<reference_surface_z_mm>`. It can record the lowest safe
-  reachable Z for that TCP as an instrument reach note, re-homes, and reports
-  measured physical `(x_max, y_max, z_max)`.
+  one-instrument interactive XY/lower-reach calibration workflow. The script
+  homes, clears transient `G92`, prompts the operator to jog one reference TCP
+  to the front-left XY origin and lowest safe reachable Z, sets only
+  `G10 L20 P1 X0 Y0`, then assigns Z at that same pose. Bottom mode sets
+  `G10 L20 P1 Z0`; ruler-gap mode prompts for the ruler-measured deck-to-TCP
+  gap and sets `G10 L20 P1 Z<gap_mm>`. It re-homes and reports measured
+  physical maxima plus a one-instrument `z_min` recommendation.
 - `src/protocol_engine/commands/home.py`: deck-origin contexts now preserve the
   calibrated persistent WPos frame. They do not zero coordinates and do not
   assign homed WPos from configured maxima.
@@ -301,7 +296,7 @@ Check-limits/readback recovery focused tests:
 PYTHONPATH=src pytest tests/setup/test_calibrate_deck_origin.py tests/gantry/driver/test_gantry_driver.py -q
 ```
 
-Result after known-height reference surface support: `28 passed`.
+Result after the earlier known-height reference surface support: `28 passed`.
 
 Deck-origin calibration dry run:
 
@@ -311,27 +306,34 @@ PYTHONPATH=src python setup/calibrate_deck_origin.py --gantry configs_new/gantry
 
 Result: printed the expected physical calibration flow:
 `$H`, `G92.1`, interactive jog to front-left XY origin/lower reach point,
-`G10 L20 P1 X0 Y0`, interactive jog to labware/artifact Z reference surface,
-`G10 L20 P1 Z<reference_surface_z_mm>`, `$H`, `?`.
+`G10 L20 P1 X0 Y0`, confirm bottom contact or enter ruler-measured TCP gap,
+`G10 L20 P1 Z<z_min_mm>`, `$H`, `?`.
 
-Deck-origin calibration dry run with a 43 mm artifact:
+Deck-origin calibration dry run with a 5 mm ruler-measured TCP gap:
 
 ```bash
-PYTHONPATH=src python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --dry-run --z-reference-mode known-height --reference-z-mm 43 --instrument asmi
+PYTHONPATH=src python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --dry-run --z-reference-mode ruler-gap --tip-gap-mm 5 --instrument filmetrics
 ```
 
 Result: printed `G10 L20 P1 X0 Y0` for the XY assignment and
-`G10 L20 P1 Z43` for the Z-reference assignment.
+`G10 L20 P1 Z5` for the lower-reach Z assignment.
 
-Deck-origin calibration dry run with a 10 mm artifact and optional reachable-Z
-recording:
+Focused calibration/home tests after ruler-gap flow:
 
 ```bash
-PYTHONPATH=src python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --dry-run --z-reference-mode known-height --reference-z-mm 10 --measure-reachable-z-min --instrument asmi
+PYTHONPATH=src pytest tests/setup/test_calibrate_deck_origin.py tests/protocol_engine/test_home_command.py -q
 ```
 
-Result: printed `G10 L20 P1 X0 Y0`, then `G10 L20 P1 Z10`, then the optional
-lowest-safe-reachable-Z jog step before re-homing.
+Result: `16 passed`.
+
+Focused calibration/config/home tests after making ASMI candidate scan waypoint
+assertions follow the loaded protocol heights:
+
+```bash
+PYTHONPATH=src pytest tests/protocol_engine/test_deck_origin_candidate_configs.py tests/setup/test_calibrate_deck_origin.py tests/protocol_engine/test_home_command.py -q
+```
+
+Result: `19 passed`.
 
 Focused calibration/gantry-wrapper tests:
 
@@ -373,13 +375,22 @@ Full offline test suite:
 PYTHONPATH=src pytest -q
 ```
 
-Result after one-instrument artifact/reachable-Z calibration revision:
-`966 passed` after guided bottom-vs-artifact Z grounding.
+Result after one-instrument ruler-gap calibration revision:
+`967 passed`.
 
 ASMI candidate setup validation:
 
 ```bash
 PYTHONPATH=src python setup/validate_setup.py configs_new/gantry/cub_xl_asmi_deck_origin.yaml configs_new/deck/asmi_deck_origin.yaml configs_new/board/asmi_board_deck_origin.yaml configs_new/protocol/asmi_indentation_deck_origin.yaml
+```
+
+Result: `PASS — all positions within gantry bounds`.
+
+Dated ASMI measured gantry setup validation with current local ASMI protocol
+heights (`measurement_height: 32.0`, `indentation_limit: 30.0`):
+
+```bash
+PYTHONPATH=src python setup/validate_setup.py configs_new/gantry/cub_xl_asmi_deck_origin_2026-04-24.yaml configs_new/deck/asmi_deck_origin.yaml configs_new/board/asmi_board_deck_origin.yaml configs_new/protocol/asmi_indentation_deck_origin.yaml
 ```
 
 Result: `PASS — all positions within gantry bounds`.
@@ -399,6 +410,18 @@ PYTHONPATH=src python setup/validate_setup.py configs_new/gantry/cub_xl_asmi_dec
 ```
 
 Result: `PASS — all positions within gantry bounds`.
+
+Hardware status update from issue #93:
+
+- ASMI move/scan/single-well indentation hardware validation has been partially
+  completed by the user.
+- Issue #93 now has completed Phase 2/3 implementation/offline checklist items
+  checked through the ASMI-tested state.
+- Remaining open hardware/design work:
+  - Filmetrics hardware validation.
+  - Rail guards / rail-risk behavior test strategy and implementation.
+  - Multi-instrument homing/calibration, which is the highest-priority open
+    design item.
 
 ## Required Implementation Shape
 
@@ -423,13 +446,12 @@ Required hardware validation before trusting real runs:
 - With tools removed or raised, verify homing corner and jog directions in the deck-origin frame.
 - Run the revised interactive deck-origin calibration flow after `$3`/`$23`
   are normalized: home, jog one reference TCP to the front-left XY origin/lower
-  reach point and set `G10 L20 P1 X0 Y0`, choose bottom contact or known-height
-  A1/artifact mode for Z grounding, set `G10 L20 P1 Z<reference_surface_z_mm>`,
-  then re-home and record measured `(x_max, y_max, z_max)`.
-- If the TCP cannot touch true deck/bottom Z=0, use known-height A1/artifact
-  mode and record the lowest safe reachable Z for that one-instrument setup
-  before commanding low-Z motions. For ASMI, the guided CLI defaults this reach
-  prompt to yes.
+  reach point and set `G10 L20 P1 X0 Y0`, then either confirm bottom contact
+  and set `G10 L20 P1 Z0` or measure the deck-to-TCP ruler gap and set
+  `G10 L20 P1 Z<gap_mm>`. Re-home and record measured `(x_max, y_max, z_max)`.
+- If the TCP cannot touch true deck/bottom Z=0, use ruler-gap mode and put the
+  measured gap into the one-instrument `working_volume.z_min` before commanding
+  low-Z motions.
 - Verify commanded `+Z` moves up and `-Z` moves down at the user/API level after the cutover.
 - Dry-run ASMI protocol above the deck with no sample contact and confirm entry travel, interwell travel, measurement, and indentation Z planes.
 - Confirm high-clearance homing/first-entry/park moves clear Y rails and tall mounted tools on the multi-instrument board.
@@ -444,12 +466,16 @@ Legacy calibration/setup scripts to remove or replace before final cleanup:
 - `calibration/home_gantry.py`: legacy homing wrapper; it does not assign
   top-back-right home to deck-origin maxima.
 
-Current testing status: offline/config validation only. No physical hardware validation has been run in this checkpoint.
+Current testing status: offline/config validation plus user-reported ASMI
+move/scan/single-well indentation hardware validation. Filmetrics hardware,
+rail/upright/home-edge guard behavior, failure-mode checks, and
+multi-instrument homing/calibration remain pending.
 
 ## Next Steps
 
 - Review the local combined Phase 2/3 cutover against issue #87.
 - Decide whether to keep `configs_new/` as fixtures only or promote selected files after hardware validation.
-- Update issue/PR hardware impact with exact offline validation and pending physical tests.
+- Keep issue/PR hardware impact current with exact offline validation and the
+  remaining Filmetrics, rail-guard, and multi-instrument homing work.
 - Delete this checkpoint once the task is complete and durable context has moved into the issue, PR, docs, and tests.
 - Before merge: run the staged hardware checklist from issue #87 and either keep this checkpoint active for handoff or move the remaining durable hardware-validation notes into the PR/issue and delete this temporary file.

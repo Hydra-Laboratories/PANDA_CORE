@@ -77,18 +77,30 @@ def test_asmi_candidate_config_generates_deck_origin_scan_waypoints():
     first_well = deck["plate"].get_well_center("A1")
     second_well = deck["plate"].get_well_center("A2")
     last_well = deck["plate"].get_well_center("H12")
+    entry_travel_height = scan_step.args["entry_travel_height"]
+    interwell_travel_height = scan_step.args["interwell_travel_height"]
+    measurement_height = scan_step.args["measurement_height"]
+    indentation_limit = scan_step.args["indentation_limit"]
 
-    assert moves[0].args == pytest.approx((first_well.x, first_well.y, 85.0))
-    assert moves[0].kwargs == {"travel_z": 85.0}
-    assert moves[1].args == pytest.approx((first_well.x, first_well.y, 26.0))
+    assert moves[0].args == pytest.approx(
+        (first_well.x, first_well.y, entry_travel_height)
+    )
+    assert moves[0].kwargs == {"travel_z": entry_travel_height}
+    assert moves[1].args == pytest.approx(
+        (first_well.x, first_well.y, measurement_height)
+    )
     assert moves[1].kwargs == {"travel_z": None}
-    assert moves[2].args == pytest.approx((second_well.x, second_well.y, 35.0))
-    assert moves[2].kwargs == {"travel_z": 35.0}
-    assert moves[-1].args == pytest.approx((last_well.x, last_well.y, 35.0))
+    assert moves[2].args == pytest.approx(
+        (second_well.x, second_well.y, interwell_travel_height)
+    )
+    assert moves[2].kwargs == {"travel_z": interwell_travel_height}
+    assert moves[-1].args == pytest.approx(
+        (last_well.x, last_well.y, interwell_travel_height)
+    )
     assert moves[-1].kwargs == {"travel_z": None}
 
-    assert indentation_calls[0]["measurement_height"] == 26.0
-    assert indentation_calls[0]["indentation_limit"] == 24.0
+    assert indentation_calls[0]["measurement_height"] == measurement_height
+    assert indentation_calls[0]["indentation_limit"] == indentation_limit
     assert indentation_calls[0]["gantry"] is mock_gantry
 
 

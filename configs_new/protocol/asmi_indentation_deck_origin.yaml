@@ -22,8 +22,8 @@ protocol:
       interwell_travel_height: 35.0
       # Absolute action/start height and lower indentation limit. Downward
       # indentation decreases Z in the deck-origin frame.
-      measurement_height: 26.0
-      indentation_limit: 24.0
+      measurement_height: 32.0
+      indentation_limit: 30.0
       method_kwargs:
         step_size: 0.1
         force_limit: 10.0
