@@ -236,6 +236,18 @@ class DataStore:
                 baseline_std=float(measurement.metadata["baseline_std"]),
                 force_exceeded=bool(measurement.metadata["force_exceeded"]),
                 data_points=int(measurement.metadata["data_points"]),
+                step_size_mm=(
+                    None if measurement.metadata.get("step_size") is None
+                    else float(measurement.metadata["step_size"])
+                ),
+                z_target_mm=(
+                    None if measurement.metadata.get("indentation_limit") is None
+                    else float(measurement.metadata["indentation_limit"])
+                ),
+                force_limit_n=(
+                    None if measurement.metadata.get("force_limit") is None
+                    else float(measurement.metadata["force_limit"])
+                ),
             )
 
         if measurement.measurement_type in {
@@ -325,12 +337,16 @@ class DataStore:
         baseline_std: float,
         force_exceeded: bool,
         data_points: int,
+        step_size_mm: float | None = None,
+        z_target_mm: float | None = None,
+        force_limit_n: float | None = None,
     ) -> int:
         cursor = self._conn.execute(
             "INSERT INTO asmi_measurements "
             "(experiment_id, z_positions, raw_forces, corrected_forces, "
-            "baseline_avg, baseline_std, force_exceeded, data_points) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "baseline_avg, baseline_std, force_exceeded, data_points, "
+            "step_size_mm, z_target_mm, force_limit_n) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 experiment_id,
                 json.dumps(list(z_positions)),
@@ -340,6 +356,9 @@ class DataStore:
                 baseline_std,
                 int(force_exceeded),
                 data_points,
+                step_size_mm,
+                z_target_mm,
+                force_limit_n,
             ),
         )
         self._conn.commit()

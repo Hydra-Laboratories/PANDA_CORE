@@ -14,6 +14,7 @@ from deck.labware.well_plate import WellPlate
 from ..errors import ProtocolExecutionError
 from ..measurements import normalize_measurement
 from ..registry import protocol_command
+from ..well_selection import resolve_well_ids
 from ._movement import approach_and_descend
 
 if TYPE_CHECKING:
@@ -22,25 +23,23 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _row_major_key(well_id: str) -> tuple:
-    """Sort key for row-major traversal: (row_letter, column_number)."""
-    return (well_id[0], int(well_id[1:]))
-
-
 @protocol_command("scan")
 def scan(
     context: ProtocolContext,
     plate: str,
     instrument: str,
     method: str,
+    wells: list[str] | None = None,
     delay_s: float = 0.0,
     entry_travel_z: float | None = None,
     safe_approach_height: float | None = None,
     method_kwargs: Dict[str, Any] = {},
 ) -> Dict[str, Any]:
-    """Scan every well on *plate* using *instrument*'s *method*.
+    """Scan wells on *plate* using *instrument*'s *method*.
 
-    Iterates wells in row-major order (A1, A2, ..., B1, B2, ...).
+    When ``wells`` is omitted, iterates every well in row-major order
+    (A1, A2, ..., B1, B2, ...). When ``wells`` is supplied, scans exactly
+    those well IDs in the caller-provided order.
     For each well, uses :func:`approach_and_descend` to safely travel
     above the well (at ``safe_approach_height``) and descend to the
     action Z (``measurement_height``), then calls the method with any
@@ -54,6 +53,7 @@ def scan(
         plate:         Deck key of the well plate (e.g. "plate_1").
         instrument:    Name of the instrument registered on the board.
         method:        Name of the method on the instrument to call per well.
+        wells:         Optional explicit well IDs to scan.
         delay_s:       Seconds to pause between wells (default 0.0).
         entry_travel_z:
                        Optional absolute Z coordinate used only for the
@@ -88,9 +88,14 @@ def scan(
         )
     callable_method = getattr(instr, method)
 
+    try:
+        scan_wells = resolve_well_ids(plate_obj.wells, wells)
+    except ValueError as exc:
+        raise ProtocolExecutionError(str(exc)) from exc
+
     results: Dict[str, Any] = {}
-    sorted_wells = sorted(plate_obj.wells, key=_row_major_key)
-    for i, well_id in enumerate(sorted_wells):
+    sig = inspect.signature(callable_method)
+    for i, well_id in enumerate(scan_wells):
         if i > 0 and delay_s > 0:
             context.logger.info("Pausing %.1fs between wells", delay_s)
             time.sleep(delay_s)
@@ -106,7 +111,6 @@ def scan(
 
         # Inject gantry if the method accepts it (e.g. ASMI.indentation
         # needs the gantry for Z stepping), then merge with method_kwargs.
-        sig = inspect.signature(callable_method)
         kwargs: Dict[str, Any] = dict(method_kwargs)
         if "gantry" in sig.parameters:
             kwargs["gantry"] = context.board.gantry
@@ -136,8 +140,8 @@ def scan(
                     "Failed to log measurement for well %s: %s", well_id, exc,
                 )
 
-    if sorted_wells:
-        last_well = plate_obj.get_well_center(sorted_wells[-1])
+    if scan_wells:
+        last_well = plate_obj.get_well_center(scan_wells[-1])
         final_approach_z = (
             safe_approach_height
             if safe_approach_height is not None

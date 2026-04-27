@@ -141,6 +141,44 @@ class TestScanCommand:
         xs = [p.x for p in positions]
         assert xs == [0.0, 10.0, 20.0, 0.0, 10.0, 20.0]
 
+    def test_scans_selected_wells_in_requested_order(self):
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x3_plate()
+        sensor = _make_sensor()
+        ctx = _mock_context(plate=plate, sensor=sensor)
+
+        result = scan(
+            ctx,
+            plate="plate_2",
+            instrument="uvvis",
+            method="measure",
+            wells=["B2", "A1"],
+        )
+
+        assert list(result) == ["B2", "A1"]
+        move_calls = ctx.board.move_to_labware.call_args_list
+        positions = [c.args[1] for c in move_calls]
+        assert [(p.x, p.y) for p in positions] == [(10.0, 8.0), (0.0, 0.0)]
+        last_move = ctx.board.move.call_args_list[-1]
+        assert last_move.args[1] == (0.0, 0.0, 75.0)
+
+    def test_unknown_selected_well_raises(self):
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x3_plate()
+        sensor = _make_sensor()
+        ctx = _mock_context(plate=plate, sensor=sensor)
+
+        with pytest.raises(ProtocolExecutionError, match="Unknown scan wells"):
+            scan(
+                ctx,
+                plate="plate_2",
+                instrument="uvvis",
+                method="measure",
+                wells=["Z99"],
+            )
+
     def test_passes_raw_well_coord_to_move_to_labware(self):
         # scan delegates safe approach to Board.move_to_labware; descent
         # to action Z happens in scan's subsequent raw board.move call.

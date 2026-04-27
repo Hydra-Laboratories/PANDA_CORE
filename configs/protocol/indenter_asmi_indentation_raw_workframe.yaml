@@ -1,0 +1,34 @@
+# Imported indenter ASMI indentation protocol.
+#
+# This ports the indenter hardcoded runtime constants into CubOS YAML while
+# routing motion through CubOS Board/Gantry and ASMI.indentation().
+# It intentionally does not perform GRBL calibration or controller setting
+# changes; validate WPos, homing, and jog directions before hardware use.
+
+positions:
+  safe_z: [26.100, 58.700, 10.0]
+
+protocol:
+  - home:
+
+  - scan:
+      plate: plate
+      instrument: asmi
+      method: indentation
+      entry_travel_z: 10.0
+      safe_approach_height: 10.0
+      method_kwargs:
+        measurement_height: 19.0
+        z_limit: 19.5
+        step_size: 0.01
+        force_limit: 10.0
+        baseline_samples: 10
+        measure_with_return: false
+        well_bottom_z: 24.3
+
+  - move:
+      instrument: asmi
+      position: safe_z
+      travel_z: 10.0
+
+  - home:

@@ -1,0 +1,30 @@
+# Imported indenter gantry/work-frame candidate.
+#
+# Source constants in indenter/CNCController.py use negative Z values for
+# downward motion. This main-branch CubOS config translates those Z values into
+# the existing positive-down user-space convention:
+#   indenter Z_INITIAL=-10.0 -> CubOS safe travel Z=10.0
+#   indenter z_target=-19.5 -> CubOS z_limit=19.5
+#
+# This is not a full hardware calibration. Before use, confirm GRBL settings,
+# WPos after homing/G92, and jog directions so CubOS coordinates match this
+# imported work frame.
+
+serial_port: COM8
+
+cnc:
+  homing_strategy: standard
+  total_z_height: 100.0
+  y_axis_motion: head
+
+working_volume:
+  x_min: 0.0
+  x_max: 100.0
+  y_min: 0.0
+  y_max: 170.0
+  z_min: 0.0
+  z_max: 25.0
+
+grbl_settings:
+  status_report: 0
+  homing_enable: true

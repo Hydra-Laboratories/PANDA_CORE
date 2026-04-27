@@ -69,6 +69,11 @@ class TestNormalizeMeasurement:
             "baseline_std": 0.001,
             "force_exceeded": False,
             "data_points": 2,
+            "measurement_height": 19.0,
+            "indentation_limit": 19.5,
+            "step_size": 0.01,
+            "force_limit": 10.0,
+            "well_bottom_z": 24.3,
         }
 
         measurement = normalize_measurement(
@@ -83,6 +88,11 @@ class TestNormalizeMeasurement:
         # schema always exposes directions.
         assert measurement.payload["directions"] == ["down", "down"]
         assert measurement.metadata["measure_with_return"] is False
+        assert measurement.metadata["measurement_height"] == 19.0
+        assert measurement.metadata["indentation_limit"] == 19.5
+        assert measurement.metadata["step_size"] == 0.01
+        assert measurement.metadata["force_limit"] == 10.0
+        assert measurement.metadata["well_bottom_z"] == 24.3
 
     def test_normalize_asmi_indentation_with_return_mode(self):
         raw_result = {

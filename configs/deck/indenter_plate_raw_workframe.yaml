@@ -1,0 +1,27 @@
+# Imported indenter 96-well plate calibration.
+#
+# Source constants:
+#   A1_X = 26.100
+#   A1_Y = 58.700
+#   WELL_SPACING = 9.0
+#   well_top_z = -19.00
+#
+# CubOS main currently uses positive-down user-space Z, so the source well-top
+# Z is translated to +19.00 here.
+
+labware:
+  plate:
+    load_name: sbs_96_wellplate
+    name: indenter_96_well_raw_workframe
+    model_name: indenter_96_well_raw_workframe
+    calibration:
+      a1:
+        x: 26.100
+        y: 58.700
+        z: 19.00
+      a2:
+        x: 26.100
+        y: 67.700
+        z: 19.00
+    x_offset_mm: 9.0
+    y_offset_mm: 9.0

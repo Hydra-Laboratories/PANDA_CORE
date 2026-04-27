@@ -1,0 +1,29 @@
+# Imported indenter ASMI board config.
+#
+# Source constants:
+#   Z_INITIAL = -10.0
+#   well_top_z = -19.00
+#   z_target = -19.5
+#   force_limit = 10.0
+#   well_bottom_z = -24.3
+#   k_system_override = 19.53  # analysis-only; not used by CubOS runtime
+#
+# Z values are translated into CubOS main's positive-down convention.
+
+instruments:
+  asmi:
+    type: asmi
+    vendor: vernier
+    offset_x: 0.0
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 0.0
+    safe_approach_height: 9.0
+    z_target: 19.5
+    step_size: 0.01
+    force_limit: 10.0
+    baseline_samples: 10
+    well_top_z: 19.0
+    well_bottom_z: 24.3
+    force_threshold: -100
+    sensor_channels: [1]

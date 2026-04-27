@@ -50,7 +50,12 @@ class TestASMIOffline(unittest.TestCase):
         gantry = Gantry(offline=True)
 
         result = self.asmi.indentation(
-            gantry, z_limit=12.0, measurement_height=10.0, step_size=0.1,
+            gantry,
+            z_limit=12.0,
+            measurement_height=10.0,
+            step_size=0.1,
+            force_limit=5.0,
+            well_bottom_z=2.5,
         )
 
         self.assertIn("measurements", result)
@@ -60,6 +65,11 @@ class TestASMIOffline(unittest.TestCase):
         self.assertGreater(result["data_points"], 0)
         self.assertFalse(result["force_exceeded"])
         self.assertFalse(result["measure_with_return"])
+        self.assertEqual(result["measurement_height"], 10.0)
+        self.assertEqual(result["indentation_limit"], 12.0)
+        self.assertEqual(result["step_size"], 0.1)
+        self.assertEqual(result["force_limit"], 5.0)
+        self.assertEqual(result["well_bottom_z"], 2.5)
 
     def test_indentation_offline_with_return_includes_directions(self):
         """Return-mode indentation should include both down and up direction samples."""

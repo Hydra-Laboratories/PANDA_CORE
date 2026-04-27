@@ -58,7 +58,7 @@ Driver for the Thorlabs CCS-series compact spectrometers (CCS100/CCS175/CCS200).
 Driver for the Vernier GoDirect force sensor used for ASMI indentation/force measurements over USB.
 
 - **`driver.py`**: `ASMI(BaseInstrument)` — real GoDirect driver with `offline=True` support for dry runs.
-    - **Constructor**: `ASMI(..., default_force=0.0, force_threshold=-100, z_target=-17.0, step_size=0.01, force_limit=15.0, baseline_samples=10, ...)`
+    - **Constructor**: `ASMI(..., default_force=0.0, force_threshold=-100, z_target=-17.0, step_size=0.01, force_limit=15.0, baseline_samples=10, well_bottom_z=None, ...)`
     - **Lifecycle**: `connect()`, `disconnect()`, `health_check()`
     - **Commands**: `measure(n_samples=1)`, `get_status()`, `get_force_reading()`, `get_baseline_force(samples)`, `indentation(gantry, ...)`
     - **Important semantic split**:
@@ -121,7 +121,7 @@ A modular system for executing experiment sequences defined in code or YAML.
     - Named/literal XYZ moves may also supply `travel_z` to force a retract-first transit (`Z -> XY -> final Z`).
     - Deck targets ignore `travel_z` and use `Board.move_to_labware()` with the instrument's board-configured relative `safe_approach_height`.
     - Named positions such as `safe_z` live in protocol YAML `positions:`; they are not deck/labware entries.
-  - `scan`: iterate all wells on a plate, call an instrument method per well, and persist measurements when a `DataStore` is configured.
+  - `scan`: iterate all wells on a plate, or a caller-supplied `wells: [...]` subset in order; call an instrument method per well; and persist measurements when a `DataStore` is configured.
     - For generic instruments, omitted scan overrides fall back to the instrument's board-configured relative `safe_approach_height`.
     - `scan.entry_travel_z` is an absolute Z used only for the initial move into the first well.
     - `scan.safe_approach_height` is an absolute Z used only for well-to-well travel inside the scan.
@@ -194,6 +194,7 @@ SQLite-backed persistence layer for self-driving lab campaigns. All state lives 
         - `UVVisSpectrum` → `uvvis_measurements` (wavelengths/intensities stored as little-endian BLOB via `struct.pack`)
         - `MeasurementResult` → `filmetrics_measurements` (thickness_nm, goodness_of_fit)
         - `str` (image path) → `camera_measurements`
+        - `InstrumentMeasurement` with ASMI indentation type → `asmi_measurements` (JSON-encoded z/force arrays plus baseline stats, force-limit state, data point count, and optional step size, target Z, and force-limit columns)
         - `InstrumentMeasurement` with potentiostat type → `potentiostat_measurements` (technique, JSON-encoded `time_s`/`voltage_v`/`current_a`, plus per-technique scalars: `sample_period_s`, `duration_s`, `step_potential_v`, `step_current_a`, `scan_rate_v_s`, `step_size_v`, `cycles`; run metadata `vendor`, `device_id`, `channel`, `started_at`, `stopped_at`, `aborted`, `stop_reason` each promoted to their own column)
     - **Labware API** (volume and content tracking, persisted to `labware` table):
         - `register_labware(campaign_id, labware_key, labware)` — registers a Vial (1 row) or WellPlate (1 row per well) with total/working volume from the model.

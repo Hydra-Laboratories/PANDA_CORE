@@ -60,6 +60,7 @@ class ASMI(BaseInstrument):
         baseline_samples: int = 10,
         idle_timeout: float = 10.0,
         well_top_z: float | None = None,
+        well_bottom_z: float | None = None,
         safe_z: float | None = None,
     ):
         super().__init__(
@@ -77,6 +78,7 @@ class ASMI(BaseInstrument):
         self._baseline_samples = baseline_samples
         self._idle_timeout = idle_timeout
         self._well_top_z = well_top_z
+        self._well_bottom_z = well_bottom_z
         self._safe_z = safe_z
         self._godirect = None
         self._device = None
@@ -239,6 +241,7 @@ class ASMI(BaseInstrument):
         measurement_height: float | None = None,
         baseline_samples: int | None = None,
         measure_with_return: bool = False,
+        well_bottom_z: float | None = None,
     ) -> dict:
         """Perform step-by-step indentation at the current XY position.
 
@@ -268,6 +271,9 @@ class ASMI(BaseInstrument):
                                 ``measurement_height`` and record each upward
                                 sample. Every sample is tagged with
                                 ``direction`` ("down" on descent, "up" on return).
+            well_bottom_z:      Optional absolute deck-frame well-bottom Z,
+                                carried through as metadata for downstream
+                                depth/elastic-modulus analysis.
 
         Returns:
             Dict with keys: measurements, baseline_avg, baseline_std,
@@ -282,6 +288,9 @@ class ASMI(BaseInstrument):
             self._well_top_z if self._well_top_z is not None else self.measurement_height
         )
         _baseline_samples = baseline_samples if baseline_samples is not None else self._baseline_samples
+        _well_bottom_z = (
+            well_bottom_z if well_bottom_z is not None else self._well_bottom_z
+        )
 
         if self._offline:
             return self._offline_indentation(
@@ -290,6 +299,8 @@ class ASMI(BaseInstrument):
                 _step_size,
                 _well_top_z,
                 measure_with_return=measure_with_return,
+                force_limit=_force_limit,
+                well_bottom_z=_well_bottom_z,
             )
 
         coords = gantry.get_coordinates()
@@ -393,6 +404,11 @@ class ASMI(BaseInstrument):
             "force_exceeded": force_exceeded,
             "data_points": len(measurements),
             "measure_with_return": measure_with_return,
+            "measurement_height": _well_top_z,
+            "indentation_limit": _z_target,
+            "step_size": _step_size,
+            "force_limit": _force_limit,
+            "well_bottom_z": _well_bottom_z,
         }
 
     def _offline_indentation(
@@ -402,6 +418,8 @@ class ASMI(BaseInstrument):
         step_size,
         measurement_height,
         measure_with_return: bool = False,
+        force_limit: float | None = None,
+        well_bottom_z: float | None = None,
     ) -> dict:
         """Fast offline indentation — no idle-wait, synthetic data.
 
@@ -452,4 +470,9 @@ class ASMI(BaseInstrument):
             "force_exceeded": False,
             "data_points": len(measurements),
             "measure_with_return": measure_with_return,
+            "measurement_height": measurement_height,
+            "indentation_limit": z_limit,
+            "step_size": step_size,
+            "force_limit": force_limit,
+            "well_bottom_z": well_bottom_z,
         }

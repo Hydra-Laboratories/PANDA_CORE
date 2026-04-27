@@ -376,18 +376,26 @@ class TestASMIInstrumentMeasurementLogging:
                 "baseline_std": 0.001,
                 "force_exceeded": False,
                 "data_points": 3,
+                "step_size": 0.01,
+                "indentation_limit": 19.5,
+                "force_limit": 10.0,
             },
         )
         mid = store.log_measurement(eid, measurement)
 
         row = store._conn.execute(
-            "SELECT z_positions, raw_forces, corrected_forces FROM asmi_measurements WHERE id = ?",
+            "SELECT z_positions, raw_forces, corrected_forces, "
+            "step_size_mm, z_target_mm, force_limit_n "
+            "FROM asmi_measurements WHERE id = ?",
             (mid,),
         ).fetchone()
 
         assert json.loads(row[0]) == [0.0, 0.1, 0.2]
         assert json.loads(row[1]) == [0.01, 0.02, 0.03]
         assert json.loads(row[2]) == [0.005, 0.015, 0.025]
+        assert row[3] == pytest.approx(0.01)
+        assert row[4] == pytest.approx(19.5)
+        assert row[5] == pytest.approx(10.0)
         store.close()
 
 

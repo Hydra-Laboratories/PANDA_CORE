@@ -95,6 +95,23 @@ def test_loaded_protocol_step_omits_unspecified_default_args():
         Path(path).unlink(missing_ok=True)
 
 
+def test_scan_accepts_selected_wells():
+    yaml = """
+protocol:
+  - scan:
+      plate: plate_1
+      instrument: uvvis
+      method: measure
+      wells: [B2, A1]
+"""
+    path = _write_yaml(yaml)
+    try:
+        protocol = load_protocol_from_yaml(path)
+        assert protocol.steps[0].args["wells"] == ["B2", "A1"]
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
 def test_loaded_protocol_has_source_path():
     path = _write_yaml(VALID_SINGLE_MOVE)
     try:
