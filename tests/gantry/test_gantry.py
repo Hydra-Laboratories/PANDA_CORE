@@ -397,6 +397,27 @@ class TestGantry(unittest.TestCase):
             ],
         )
 
+    @patch("gantry.gantry.Mill")
+    def test_read_grbl_settings_returns_live_dict(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        mock_mill.grbl_settings.return_value = {"$100": "800.000", "$130": "400.000"}
+        gantry = Gantry(config={})
+        self.assertEqual(
+            gantry.read_grbl_settings(),
+            {"$100": "800.000", "$130": "400.000"},
+        )
+
+    @patch("gantry.gantry.Mill")
+    def test_read_grbl_settings_propagates_connection_error(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        mock_mill.grbl_settings.side_effect = MillConnectionError("not open")
+        gantry = Gantry(config={})
+        with self.assertRaises(MillConnectionError):
+            gantry.read_grbl_settings()
+
+    def test_read_grbl_settings_offline_returns_empty(self):
+        gantry = Gantry(offline=True)
+        self.assertEqual(gantry.read_grbl_settings(), {})
 
 class TestGrblSettingsValidation(unittest.TestCase):
     @patch("gantry.gantry.Mill")
