@@ -39,7 +39,6 @@ Before touching hardware:
 PYTHONPATH=src python setup/validate_setup.py \
   configs/gantry/cub_xl_asmi.yaml \
   configs/deck/asmi_deck.yaml \
-  configs/board/asmi_board.yaml \
   configs/protocol/asmi_move_a1.yaml
 ```
 
@@ -157,7 +156,6 @@ Before trusting the calibrated setup:
    PYTHONPATH=src python setup/run_protocol.py \
      configs/gantry/cub_xl_asmi.yaml \
      configs/deck/asmi_deck.yaml \
-     configs/board/asmi_board.yaml \
      configs/protocol/asmi_move_a1.yaml
    ```
 

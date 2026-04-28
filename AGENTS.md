@@ -94,7 +94,7 @@ Driver for the Vernier GoDirect force sensor used for ASMI indentation/force mea
     - **Lifecycle**: `connect()`, `disconnect()`, `health_check()`
     - **Commands**: `measure(n_samples=1)`, `get_status()`, `get_force_reading()`, `get_baseline_force(samples)`, `indentation(gantry, ...)`
     - **Important semantic split**:
-        - Board/instrument `measurement_height` is the generic absolute deck-frame action Z used by shared protocol movement helpers when no protocol-level override is supplied.
+        - Instrument `measurement_height` is the generic absolute deck-frame action Z configured on the gantry YAML instrument entry and used by shared protocol movement helpers when no protocol-level override is supplied.
         - `ASMI.indentation(..., measurement_height=...)` is the protocol/runtime absolute deck-frame Z for the start of the indentation.
     - **ASMI scan motion model**:
         - `scan.entry_travel_height` is an absolute deck-frame Z used only for the initial transit into the first well (e.g. A1).
@@ -146,15 +146,15 @@ A modular system for executing experiment sequences defined in code or YAML.
 - **`yaml_schema.py`**: Pydantic schemas for protocol YAML (step validation against registered commands).
 - **`loader.py`**: `load_protocol_from_yaml(path)` and `_safe` variant.
 - **`registry.py`**: `CommandRegistry` singleton and `@protocol_command()` decorator for registering commands.
-- **`setup.py`**: `setup_protocol(gantry_path, deck_path, board_path, protocol_path)` — loads all configs, validates bounds, and returns `(Protocol, ProtocolContext)` ready to run. Uses an offline `Gantry` by default for offline validation.
+- **`setup.py`**: `setup_protocol(gantry_path, deck_path, protocol_path)` — loads the gantry, deck, and protocol configs, builds the runtime board from gantry-mounted instruments, validates bounds, and returns `(Protocol, ProtocolContext)` ready to run. Legacy callers can still pass a separate board path as the third argument plus protocol path as the fourth argument.
 - **`commands/`**: Protocol command implementations:
   - `home`: home the gantry while preserving the calibrated deck-origin WPos frame; it does not rewrite work coordinates after homing.
   - `move`: move an instrument to a named position, raw `[x, y, z]`, or deck target.
     - Named/literal XYZ moves may also supply `travel_z` to force a retract-first transit (`Z -> XY -> final Z`).
-    - Deck targets ignore `travel_z` and use `Board.move_to_labware()` with the instrument's board-configured absolute `safe_approach_height`.
+    - Deck targets ignore `travel_z` and use `Board.move_to_labware()` with the instrument's configured absolute `safe_approach_height`.
     - Named positions such as `park_position` live in protocol YAML `positions:`; they are not deck/labware entries.
   - `scan`: iterate all wells on a plate, call an instrument method per well, and persist measurements when a `DataStore` is configured.
-    - For generic instruments, omitted scan overrides fall back to the instrument's board-configured absolute `measurement_height` / `safe_approach_height`.
+    - For generic instruments, omitted scan overrides fall back to the instrument's configured absolute `measurement_height` / `safe_approach_height`.
     - `scan.entry_travel_height` is an absolute deck-frame Z used only for the initial move into the first well.
     - `scan.interwell_travel_height` is an absolute deck-frame Z used only for well-to-well travel inside the scan.
     - Legacy scan names `entry_travel_z` and scan-level `safe_approach_height` are rejected before motion.
@@ -208,7 +208,6 @@ Config files are organized by type:
 configs/
   gantry/       # Gantry configs (serial port, homing, working volume)
   deck/         # Deck configs (labware positions)
-  board/        # Board configs (instrument offsets)
   protocol/     # Protocol configs (command sequences)
 ```
 
@@ -246,7 +245,7 @@ SQLite-backed persistence layer for self-driving lab campaigns. All state lives 
 
 1.  **Defining Experiments**: Create a YAML file in `experiments/` defining the sequence of moves and images.
 2.  **Running**: Execute `python verify_experiment.py experiments/your_experiment.yaml`.
-3.  **Connecting**: The system handles connection details (port, serial) via config files in `configs/gantry/`, `configs/deck/`, `configs/board/`, and `configs/protocol/`.
+3.  **Connecting**: The system handles connection details (port, serial) via config files in `configs/gantry/`, `configs/deck/`, and `configs/protocol/`.
 
 ### Setup (`setup/`)
 First-run scripts for verifying hardware after unboxing.
@@ -261,15 +260,15 @@ First-run scripts for verifying hardware after unboxing.
     - **Usage**: `python3 setup/hello_world.py --gantry configs/gantry/cub_xl_asmi.yaml`
     - **Controls**: Arrow keys (X/Y ±1mm), Z key (Z down 1mm), X key (Z up 1mm), Q (quit)
     - **Dependencies**: `src/gantry` (Gantry class), `setup/keyboard_input.py`
-- **`validate_setup.py`**: Validate a protocol setup by loading all 4 configs (gantry, deck, board, protocol) and checking that all deck and gantry positions are within the gantry's working volume.
-    - **Usage**: `python setup/validate_setup.py <gantry.yaml> <deck.yaml> <board.yaml> <protocol.yaml>`
+- **`validate_setup.py`**: Validate a protocol setup by loading the gantry, deck, and protocol configs and checking that all deck and gantry positions are within the gantry's working volume.
+    - **Usage**: `python setup/validate_setup.py <gantry.yaml> <deck.yaml> <protocol.yaml>`
     - **Output**: Step-by-step loading status, labware/instrument summaries, bounds validation results, and a final PASS/FAIL verdict.
     - **Dependencies**: `src/gantry`, `src/deck`, `src/board`, `src/protocol_engine`, `src/validation`
 - **`run_protocol.py`**: Load, validate, connect to hardware, and run a protocol end-to-end. Runs offline validation first, then connects to the gantry and executes the protocol.
-    - **Usage**: `python setup/run_protocol.py <gantry.yaml> <deck.yaml> <board.yaml> <protocol.yaml>`
+    - **Usage**: `python setup/run_protocol.py <gantry.yaml> <deck.yaml> <protocol.yaml>`
     - **Startup behavior**:
         - Connects to the gantry, clears the expected GRBL alarm state if present, and restores controller state.
-        - Connects all board instruments before the first protocol step.
+        - Connects all configured instruments before the first protocol step.
         - Disconnects instruments and gantry in `finally`, even on protocol failure.
     - **Dependencies**: `src/gantry`, `src/deck`, `src/board`, `src/protocol_engine`, `src/validation`
 - **`keyboard_input.py`**: Helper module that reads single keypresses (including arrow keys) without requiring Enter. Uses `tty`/`termios` (Unix only).

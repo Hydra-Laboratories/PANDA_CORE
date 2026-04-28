@@ -7,10 +7,8 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-import yaml
 
-from board.loader import load_board_from_yaml
-from board.yaml_schema import BoardYamlSchema
+from board.loader import load_board_from_gantry_config
 from deck.loader import load_deck_from_yaml
 from gantry.loader import load_gantry_from_yaml
 from protocol_engine.commands.scan import scan
@@ -34,10 +32,8 @@ def test_asmi_config_generates_deck_origin_scan_waypoints():
     )
     mock_gantry = MagicMock()
     mock_gantry.get_coordinates.return_value = {"x": 0.0, "y": 0.0, "z": 85.0}
-    board = load_board_from_yaml(
-        CONFIGS / "board/asmi_board.yaml",
-        mock_gantry,
-        mock_mode=True,
+    board = load_board_from_gantry_config(
+        gantry_config, mock_gantry, mock_mode=True,
     )
     indentation_calls = []
 
@@ -112,9 +108,6 @@ def test_panda_deck_origin_layout_and_placeholders_parse():
         CONFIGS / "deck/panda_deck.yaml",
         total_z_height=gantry_config.total_z_height,
     )
-    with (CONFIGS / "board/panda_board.yaml").open() as handle:
-        board_schema = BoardYamlSchema.model_validate(yaml.safe_load(handle))
-
     plate = deck.resolve("well_plate_holder.plate.A1")
     plate_a2 = deck.resolve("well_plate_holder.plate.A2")
     tip_a1 = deck.resolve("tip_rack_left.A1")
@@ -125,7 +118,7 @@ def test_panda_deck_origin_layout_and_placeholders_parse():
     assert tip_a2.x == pytest.approx(tip_a1.x)
     assert tip_a2.y > tip_a1.y
     assert deck.resolve("vial_holder.vial_9").z > deck["vial_holder"].location.z
-    assert set(board_schema.instruments) == {
+    assert set(gantry_config.instruments) == {
         "potentiostat",
         "camera",
         "vial_capper_decapper",
@@ -135,12 +128,13 @@ def test_panda_deck_origin_layout_and_placeholders_parse():
 def test_filmetrics_deck_origin_config_validates_setup():
     gantry_path = CONFIGS / "gantry/cub_filmetrics.yaml"
     deck_path = CONFIGS / "deck/filmetrics_deck.yaml"
-    board_path = CONFIGS / "board/filmetrics_board.yaml"
     protocol_path = CONFIGS / "protocol/filmetrics_scan.yaml"
 
     gantry_config = load_gantry_from_yaml(gantry_path)
     deck = load_deck_from_yaml(deck_path, total_z_height=gantry_config.total_z_height)
-    board = load_board_from_yaml(board_path, MagicMock(), mock_mode=True)
+    board = load_board_from_gantry_config(
+        gantry_config, MagicMock(), mock_mode=True,
+    )
     protocol = load_protocol_from_yaml(protocol_path)
 
     plate = deck["plate_1"]
@@ -156,7 +150,43 @@ def test_filmetrics_deck_origin_config_validates_setup():
     setup_protocol(
         gantry_path,
         deck_path,
-        board_path,
         protocol_path,
         mock_mode=True,
     )
+
+
+def test_sterling_candidate_validates_with_park_protocol():
+    _, context = setup_protocol(
+        CONFIGS / "gantry/cub_xl_sterling.yaml",
+        CONFIGS / "deck/sterling_deck.yaml",
+        CONFIGS / "protocol/sterling_park.yaml",
+    )
+    assert context.board.instruments["asmi"]._offline is True
+
+
+def test_sterling_vial_scan_visits_vials_in_alternating_order():
+    protocol, context = setup_protocol(
+        CONFIGS / "gantry/cub_xl_sterling.yaml",
+        CONFIGS / "deck/sterling_deck.yaml",
+        CONFIGS / "protocol/sterling_vial_scan.yaml",
+    )
+
+    move_positions = [
+        step.args["position"]
+        for step in protocol.steps
+        if step.command_name == "move"
+    ]
+
+    assert move_positions == [
+        "park_position",
+        "vial_1_scan",
+        "vial_8_scan",
+        "vial_2_scan",
+        "vial_7_scan",
+        "vial_3_scan",
+        "vial_6_scan",
+        "vial_4_scan",
+        "vial_5_scan",
+        "park_position",
+    ]
+    assert context.board.instruments["asmi"]._offline is True

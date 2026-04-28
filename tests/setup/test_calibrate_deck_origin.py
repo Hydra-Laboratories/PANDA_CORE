@@ -117,7 +117,7 @@ class _FakeGantry:
         self,
         settings: dict[str, float] | None,
         *,
-        source: str = "board",
+        source: str = "gantry",
     ) -> None:
         self.calls.append(("set_expected_grbl_settings", settings, source))
 
@@ -171,6 +171,51 @@ class _LimitRecoveringNoReadbackFakeGantry(_LimitRecoveringFakeGantry):
     def __init__(self, config: dict):
         super().__init__(config)
         self.fail_next_recovery_readback = True
+
+
+class _SoftLimitAwareFakeGantry(_FakeGantry):
+    def __init__(self, config: dict):
+        super().__init__(config)
+        self.grbl_settings = {"$20": "1"}
+
+    def read_grbl_settings(self) -> dict[str, str]:
+        self.calls.append(("read_grbl_settings",))
+        return dict(self.grbl_settings)
+
+    def set_grbl_setting(self, setting: str, value: float | int | bool) -> None:
+        self.calls.append(("set_grbl_setting", setting, value))
+        self.grbl_settings[setting] = str(value)
+
+
+class _SoftLimitRejectingFakeGantry(_FakeGantry):
+    def __init__(self, config: dict):
+        super().__init__(config)
+        self.fail_next_jog = True
+
+    def jog(
+        self,
+        x: float = 0,
+        y: float = 0,
+        z: float = 0,
+        feed_rate: float = 2000,
+    ) -> None:
+        if self.fail_next_jog:
+            self.fail_next_jog = False
+            self.calls.append(("jog", x, y, z, feed_rate))
+            raise CommandExecutionError("Jog failed: error:15")
+        super().jog(x=x, y=y, z=z, feed_rate=feed_rate)
+
+
+class _SoftLimitAwareFailingJogFakeGantry(_SoftLimitAwareFakeGantry):
+    def jog(
+        self,
+        x: float = 0,
+        y: float = 0,
+        z: float = 0,
+        feed_rate: float = 2000,
+    ) -> None:
+        self.calls.append(("jog", x, y, z, feed_rate))
+        raise CommandExecutionError("Jog failed: unexpected controller error")
 
 
 def _key_reader(keys):
@@ -278,19 +323,31 @@ def test_run_calibration_assigns_ruler_gap_to_lower_reach_z(tmp_path):
     assert any("z_min: 43.000" in message for message in messages)
 
 
-def test_run_calibration_prints_full_board_yaml_with_grbl_settings(tmp_path):
-    path = _write_gantry(tmp_path / "gantry.yaml")
-    board_path = tmp_path / "board.yaml"
-    board_path.write_text(
+def test_run_calibration_prints_full_gantry_yaml_with_grbl_settings(tmp_path):
+    path = tmp_path / "gantry.yaml"
+    path.write_text(
         """\
+serial_port: /dev/ttyUSB0
+cnc:
+  homing_strategy: standard
+  total_z_height: 100.0
+  y_axis_motion: head
+  structure_clearance_z: 85.0
+working_volume:
+  x_min: 0.0
+  x_max: 400.0
+  y_min: 0.0
+  y_max: 300.0
+  z_min: 0.0
+  z_max: 100.0
+grbl_settings:
+  dir_invert_mask: 1
+  steps_per_mm_x: 400.0
 instruments:
   asmi:
     type: asmi
     vendor: vernier
     measurement_height: 26.0
-grbl_settings:
-  dir_invert_mask: 1
-  steps_per_mm_x: 400.0
 """,
         encoding="utf-8",
     )
@@ -304,13 +361,12 @@ grbl_settings:
         stdin_flusher=lambda: None,
         tip_gap_mm=24.0,
         z_reference_mode="ruler-gap",
-        board_path=board_path,
         skip_soft_limit_config=True,
     )
 
     assert isinstance(result, DeckOriginCalibrationResult)
     output_text = "\n".join(messages)
-    assert "Full board YAML to copy/paste:" in output_text
+    assert "Full gantry YAML to copy/paste:" in output_text
     assert "dir_invert_mask: 1" in output_text
     assert "steps_per_mm_x: 400.0" in output_text
     assert "soft_limits: true" in output_text
@@ -318,27 +374,13 @@ grbl_settings:
     assert "max_travel_x: 398.5" in output_text
     assert "max_travel_y: 299.25" in output_text
     assert "max_travel_z: 72.75" in output_text
-    assert _FakeGantry.instance.calls[0] == (
-        "set_expected_grbl_settings",
-        {"$3": 1.0, "$100": 400.0},
-        str(board_path.resolve()),
-    )
-    assert _FakeGantry.instance.calls[1] == ("connect",)
+    assert "instruments:" in output_text
+    assert _FakeGantry.instance.calls[0] == ("connect",)
 
 
-def test_run_calibration_can_prompt_and_write_board_yaml(tmp_path):
+def test_run_calibration_can_prompt_and_write_gantry_yaml(tmp_path):
     path = _write_gantry(tmp_path / "gantry.yaml")
-    board_path = tmp_path / "board.yaml"
-    board_path.write_text(
-        """\
-instruments:
-  asmi:
-    type: asmi
-    vendor: vernier
-""",
-        encoding="utf-8",
-    )
-    output_path = tmp_path / "written_board.yaml"
+    output_path = tmp_path / "written_gantry.yaml"
     responses = iter([str(output_path), "y"])
 
     run_calibration(
@@ -348,8 +390,7 @@ instruments:
         gantry_factory=_FakeGantry,
         key_reader=_key_reader([("\r", 1)]),
         stdin_flusher=lambda: None,
-        board_path=board_path,
-        write_board_yaml=True,
+        write_gantry_yaml=True,
         skip_soft_limit_config=True,
     )
 
@@ -513,6 +554,74 @@ def test_run_calibration_recovers_from_limit_alarm_during_jog(tmp_path):
         in _LimitRecoveringFakeGantry.instance.calls
     )
     assert any("Limit alarm detected" in message for message in messages)
+
+
+def test_run_calibration_temporarily_disables_stale_soft_limits(tmp_path):
+    path = _write_gantry(tmp_path / "gantry.yaml")
+    messages: list[str] = []
+
+    result = run_calibration(
+        path,
+        output=messages.append,
+        gantry_factory=_SoftLimitAwareFakeGantry,
+        key_reader=_key_reader([("\r", 1)]),
+        stdin_flusher=lambda: None,
+    )
+
+    assert isinstance(result, DeckOriginCalibrationResult)
+    calls = _SoftLimitAwareFakeGantry.instance.calls
+    disable_call = ("set_grbl_setting", "$20", 0)
+    restore_call = ("set_grbl_setting", "$20", 1)
+    assert disable_call in calls
+    assert restore_call in calls
+    assert calls.index(disable_call) < calls.index(restore_call)
+    assert calls.index(restore_call) < calls.index(
+        ("set_work_coordinates", 0.0, 0.0, None)
+    )
+    assert any("Temporarily disabling GRBL soft limits" in m for m in messages)
+    assert any("Restoring GRBL soft limits" in m for m in messages)
+
+
+def test_run_calibration_continues_after_error_15_jog_rejection(tmp_path):
+    path = _write_gantry(tmp_path / "gantry.yaml")
+    messages: list[str] = []
+
+    result = run_calibration(
+        path,
+        output=messages.append,
+        gantry_factory=_SoftLimitRejectingFakeGantry,
+        key_reader=_key_reader([("LEFT", 1), ("\r", 1)]),
+        stdin_flusher=lambda: None,
+    )
+
+    assert isinstance(result, DeckOriginCalibrationResult)
+    calls = _SoftLimitRejectingFakeGantry.instance.calls
+    assert ("jog", -1.0, 0.0, 0.0, 2500.0) in calls
+    assert ("jog_cancel",) not in calls
+    assert ("unlock",) not in calls
+    assert any("target exceeds the current soft-limit travel" in m for m in messages)
+
+
+def test_run_calibration_restores_soft_limits_when_jog_aborts(tmp_path):
+    path = _write_gantry(tmp_path / "gantry.yaml")
+    messages: list[str] = []
+
+    with pytest.raises(CommandExecutionError):
+        run_calibration(
+            path,
+            output=messages.append,
+            gantry_factory=_SoftLimitAwareFailingJogFakeGantry,
+            key_reader=_key_reader([("LEFT", 1)]),
+            stdin_flusher=lambda: None,
+        )
+
+    calls = _SoftLimitAwareFailingJogFakeGantry.instance.calls
+    assert ("set_grbl_setting", "$20", 0) in calls
+    assert ("set_grbl_setting", "$20", 1) in calls
+    assert calls.index(("set_grbl_setting", "$20", 0)) < calls.index(
+        ("set_grbl_setting", "$20", 1)
+    )
+    assert ("disconnect",) in calls
 
 
 def test_run_calibration_aborts_when_recovery_readback_is_unavailable(tmp_path):

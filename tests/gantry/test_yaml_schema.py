@@ -151,6 +151,35 @@ class TestGantryYamlSchema:
         with pytest.raises(ValidationError):
             GantryYamlSchema.model_validate(data)
 
+    def test_instruments_are_parsed_when_present(self):
+        data = _valid_gantry_dict()
+        data["instruments"] = {
+            "asmi": {
+                "type": "asmi",
+                "vendor": "vernier",
+                "measurement_height": 26.0,
+                "safe_approach_height": 35.0,
+                "sensor_channels": [1],
+            }
+        }
+        schema = GantryYamlSchema.model_validate(data)
+        assert schema.instruments["asmi"].type == "asmi"
+        assert schema.instruments["asmi"].safe_approach_height == 35.0
+        assert schema.instruments["asmi"].model_extra["sensor_channels"] == [1]
+
+    def test_instrument_safe_approach_below_measurement_rejected(self):
+        data = _valid_gantry_dict()
+        data["instruments"] = {
+            "asmi": {
+                "type": "asmi",
+                "vendor": "vernier",
+                "measurement_height": 35.0,
+                "safe_approach_height": 26.0,
+            }
+        }
+        with pytest.raises(ValidationError, match="safe_approach_height"):
+            GantryYamlSchema.model_validate(data)
+
 
 class TestGrblSettingsYaml:
 

@@ -41,6 +41,14 @@ working_volume:
   y_max: 200.0
   z_min: 0.0
   z_max: 80.0
+instruments:
+  pipette:
+    type: pipette
+    vendor: opentrons
+    offset_x: 5.0
+    offset_y: 0.0
+    depth: 3.0
+    measurement_height: 0.0
 """
 
 DECK_YAML = """\
@@ -81,17 +89,6 @@ labware:
     working_volume_ul: 40000.0
 """
 
-BOARD_YAML = """\
-instruments:
-  pipette:
-    type: pipette
-    vendor: opentrons
-    offset_x: 5.0
-    offset_y: 0.0
-    depth: 3.0
-    measurement_height: 0.0
-"""
-
 PROTOCOL_YAML = """\
 protocol:
   - move:
@@ -116,7 +113,6 @@ class TestEndToEndSetup:
         paths = [
             _write_temp_yaml(GANTRY_YAML),
             _write_temp_yaml(DECK_YAML),
-            _write_temp_yaml(BOARD_YAML),
             _write_temp_yaml(PROTOCOL_YAML),
         ]
         try:
@@ -137,7 +133,6 @@ class TestEndToEndSetup:
         paths = [
             _write_temp_yaml(GANTRY_YAML),
             _write_temp_yaml(DECK_YAML),
-            _write_temp_yaml(BOARD_YAML),
             _write_temp_yaml(PROTOCOL_YAML),
         ]
         try:
@@ -167,7 +162,6 @@ labware:
         paths = [
             _write_temp_yaml(GANTRY_YAML),
             _write_temp_yaml(bad_deck),
-            _write_temp_yaml(BOARD_YAML),
             _write_temp_yaml(PROTOCOL_YAML),
         ]
         try:
@@ -199,7 +193,6 @@ labware:
         paths = [
             _write_temp_yaml(GANTRY_YAML),
             _write_temp_yaml(edge_deck),
-            _write_temp_yaml(BOARD_YAML),
             _write_temp_yaml(PROTOCOL_YAML),
         ]
         try:
@@ -225,12 +218,19 @@ working_volume:
   y_max: 50.0
   z_min: 0.0
   z_max: 50.0
+instruments:
+  pipette:
+    type: pipette
+    vendor: opentrons
+    offset_x: 5.0
+    offset_y: 0.0
+    depth: 3.0
+    measurement_height: 0.0
 """
         # plate_1 and waste_vial positions are outside tight positive bounds.
         paths = [
             _write_temp_yaml(tight_gantry),
             _write_temp_yaml(DECK_YAML),
-            _write_temp_yaml(BOARD_YAML),
             _write_temp_yaml(PROTOCOL_YAML),
         ]
         try:

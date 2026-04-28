@@ -30,14 +30,13 @@ Run a safe offline validation first:
 PYTHONPATH=src python setup/validate_setup.py \
   configs/gantry/cub_xl_asmi.yaml \
   configs/deck/asmi_deck.yaml \
-  configs/board/asmi_board.yaml \
   configs/protocol/asmi_move_a1.yaml
 ```
 
 ## What To Read First
 
 - [Getting Started](getting-started.md) for installation and first commands
-- [Configuration](configuration.md) for the four YAML surfaces
+- [Configuration](configuration.md) for the three YAML surfaces
 - [Calibrate Deck Origin](calibration.md) for the operator calibration flow
 - [Protocol](protocol.md) for how protocol execution is assembled and validated
 - [Data](data.md) for persistence and analysis helpers

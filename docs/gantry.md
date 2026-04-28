@@ -31,6 +31,7 @@ Gantry YAML defines:
 - working volume
 - optional `structure_clearance_z`
 - optional GRBL settings expectations
+- mounted instruments, offsets, reach depths, action heights, and driver settings
 
 Representative example:
 
@@ -55,6 +56,16 @@ grbl_settings:
   status_report: 0
   homing_enable: true
   homing_dir_mask: 0
+
+instruments:
+  asmi:
+    type: asmi
+    vendor: vernier
+    offset_x: 0.0
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 26.0
+    safe_approach_height: 35.0
 ```
 
 Use this file when:
@@ -63,6 +74,7 @@ Use this file when:
 - changing travel limits
 - updating homing behavior
 - recording expected controller settings
+- changing mounted instruments, offsets, reach depths, or driver-specific connection settings
 
 ## CNC Fields
 
@@ -102,6 +114,18 @@ the homed WPos reads `Z=105`, use `z_min: 5.0`, `z_max: 105.0`.
 Multi-instrument setups need per-instrument lower-reach limits and inactive-tool
 collision checks instead of one global lower reach for every tool.
 
+## Instrument Fields
+
+Mounted instruments live under the gantry YAML `instruments` key.
+
+- `offset_x` and `offset_y` describe XY offsets from the gantry/router
+  reference point.
+- `depth` is positive tool depth below the gantry reference point; in the +Z-up
+  deck frame, gantry Z is computed as target/tool Z plus `depth`.
+- `measurement_height` is the default absolute deck-frame action Z.
+- `safe_approach_height` is the default absolute deck-frame XY-travel Z and
+  must be at or above `measurement_height`.
+
 ## Protocol Height Fields
 
 Protocol movement names describe absolute deck-frame Z planes:
@@ -137,6 +161,6 @@ That admin procedure covers:
 | Config | System | Current status |
 |--------|--------|----------------|
 | `configs/gantry/cub_xl_asmi.yaml` | CubOS-XL + ASMI | Measured deck-origin ASMI config from 2026-04-24; still requires staged hardware checks before broad reuse |
+| `configs/gantry/cub_xl_sterling.yaml` | Sterling ASMI | Sterling ASMI setup; validate on hardware before real protocols |
 | `configs/gantry/cub_filmetrics.yaml` | Cub + Filmetrics | Converted deck-origin starting point; recalibrate and hardware-validate before real Filmetrics runs |
 | `configs/gantry/cub_xl_panda.yaml` | CubOS-XL + PANDA-style board | Estimated layout/config surface; placeholders require follow-up before real multi-instrument use |
-| `configs/gantry/cub_xl_sterling.yaml` | CubOS-XL + Sterling-style setup | Requires setup-specific validation before real use |

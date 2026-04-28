@@ -5,13 +5,13 @@ modified CNC gantry.
 
 ## Configuration
 
-Four YAML files define a runnable experiment:
+Three YAML files define a runnable experiment:
 
 ### 1. Gantry (`configs/gantry/*.yaml`)
 
 Defines the controller serial port, homing strategy, working volume, optional
-structure-clearance plane, optional GRBL expectations, and
-`cnc.total_z_height`.
+structure-clearance plane, optional GRBL expectations, `cnc.total_z_height`,
+and the instruments mounted on that machine.
 
 Coordinate convention:
 
@@ -35,6 +35,16 @@ working_volume:
   y_max: 280.0
   z_min: 0.0
   z_max: 87.0
+
+instruments:
+  asmi:
+    type: asmi
+    vendor: vernier
+    offset_x: 0.0
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 26.0
+    safe_approach_height: 35.0
 ```
 
 Included examples:
@@ -43,6 +53,7 @@ Included examples:
 |--------|--------|
 | `configs/gantry/cub_xl_asmi.yaml` | Cub-XL + ASMI |
 | `configs/gantry/cub_filmetrics.yaml` | Cub + Filmetrics |
+| `configs/gantry/cub_xl_sterling.yaml` | Sterling ASMI |
 
 ### 2. Deck (`configs/deck/*.yaml`)
 
@@ -69,33 +80,15 @@ labware:
     y_offset_mm: 9.0
 ```
 
-### 3. Board (`configs/board/*.yaml`)
+Instrument Z semantics live in the gantry YAML:
 
-Defines instruments mounted on the gantry head, including offsets and
-hardware-specific parameters.
+- `measurement_height` is the instrument's absolute deck-frame action Z.
+- `safe_approach_height` is the instrument's absolute deck-frame XY-travel Z
+  and must be at or above `measurement_height`.
+- These fields are used by generic deck-target motion such as `move` to a deck
+  target, `measure`, `scan`, and pipette commands.
 
-Board-level Z semantics:
-
-- `measurement_height` is the absolute deck-frame Z where the instrument
-  performs its action when no protocol-level override is supplied.
-- `safe_approach_height` is the absolute deck-frame Z used for XY travel to a
-  labware target. It must be at or above `measurement_height`.
-- These board-level fields are used by generic deck-target motion such as
-  `move` to a deck target, `measure`, and pipette commands.
-
-```yaml
-instruments:
-  asmi:
-    type: asmi
-    vendor: vernier
-    offset_x: 0.0
-    offset_y: 0.0
-    depth: 0.0
-    measurement_height: 26.0
-    safe_approach_height: 35.0
-```
-
-### 4. Protocol (`configs/protocol/*.yaml`)
+### 3. Protocol (`configs/protocol/*.yaml`)
 
 Defines the experiment as a sequence of commands. Positions can reference
 labware by key and well ID, for example `plate.A1`.
@@ -130,7 +123,7 @@ Protocol motion notes:
 
 ASMI-specific note:
 
-- Board YAML `measurement_height` is the generic absolute deck-frame action Z
+- Gantry YAML `measurement_height` is the generic absolute instrument action Z
   used by shared movement helpers.
 - Scan-level `measurement_height` is the absolute deck-frame Z where
   `ASMI.indentation()` begins.
@@ -181,7 +174,6 @@ Validate a setup:
 PYTHONPATH=src python setup/validate_setup.py \
   configs/gantry/cub_xl_asmi.yaml \
   configs/deck/asmi_deck.yaml \
-  configs/board/asmi_board.yaml \
   configs/protocol/asmi_move_a1.yaml
 ```
 
@@ -191,7 +183,6 @@ Run a protocol:
 PYTHONPATH=src python setup/run_protocol.py \
   configs/gantry/cub_xl_asmi.yaml \
   configs/deck/asmi_deck.yaml \
-  configs/board/asmi_board.yaml \
   configs/protocol/asmi_move_a1.yaml
 ```
 
@@ -199,7 +190,7 @@ PYTHONPATH=src python setup/run_protocol.py \
 
 - connects to the gantry
 - clears the expected GRBL alarm state if present and restores controller state
-- connects all board instruments
+- connects all configured instruments
 - executes the protocol
 - disconnects instruments and gantry in `finally`
 
@@ -211,7 +202,6 @@ from protocol_engine.setup import setup_protocol
 protocol, context = setup_protocol(
     gantry_path="configs/gantry/cub_xl_asmi.yaml",
     deck_path="configs/deck/asmi_deck.yaml",
-    board_path="configs/board/asmi_board.yaml",
     protocol_path="configs/protocol/asmi_move_a1.yaml",
     mock_mode=True,
 )
