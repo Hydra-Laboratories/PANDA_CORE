@@ -1,4 +1,4 @@
-# Candidate ASMI board config for the deck-origin refactor.
+# ASMI board config for the CubOS deck-origin frame.
 #
 # The ASMI TCP offset is left at zero because the current ASMI setup appears to
 # have been calibrated directly to the ASMI probe/tip. Measure and update

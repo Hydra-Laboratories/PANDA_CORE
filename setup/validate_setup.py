@@ -5,10 +5,10 @@ Usage:
 
 Example:
     python setup/validate_setup.py \\
-        configs_new/gantry/cub_xl_asmi_deck_origin.yaml \\
-        configs_new/deck/asmi_deck_origin.yaml \\
-        configs_new/board/asmi_board_deck_origin.yaml \\
-        configs_new/protocol/asmi_move_a1_deck_origin.yaml
+        configs/gantry/cub_xl_asmi.yaml \\
+        configs/deck/asmi_deck.yaml \\
+        configs/board/asmi_board.yaml \\
+        configs/protocol/asmi_move_a1.yaml
 """
 
 import sys
@@ -231,10 +231,10 @@ def main() -> None:
         print()
         print("Example:")
         print("  python setup/validate_setup.py \\")
-        print("    configs_new/gantry/cub_xl_asmi_deck_origin.yaml \\")
-        print("    configs_new/deck/asmi_deck_origin.yaml \\")
-        print("    configs_new/board/asmi_board_deck_origin.yaml \\")
-        print("    configs_new/protocol/asmi_move_a1_deck_origin.yaml")
+        print("    configs/gantry/cub_xl_asmi.yaml \\")
+        print("    configs/deck/asmi_deck.yaml \\")
+        print("    configs/board/asmi_board.yaml \\")
+        print("    configs/protocol/asmi_move_a1.yaml")
         sys.exit(1)
 
     gantry_path, deck_path, board_path, protocol_path = sys.argv[1:5]

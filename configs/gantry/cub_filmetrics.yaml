@@ -1,4 +1,4 @@
-# Candidate Filmetrics gantry configuration for the deck-origin refactor.
+# Filmetrics gantry configuration for the CubOS deck-origin frame.
 #
 # This translates configs/gantry/cub_filmetrics.yaml into the CubOS deck frame:
 # front-left-bottom origin, +X right, +Y back, +Z up, -Z down.

@@ -171,7 +171,7 @@ Gantry YAML loader and domain model for CNC gantry working volume and homing str
 - **`yaml_schema.py`**: `GantryYamlSchema` with strict Pydantic validation (working volume bounds, homing strategy, serial port, and `cnc.total_z_height`).
 - **`gantry_config.py`**: `GantryConfig` and `WorkingVolume` frozen dataclasses. `WorkingVolume.contains(x, y, z)` checks if a point is within bounds (inclusive). `GantryConfig.total_z_height` is the configured vertical envelope; deck `height` values are direct deck-frame Z values, not `total_z_height - height`. `GantryConfig.structure_clearance_z` is an optional absolute Z plane for home/park/edge-risk clearance. `HomingStrategy` enum: `STANDARD`.
 - **`loader.py`**: `load_gantry_from_yaml(path)` and `load_gantry_from_yaml_safe(path)`.
-- **Config files**: deck-origin gantry candidates live in `configs_new/gantry/`.
+- **Config files**: deck-origin gantry configs live in `configs/gantry/`.
 
 ### Validation (`src/validation`)
 Bounds validation for protocol setup — ensures all deck positions and gantry-computed positions are within the gantry's working volume before the protocol runs.
@@ -198,9 +198,9 @@ Deck configuration loading, runtime deck container, and labware geometry/positio
   - **`src/deck/loader.py`**: `load_deck_from_yaml(path, total_z_height=None)` loads a deck YAML config and returns a `Deck` containing all labware. Well plates are built from calibration A1/A2 and x/y offsets (derived well positions); tip racks use explicit pickup coordinates; vials and holders are built from explicit `location` points. Nested holder children inherit their experiment Z from `holder.location.z + holder.labware_seat_height_from_bottom_mm`.
   - **`src/deck/errors.py`**: `DeckLoaderError` for user-facing loader failures.
 - **Sample configs**:
-  - `configs/deck/deck.sample.yaml` — one well plate and one vial; use as reference for required fields and two-point calibration format.
-  - `configs/deck/panda_deck.yaml` — YAML deck config derived from `panda.json`, including two 2x15 tip racks, a nested well plate holder, and a nested vial holder.
-- **Usage**: Load a deck with `load_deck_from_yaml("configs/deck/deck.sample.yaml", total_z_height=<float>)` or `load_deck_from_yaml("configs/deck/panda_deck.yaml", total_z_height=<float>)` to get a `Deck` object. Access labware: `deck["plate_1"]`. Resolve targets: `deck.resolve("plate_1.A1")` or nested targets like `deck.resolve("well_plate_holder.plate.A1")` for absolute XYZ.
+  - `configs/deck/asmi_deck.yaml` — ASMI 96-well plate in the deck-origin frame; use as the current one-plate calibration reference.
+  - `configs/deck/panda_deck.yaml` — PANDA-style deck config with two 2x15 tip racks, a nested well plate holder, and a nested vial holder.
+- **Usage**: Load a deck with `load_deck_from_yaml("configs/deck/asmi_deck.yaml", total_z_height=<float>)` or `load_deck_from_yaml("configs/deck/panda_deck.yaml", total_z_height=<float>)` to get a `Deck` object. Access labware: `deck["plate"]`. Resolve targets: `deck.resolve("plate.A1")` or nested targets like `deck.resolve("well_plate_holder.plate.A1")` for absolute XYZ.
 
 ### Config Directory Structure
 Config files are organized by type:
@@ -252,13 +252,13 @@ SQLite-backed persistence layer for self-driving lab campaigns. All state lives 
 First-run scripts for verifying hardware after unboxing.
 
 - **`calibrate_deck_origin.py`**: One-instrument deck-origin calibration utility for issue #87-style configs. Homes the machine at the normalized back-right-top homing corner, clears transient `G92` offsets, then prompts the operator to jog the reference TCP as far as appropriate toward the physical front-left XY origin and its lowest safe reachable Z. It sets only `G10 L20 P1 X0 Y0`, then assigns Z at the same pose. If the TCP touches true deck bottom, bottom mode sets `G10 L20 P1 Z0`. If the TCP cannot reach bottom, ruler-gap mode asks for the measured deck-to-TCP gap and sets `G10 L20 P1 Z<gap_mm>`. It then re-homes and reports measured physical maxima `(x_max, y_max, z_max)`. For one-instrument configs, use the lower-reach value as `working_volume.z_min`; for future multi-instrument configs, model lower reach per instrument instead of using one global Z minimum.
-    - **Guided usage**: `python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --instrument asmi`
+    - **Guided usage**: `python setup/calibrate_deck_origin.py --gantry configs/gantry/cub_xl_asmi.yaml --instrument asmi`
     - **Ruler gap for non-bottom-reaching TCP**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --z-reference-mode ruler-gap --tip-gap-mm 5 --instrument filmetrics`
     - **Bottom contact**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --z-reference-mode bottom`
     - **Dry run**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --dry-run`
     - **Safety**: only use with deck-origin gantry configs whose X/Y working-volume minima are `0.0` and whose Z minimum is non-negative; pre-cutover or negative-space configs are rejected.
 - **`hello_world.py`**: Interactive deck-origin jog test. Loads an explicit gantry YAML, homes without rewriting WPos, then lets you jog in the CubOS deck frame.
-    - **Usage**: `python3 setup/hello_world.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml`
+    - **Usage**: `python3 setup/hello_world.py --gantry configs/gantry/cub_xl_asmi.yaml`
     - **Controls**: Arrow keys (X/Y ±1mm), Z key (Z down 1mm), X key (Z up 1mm), Q (quit)
     - **Dependencies**: `src/gantry` (Gantry class), `setup/keyboard_input.py`
 - **`validate_setup.py`**: Validate a protocol setup by loading all 4 configs (gantry, deck, board, protocol) and checking that all deck and gantry positions are within the gantry's working volume.

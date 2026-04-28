@@ -1,5 +1,4 @@
-# Candidate PANDA moving-instrument board for the issue #87 deck-origin
-# refactor.
+# PANDA moving-instrument board for the CubOS deck-origin frame.
 #
 # Estimated from panda-board.jpg. This file intentionally captures placeholder
 # instruments that do not exist in the registry yet:
@@ -9,7 +8,7 @@
 # The current board loader will reject those placeholder types until real
 # drivers are implemented and added to src/instruments/registry.yaml.
 #
-# Candidate board-level structure clearance from the photos: 85.0 mm. That is
+# Estimated board-level structure clearance from the photos: 85.0 mm. That is
 # intentionally not encoded per instrument here; it should become a
 # board/motion safety envelope or gantry clearance field when the schema grows
 # one.

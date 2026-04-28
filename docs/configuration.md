@@ -56,6 +56,10 @@ and preserves the persistent G54 work-coordinate frame established by
 setup rejects gantry configs whose X/Y minima are not `0.0` or whose Z minimum
 is negative.
 
+Run [Calibrate Deck Origin](calibration.md) before trusting measured working
+volume values on real hardware. Use [Gantry Bring-Up](admin/gantry-bring-up.md)
+first if controller direction, homing, or WPos reporting is unknown.
+
 ## Deck Config
 
 Deck YAML defines labware positions. Well plates use calibration anchors, while single-location labware such as vials store a direct position.
@@ -65,25 +69,21 @@ Representative well plate example:
 
 ```yaml
 labware:
-  plate_1:
-    type: well_plate
-    name: corning_96_well_360ul
-    model_name: corning_3590_96well
-    rows: 8
-    columns: 12
+  plate:
+    load_name: sbs_96_wellplate
+    name: asmi_96_well
+    model_name: asmi_96_well
     calibration:
       a1:
-        x: -17.88
-        y: -42.23
-        z: 20.0
+        x: 347.0
+        y: 42.0
+        z: 30.0
       a2:
-        x: -17.88
-        y: -51.23
-        z: 20.0
+        x: 338.0
+        y: 42.0
+        z: 30.0
     x_offset_mm: -9.0
-    y_offset_mm: -9.0
-    capacity_ul: 360.0
-    working_volume_ul: 200.0
+    y_offset_mm: 9.0
 ```
 
 Use this file when:
@@ -96,6 +96,7 @@ Use this file when:
 
 Board YAML defines mounted instruments and their offsets relative to the gantry/router.
 `measurement_height` and `safe_approach_height` are absolute deck-frame Z planes, not labware-relative offsets.
+`safe_approach_height` must be greater than or equal to `measurement_height` in the +Z-up deck frame.
 
 Representative example:
 
@@ -140,6 +141,11 @@ Use this file when:
 - changing the experimental sequence
 - adding measurement or liquid-handling steps
 - adjusting step parameters without changing the machine layout
+
+Protocol scan heights use the current names `measurement_height`,
+`entry_travel_height`, and `interwell_travel_height`. Legacy scan names
+`entry_travel_z`, scan-level `safe_approach_height`, and ASMI `z_limit` are
+rejected before motion.
 
 ## Recommended Editing Rule
 

@@ -13,8 +13,8 @@ Instead, it separates XY origining from Z assignment:
 
 Usage:
 
-    python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml
-    python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --dry-run
+    python setup/calibrate_deck_origin.py --gantry configs/gantry/cub_xl_asmi.yaml
+    python setup/calibrate_deck_origin.py --gantry configs/gantry/cub_xl_asmi.yaml --dry-run
 """
 
 from __future__ import annotations
@@ -1015,7 +1015,7 @@ def main() -> None:
         "--gantry",
         type=Path,
         required=True,
-        help="Deck-origin gantry YAML from configs_new/gantry.",
+        help="Deck-origin gantry YAML from configs/gantry.",
     )
     parser.add_argument(
         "--dry-run",

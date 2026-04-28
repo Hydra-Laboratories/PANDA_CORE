@@ -1,4 +1,4 @@
-# Candidate Filmetrics board config for the deck-origin refactor.
+# Filmetrics board config for the CubOS deck-origin frame.
 #
 # These are placeholder/default TCP values. The optical head offset, depth, and
 # measurement plane should be recalibrated on the physical setup.
@@ -33,9 +33,8 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    # The legacy mock Filmetrics board used measurement/safe height 10.0 in the
-    # old positive-down 90 mm frame, so this placeholder preserves that as
-    # 90 - 10 = 80 mm in deck-origin +Z-up coordinates.
+    # Placeholder optical standoff in deck-origin +Z-up coordinates. Re-measure
+    # this on the physical Filmetrics setup before trusting hardware scans.
     measurement_height: 80.0
     safe_approach_height: 80.0
     exe_path: ""

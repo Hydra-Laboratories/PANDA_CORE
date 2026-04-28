@@ -1,4 +1,4 @@
-# Candidate ASMI indentation protocol for the deck-origin refactor.
+# ASMI indentation protocol for the CubOS deck-origin frame.
 #
 # In the CubOS deck-origin frame, +Z is up and -Z is down. Run this only
 # after staged jog-direction, homing, WPos calibration, and clearance checks pass.

@@ -1,4 +1,4 @@
-# Candidate Filmetrics deck for the deck-origin refactor.
+# Filmetrics deck layout for the CubOS deck-origin frame.
 #
 # Translated from configs/deck/filmetrics_deck.yaml and
 # configs/gantry/cub_filmetrics.yaml:
@@ -7,13 +7,13 @@
 #   new A1 = (280 - 10.0, 175 - 35.0, 90 - 20.0)
 #          = (270.0, 140.0, 70.0)
 #
-# The legacy calibration had A2 along negative Y, so the translated candidate
-# keeps columns moving toward lower deck-frame Y.
+# The translated deck-origin layout keeps columns moving toward lower
+# deck-frame Y.
 
 labware:
   plate_1:
     load_name: sbs_96_wellplate
-    name: filmetrics_96_well_deck_origin_candidate
+    name: filmetrics_96_well_deck_origin
     model_name: opentrons_96_well_20ml
     calibration:
       a1:

@@ -1,8 +1,7 @@
-# Candidate ASMI deck for the deck-origin refactor.
+# ASMI deck layout in the CubOS deck-origin frame.
 #
-# Estimated from photos plus the current ASMI calibration converted from the
-# old top/back/right positive-down frame into a 400 x 300 x 100 mm deck-origin
-# volume:
+# Initial values came from measured ASMI calibration data converted into the
+# current deck frame and then adjusted during hardware bring-up:
 #
 #   old A1 = (-51.25, -238.25, 73.0)
 #   new A1 = (400 - 51.25, 300 - 238.25, 100 - 73.0)
@@ -16,8 +15,8 @@
 labware:
   plate:
     load_name: sbs_96_wellplate
-    name: asmi_96_well_deck_origin_candidate
-    model_name: asmi_96_well_deck_origin_candidate
+    name: asmi_96_well_deck_origin
+    model_name: asmi_96_well_deck_origin
     calibration:
       a1:
         x: 347

@@ -1,4 +1,4 @@
-# Candidate Filmetrics scan protocol for the deck-origin refactor.
+# Filmetrics scan protocol for the CubOS deck-origin frame.
 # Uses board-configured absolute deck-frame measurement/safe heights.
 
 protocol:
