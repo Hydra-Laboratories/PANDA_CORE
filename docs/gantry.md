@@ -12,6 +12,7 @@ Gantry YAML defines:
 - Y-axis motion mode
 - working volume
 - optional GRBL settings expectations
+- mounted instruments and offsets
 
 Representative example:
 
@@ -43,6 +44,15 @@ grbl_settings:
   max_travel_x: 300.0
   max_travel_y: 200.0
   max_travel_z: 80.0
+
+instruments:
+  uvvis:
+    type: uvvis_ccs
+    vendor: thorlabs
+    offset_x: 0.0
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 3.0
 ```
 
 Use this file when:
@@ -51,6 +61,7 @@ Use this file when:
 - changing travel limits
 - updating homing behavior
 - validating expected controller settings
+- changing mounted instruments or their offsets
 
 ## CNC Fields
 
@@ -206,5 +217,7 @@ Record `$3` and `$23` before changing anything.
 
 | Config | System | Working Volume |
 |--------|--------|----------------|
-| `cub_xl.yaml` | CubOS-XL / Genmitsu 3018 PRO | 400 x 300 x 80 mm |
-| `cub.yaml` | CubOS / Genmitsu 3018 PROVer V2 | 300 x 200 x 80 mm |
+| `cub_xl.sample.yaml` | CubOS-XL / Genmitsu 3018 PRO | 400 x 300 x 100 mm |
+| `cub.sample.yaml` | CubOS / Genmitsu 3018 PROVer V2 | 300 x 200 x 80 mm |
+| `cub_xl_asmi.yaml` | ASMI / Genmitsu 3018 PRO | 390 x 290 x 95 mm |
+| `cub_filmetrics.yaml` | Filmetrics/UV-Vis / Genmitsu 3018 PROVer V2 | 280 x 175 x 36 mm |

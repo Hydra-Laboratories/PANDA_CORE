@@ -20,7 +20,7 @@ sys.path.insert(0, str(project_root / "src"))
 
 from gantry import Gantry, HomingStrategy, load_gantry_from_yaml_safe
 
-BASE_CONFIG = project_root / "configs" / "gantry" / "cub.yaml"
+BASE_CONFIG = project_root / "configs" / "gantry" / "cub.sample.yaml"
 
 
 def main() -> None:

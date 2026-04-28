@@ -5,7 +5,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from board.errors import BoardLoaderError
-from board.loader import load_board_from_yaml, load_board_from_yaml_safe
+from board.loader import (
+    load_board_from_gantry_yaml,
+    load_board_from_gantry_yaml_safe,
+    load_board_from_yaml,
+    load_board_from_yaml_safe,
+)
 from board.yaml_schema import BoardYamlSchema, InstrumentYamlEntry
 from instruments.asmi.driver import ASMI
 from instruments.filmetrics.driver import Filmetrics
@@ -95,6 +100,52 @@ class TestLoadBoardSingleInstrument:
         assert instr.offset_y == 0.0
         assert instr.depth == 5.0
         assert instr.measurement_height == 3.0
+
+
+class TestLoadBoardFromGantryYaml:
+
+    def test_loads_embedded_instruments(self, tmp_path):
+        yaml_path = _write_yaml(tmp_path, """\
+            serial_port: /dev/ttyUSB0
+            cnc:
+              homing_strategy: standard
+              total_z_height: 90.0
+            working_volume:
+              x_min: 0.0
+              x_max: 300.0
+              y_min: 0.0
+              y_max: 200.0
+              z_min: 0.0
+              z_max: 80.0
+            instruments:
+              uvvis:
+                type: uvvis_ccs
+                vendor: thorlabs
+                measurement_height: 3.0
+        """)
+        board = load_board_from_gantry_yaml(yaml_path, _mock_gantry())
+
+        assert "uvvis" in board.instruments
+        assert isinstance(board.instruments["uvvis"], UVVisCCS)
+        assert board.instruments["uvvis"].measurement_height == 3.0
+
+    def test_missing_embedded_instruments_raises_board_loader_error(self, tmp_path):
+        yaml_path = _write_yaml(tmp_path, """\
+            serial_port: /dev/ttyUSB0
+            cnc:
+              homing_strategy: standard
+              total_z_height: 90.0
+            working_volume:
+              x_min: 0.0
+              x_max: 300.0
+              y_min: 0.0
+              y_max: 200.0
+              z_min: 0.0
+              z_max: 80.0
+        """)
+
+        with pytest.raises(BoardLoaderError, match="Gantry YAML must define"):
+            load_board_from_gantry_yaml_safe(yaml_path, _mock_gantry())
 
 
 class TestLoadBoardMultipleInstruments:
@@ -356,7 +407,7 @@ class TestLoadBoardFromYamlSafe:
               sensor:
                 offset_x: 1.0
         """)
-        with pytest.raises(BoardLoaderError, match="Board YAML error"):
+        with pytest.raises(BoardLoaderError, match="Instrument YAML error"):
             load_board_from_yaml_safe(yaml_path, _mock_gantry())
 
     def test_wraps_extra_root_key_in_board_loader_error(self, tmp_path):
@@ -367,7 +418,7 @@ class TestLoadBoardFromYamlSafe:
                 vendor: thorlabs
             extra_key: bad
         """)
-        with pytest.raises(BoardLoaderError, match="Board YAML error"):
+        with pytest.raises(BoardLoaderError, match="Instrument YAML error"):
             load_board_from_yaml_safe(yaml_path, _mock_gantry())
 
     def test_wraps_file_not_found_in_board_loader_error(self):
@@ -377,7 +428,7 @@ class TestLoadBoardFromYamlSafe:
     def test_wraps_invalid_yaml_in_board_loader_error(self, tmp_path):
         path = tmp_path / "bad.yaml"
         path.write_text("instruments:\n  - [invalid: yaml: :\n")
-        with pytest.raises(BoardLoaderError, match="Board YAML"):
+        with pytest.raises(BoardLoaderError, match="Instrument YAML"):
             load_board_from_yaml_safe(path, _mock_gantry())
 
 

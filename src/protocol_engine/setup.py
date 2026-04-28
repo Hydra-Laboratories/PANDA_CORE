@@ -6,7 +6,10 @@ from pathlib import Path
 from typing import Any, List, Tuple
 
 from board.board import Board
-from board.loader import load_board_from_yaml_safe
+from board.loader import (
+    load_board_from_gantry_yaml_safe,
+    load_board_from_yaml_safe,
+)
 from deck.deck import Deck
 from deck.loader import load_deck_from_yaml_safe
 from gantry.gantry import Gantry
@@ -19,20 +22,31 @@ from validation.errors import ProtocolSemanticValidationError, SetupValidationEr
 from validation.protocol_semantics import validate_protocol_semantics
 
 
+def _resolve_board_and_protocol_paths(
+    gantry_path: str | Path,
+    protocol_or_board_path: str | Path,
+    legacy_protocol_path: str | Path | None,
+) -> tuple[str | Path, str | Path, bool]:
+    """Return board source, protocol path, and whether board is embedded."""
+    if legacy_protocol_path is None:
+        return gantry_path, protocol_or_board_path, True
+    return protocol_or_board_path, legacy_protocol_path, False
+
+
 def setup_protocol(
     gantry_path: str | Path,
     deck_path: str | Path,
-    board_path: str | Path,
     protocol_path: str | Path,
-    gantry=None,
+    legacy_protocol_path: str | Path | None = None,
+    gantry: Gantry | None = None,
     mock_mode: bool = False,
 ) -> Tuple[Protocol, ProtocolContext]:
     """Load all configs, validate bounds, and return a ready-to-run protocol.
 
     Steps:
-        1. Load gantry config (working volume, homing strategy)
+        1. Load gantry config (working volume, homing strategy, instruments)
         2. Load deck (labware positions)
-        3. Load board (instruments with offsets)
+        3. Load board from the gantry-embedded instruments
         4. Load protocol (command steps)
         5. Validate all deck positions within gantry bounds
         6. Validate all gantry positions within gantry bounds
@@ -41,8 +55,11 @@ def setup_protocol(
     Args:
         gantry_path: Path to gantry YAML config.
         deck_path: Path to deck YAML config.
-        board_path: Path to board YAML config.
-        protocol_path: Path to protocol YAML config.
+        protocol_path: Path to protocol YAML config. For legacy callers that
+            still pass four positional paths, this may be a direct board YAML
+            path and ``legacy_protocol_path`` carries the protocol YAML path.
+        legacy_protocol_path: Optional protocol YAML path for the legacy
+            four-path call shape.
         gantry: Optional Gantry instance. If None, an offline Gantry is used
             for validation.
         mock_mode: If True, instantiate real driver classes in offline mode.
@@ -53,10 +70,15 @@ def setup_protocol(
     Raises:
         GantryLoaderError: If gantry YAML is invalid or missing.
         DeckLoaderError: If deck YAML is invalid or missing.
-        BoardLoaderError: If board YAML is invalid or missing.
+        BoardLoaderError: If embedded instrument config is invalid or missing.
         ProtocolLoaderError: If protocol YAML is invalid or missing.
         SetupValidationError: If any positions violate gantry bounds.
     """
+    board_source_path, resolved_protocol_path, embedded_board = (
+        _resolve_board_and_protocol_paths(
+            gantry_path, protocol_path, legacy_protocol_path,
+        )
+    )
     gantry_config: GantryConfig = load_gantry_from_yaml_safe(gantry_path)
     deck: Deck = load_deck_from_yaml_safe(
         deck_path,
@@ -65,11 +87,16 @@ def setup_protocol(
 
     if gantry is None:
         gantry = Gantry(offline=True)
-    board: Board = load_board_from_yaml_safe(
-        board_path, gantry, mock_mode=mock_mode,
-    )
+    if embedded_board:
+        board: Board = load_board_from_gantry_yaml_safe(
+            board_source_path, gantry, mock_mode=mock_mode,
+        )
+    else:
+        board = load_board_from_yaml_safe(
+            board_source_path, gantry, mock_mode=mock_mode,
+        )
 
-    protocol: Protocol = load_protocol_from_yaml_safe(protocol_path)
+    protocol: Protocol = load_protocol_from_yaml_safe(resolved_protocol_path)
 
     violations = validate_deck_positions(gantry_config, deck)
     violations.extend(validate_gantry_positions(gantry_config, deck, board))
@@ -87,9 +114,9 @@ def setup_protocol(
 def run_protocol(
     gantry_path: str | Path,
     deck_path: str | Path,
-    board_path: str | Path,
     protocol_path: str | Path,
-    gantry=None,
+    legacy_protocol_path: str | Path | None = None,
+    gantry: Gantry | None = None,
     mock_mode: bool = False,
 ) -> List[Any]:
     """Load configs, validate, and execute the protocol in one call.
@@ -101,7 +128,7 @@ def run_protocol(
         List of step results from protocol execution.
     """
     protocol, context = setup_protocol(
-        gantry_path, deck_path, board_path, protocol_path,
+        gantry_path, deck_path, protocol_path, legacy_protocol_path,
         gantry=gantry, mock_mode=mock_mode,
     )
     context.board.connect_instruments()

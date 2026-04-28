@@ -1,6 +1,9 @@
 # Board
 
-The board defines which instruments are mounted on the gantry head, their type, and their XYZ offsets from the head reference point.
+The board runtime defines which instruments are mounted on the gantry head,
+their type, and their XYZ offsets from the head reference point. In checked-in
+operator configs, these instrument entries now live inside the selected
+`configs/gantry/*.yaml` file under `instruments:`.
 
 ## Config
 
@@ -27,7 +30,7 @@ Use this file when:
 
 ## Schema
 
-The top-level YAML key is `instruments`. Each instrument entry requires:
+The instrument config key is `instruments`. Each instrument entry requires:
 
 - `type` - instrument type key from the registry
 - `vendor` - allowed vendor for that type
@@ -38,7 +41,7 @@ Common optional fields are:
 - `depth` - Z offset from the gantry head reference point
 - `measurement_height` - instrument-specific height offset used by measurement commands
 
-Driver-specific fields, such as serial ports, DLL paths, pipette models, or sensor channels, are passed through to the instrument driver constructor. Unknown top-level keys are rejected.
+Driver-specific fields, such as serial ports, DLL paths, pipette models, or sensor channels, are passed through to the instrument driver constructor. Unknown instrument fields are driver-specific; unknown gantry YAML root keys are rejected.
 
 ## Supported Instruments
 

@@ -1,4 +1,4 @@
-"""Strict Pydantic schemas for board YAML."""
+"""Strict Pydantic schemas for mounted-instrument YAML sections."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class InstrumentYamlEntry(BaseModel):
-    """Schema for one instrument in board YAML.
+    """Schema for one mounted instrument.
 
     Common fields are declared explicitly. Driver-specific fields
     (e.g. serial_number, dll_path) pass through via extra="allow".
@@ -46,7 +46,7 @@ class InstrumentYamlEntry(BaseModel):
 
 
 class BoardYamlSchema(BaseModel):
-    """Root board YAML schema: only 'instruments' key allowed."""
+    """Legacy direct-board YAML schema: only 'instruments' key allowed."""
 
     model_config = ConfigDict(extra="forbid")
 

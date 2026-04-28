@@ -5,12 +5,13 @@ modified CNC gantry.
 
 ## Configuration
 
-Four YAML files define a runnable experiment:
+Three YAML files define a runnable experiment:
 
 ### 1. Gantry (`configs/gantry/*.yaml`)
 
 Defines the controller serial port, homing strategy, working volume, optional
-GRBL expectations, and `cnc.total_z_height`.
+GRBL expectations, `cnc.total_z_height`, and the instruments mounted on that
+gantry.
 
 Coordinate convention:
 
@@ -37,14 +38,25 @@ working_volume:
   y_max: 200.0
   z_min: 0.0
   z_max: 80.0
+
+instruments:
+  uvvis:
+    type: uvvis_ccs
+    vendor: thorlabs
+    offset_x: 0.0
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 3.0
 ```
 
 Included examples:
 
 | Config | System |
 |--------|--------|
-| `cub.yaml` | Cub |
-| `cub_xl.yaml` | Cub-XL |
+| `cub.sample.yaml` | Cub / Sterling UV-Vis sample |
+| `cub_xl.sample.yaml` | Cub-XL mock UV-Vis sample |
+| `cub_xl_asmi.yaml` | Cub-XL ASMI indenter |
+| `cub_filmetrics.yaml` | Cub Filmetrics/UV-Vis mock |
 
 ### 2. Deck (`configs/deck/*.yaml`)
 
@@ -91,18 +103,37 @@ Included examples:
 
 - `configs/deck/panda_deck.yaml` — YAML deck config derived from `panda.json`, with two 2x15 tip racks, a nested well plate holder, and a nested vial holder. Contained vial / plate Z positions are generated from holder seat heights.
 
-### 3. Board (`configs/board/*.yaml`)
+### 3. Protocol (`configs/protocol/*.yaml`)
 
-Defines instruments mounted on the gantry head, including offsets and
-hardware-specific parameters.
+Defines the experiment as a sequence of commands. Positions can reference
+labware by key and well ID, for example `plate_1.A1`.
 
-Board-level Z semantics:
+```yaml
+positions:
+  safe_z: [0.0, 0.0, 20.0]
+
+protocol:
+  - home:
+  - move:
+      instrument: uvvis
+      position: plate_1.A1
+```
+
+Available protocol commands include `home`, `move`, `scan`, `measure`,
+`pause`, and the pipette command set.
+
+## Mounted Instruments
+
+Mounted instruments now live inside the selected gantry YAML. This keeps the
+machine, controller, and head-mounted tool configuration together.
+
+Instrument Z semantics:
 
 - `measurement_height` is the instrument's relative action offset from the
   labware reference Z.
 - `safe_approach_height` is the instrument's relative XY-travel offset from
   the labware reference Z.
-- These board-level fields are used by generic deck-target motion such as
+- These gantry instrument fields are used by generic deck-target motion such as
   `move` to a deck target, `measure`, and pipette commands.
 
 ```yaml
@@ -115,25 +146,6 @@ instruments:
     depth: 0.0
 ```
 
-### 4. Protocol (`configs/protocol/*.yaml`)
-
-Defines the experiment as a sequence of commands. Positions can reference
-labware by key and well ID, for example `plate_1.A1`.
-
-```yaml
-positions:
-  safe_z: [0.0, 0.0, 20.0]
-
-protocol:
-  - home:
-  - move:
-      instrument: pipette
-      position: plate_1.A1
-```
-
-Available protocol commands include `home`, `move`, `scan`, `measure`,
-`pause`, and the pipette command set.
-
 Protocol motion notes:
 
 - `positions:` entries such as `safe_z` are protocol named positions, not deck
@@ -145,13 +157,14 @@ Protocol motion notes:
   first well.
 - `scan.safe_approach_height` is also an absolute Z, but only for well-to-well
   travel inside the scan.
-- This is intentionally different from board-level `safe_approach_height`,
+- This is intentionally different from gantry instrument `safe_approach_height`,
   which remains a relative offset from labware for generic motion helpers.
 
 ASMI-specific note:
 
 - ASMI has two different `measurement_height` concepts.
-- Board YAML `measurement_height` is the generic relative instrument offset.
+- Gantry YAML instrument `measurement_height` is the generic relative
+  instrument offset.
 - `scan.method_kwargs.measurement_height` for `ASMI.indentation()` is an
   absolute Z where the indentation begins.
 
@@ -192,27 +205,25 @@ Validate a setup:
 
 ```bash
 python setup/validate_setup.py \
-    configs/gantry/cub.yaml \
+    configs/gantry/cub.sample.yaml \
     configs/deck/mofcat_deck.yaml \
-    configs/board/mofcat_board.yaml \
-    configs/protocol/protocol.sample.yaml
+    configs/protocol/scan.yaml
 ```
 
 Run a protocol:
 
 ```bash
 python setup/run_protocol.py \
-    configs/gantry/cub.yaml \
+    configs/gantry/cub.sample.yaml \
     configs/deck/mofcat_deck.yaml \
-    configs/board/mofcat_board.yaml \
-    configs/protocol/protocol.sample.yaml
+    configs/protocol/scan.yaml
 ```
 
 `setup/run_protocol.py` runs offline validation first, then:
 
 - connects to the gantry
 - clears the expected GRBL alarm state if present and restores controller state
-- connects all board instruments
+- connects all mounted instruments
 - executes the protocol
 - disconnects instruments and gantry in `finally`
 
@@ -222,10 +233,9 @@ Programmatic setup:
 from protocol_engine.setup import setup_protocol
 
 protocol, context = setup_protocol(
-    gantry_path="configs/gantry/cub.yaml",
-    deck_path="configs/deck/mofcat_deck.yaml",
-    board_path="configs/board/mofcat_board.yaml",
-    protocol_path="configs/protocol/protocol.sample.yaml",
+    "configs/gantry/cub.sample.yaml",
+    "configs/deck/mofcat_deck.yaml",
+    "configs/protocol/scan.yaml",
     mock_mode=True,
 )
 protocol.run(context)

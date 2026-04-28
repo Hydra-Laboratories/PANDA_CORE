@@ -1,6 +1,6 @@
 """One-shot gantry homing from a gantry YAML file.
 
-Loads a gantry config (default ``configs/gantry/cub.yaml``), connects, runs the
+Loads a gantry config (default ``configs/gantry/cub.sample.yaml``), connects, runs the
 configured homing strategy (e.g. ``standard`` → GRBL ``$H``), optionally sets
 work zero with ``G92 X0 Y0 Z0`` (same as the protocol ``home`` command), then
 disconnects.
@@ -8,7 +8,7 @@ disconnects.
 Usage::
 
     python setup/home_gantry_config.py
-    python setup/home_gantry_config.py --gantry configs/gantry/cub_xl.yaml
+    python setup/home_gantry_config.py --gantry configs/gantry/cub_xl.sample.yaml
     python setup/home_gantry_config.py --skip-zero
 """
 
@@ -58,8 +58,8 @@ def main() -> None:
     parser.add_argument(
         "--gantry",
         type=Path,
-        default=Path("configs/gantry/cub.yaml"),
-        help="Path to gantry YAML (default: configs/gantry/cub.yaml)",
+        default=Path("configs/gantry/cub.sample.yaml"),
+        help="Path to gantry YAML (default: configs/gantry/cub.sample.yaml)",
     )
     parser.add_argument(
         "--skip-zero",

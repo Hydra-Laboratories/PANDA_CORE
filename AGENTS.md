@@ -130,15 +130,15 @@ A modular system for executing experiment sequences defined in code or YAML.
 - **`yaml_schema.py`**: Pydantic schemas for protocol YAML (step validation against registered commands).
 - **`loader.py`**: `load_protocol_from_yaml(path)` and `_safe` variant.
 - **`registry.py`**: `CommandRegistry` singleton and `@protocol_command()` decorator for registering commands.
-- **`setup.py`**: `setup_protocol(gantry_path, deck_path, board_path, protocol_path)` — loads all configs, validates bounds, and returns `(Protocol, ProtocolContext)` ready to run. Uses an offline `Gantry` by default for offline validation.
+- **`setup.py`**: `setup_protocol(gantry_path, deck_path, protocol_path)` — loads all configs, validates bounds, and returns `(Protocol, ProtocolContext)` ready to run. Instrument config is embedded in the selected gantry YAML under `instruments:`. Uses an offline `Gantry` by default for offline validation.
 - **`commands/`**: Protocol command implementations:
   - `home`: home the gantry and zero coordinates.
   - `move`: move an instrument to a named position, raw `[x, y, z]`, or deck target.
     - Named/literal XYZ moves may also supply `travel_z` to force a retract-first transit (`Z -> XY -> final Z`).
-    - Deck targets ignore `travel_z` and use `Board.move_to_labware()` with the instrument's board-configured relative `safe_approach_height`.
+    - Deck targets ignore `travel_z` and use `Board.move_to_labware()` with the instrument's gantry-configured relative `safe_approach_height`.
     - Named positions such as `safe_z` live in protocol YAML `positions:`; they are not deck/labware entries.
   - `scan`: iterate all wells on a plate, call an instrument method per well, and persist measurements when a `DataStore` is configured.
-    - For generic instruments, omitted scan overrides fall back to the instrument's board-configured relative `safe_approach_height`.
+    - For generic instruments, omitted scan overrides fall back to the instrument's gantry-configured relative `safe_approach_height`.
     - `scan.entry_travel_z` is an absolute Z used only for the initial move into the first well.
     - `scan.safe_approach_height` is an absolute Z used only for well-to-well travel inside the scan.
     - This `scan.safe_approach_height` field name is historical; despite the name, the scan override is an absolute Z coordinate, not a relative offset.
@@ -153,10 +153,10 @@ Gantry YAML loader and domain model for CNC gantry working volume and homing str
 
 - **Coordinate convention**: At the repo/user level we work in positive `X`, `Y`, and `Z`. The underlying `Gantry` boundary code currently translates user-facing `Z` to machine `-Z` before sending commands to the controller, and converts machine `Z` back on reads. Do not manually apply that translation in higher-level code.
 - **TODO**: In a later PR, redefine `Z` from the base deck reference instead of the gantry head/top reference.
-- **`yaml_schema.py`**: `GantryYamlSchema` with strict Pydantic validation (working volume bounds, homing strategy, serial port, and `cnc.total_z_height`).
+- **`yaml_schema.py`**: `GantryYamlSchema` with strict Pydantic validation (working volume bounds, homing strategy, serial port, `cnc.total_z_height`, and embedded `instruments`).
 - **`gantry_config.py`**: `GantryConfig` and `WorkingVolume` frozen dataclasses. `WorkingVolume.contains(x, y, z)` checks if a point is within bounds (inclusive). `GantryConfig.total_z_height` is the top-reference height used for labware height conversion. `HomingStrategy` enum: `STANDARD`, `XY_HARD_LIMITS`, `MANUAL_ORIGIN`.
 - **`loader.py`**: `load_gantry_from_yaml(path)` and `load_gantry_from_yaml_safe(path)`.
-- **Config files**: `configs/gantry/` (e.g., `cub_xl.yaml`).
+- **Config files**: `configs/gantry/` (e.g., `cub_xl.sample.yaml`, `cub_xl_asmi.yaml`).
 
 ### Validation (`src/validation`)
 Bounds validation for protocol setup — ensures all deck positions and gantry-computed positions are within the gantry's working volume before the protocol runs.
@@ -191,9 +191,8 @@ Deck configuration loading, runtime deck container, and labware geometry/positio
 Config files are organized by type:
 ```
 configs/
-  gantry/       # Gantry configs (serial port, homing, working volume)
+  gantry/       # Gantry configs (serial port, homing, working volume, instruments)
   deck/         # Deck configs (labware positions)
-  board/        # Board configs (instrument offsets)
   protocol/     # Protocol configs (command sequences)
 ```
 
@@ -231,7 +230,7 @@ SQLite-backed persistence layer for self-driving lab campaigns. All state lives 
 
 1.  **Defining Experiments**: Create a YAML file in `experiments/` defining the sequence of moves and images.
 2.  **Running**: Execute `python verify_experiment.py experiments/your_experiment.yaml`.
-3.  **Connecting**: The system handles connection details (port, serial) via config files in `configs/gantry/`, `configs/deck/`, `configs/board/`, and `configs/protocol/`.
+3.  **Connecting**: The system handles connection details (port, serial) via config files in `configs/gantry/`, `configs/deck/`, and `configs/protocol/`. Mounted instruments live in the selected gantry YAML.
 
 ### Setup (`setup/`)
 First-run scripts for verifying hardware after unboxing.
@@ -244,12 +243,12 @@ First-run scripts for verifying hardware after unboxing.
     - **Usage**: `python setup/home_manual.py`
     - **Controls**: Arrow keys (X/Y ±1mm), Z key (Z down 1mm), X key (Z up 1mm), Enter (confirm origin)
     - **Dependencies**: `src/gantry` (Gantry, loader), `setup/keyboard_input.py`
-- **`validate_setup.py`**: Validate a protocol setup by loading all 4 configs (gantry, deck, board, protocol) and checking that all deck and gantry positions are within the gantry's working volume.
-    - **Usage**: `python setup/validate_setup.py <gantry.yaml> <deck.yaml> <board.yaml> <protocol.yaml>`
+- **`validate_setup.py`**: Validate a protocol setup by loading all 3 configs (gantry with instruments, deck, protocol) and checking that all deck and gantry positions are within the gantry's working volume.
+    - **Usage**: `python setup/validate_setup.py <gantry.yaml> <deck.yaml> <protocol.yaml>`
     - **Output**: Step-by-step loading status, labware/instrument summaries, bounds validation results, and a final PASS/FAIL verdict.
     - **Dependencies**: `src/gantry`, `src/deck`, `src/board`, `src/protocol_engine`, `src/validation`
 - **`run_protocol.py`**: Load, validate, connect to hardware, and run a protocol end-to-end. Runs offline validation first, then connects to the gantry and executes the protocol.
-    - **Usage**: `python setup/run_protocol.py <gantry.yaml> <deck.yaml> <board.yaml> <protocol.yaml>`
+    - **Usage**: `python setup/run_protocol.py <gantry.yaml> <deck.yaml> <protocol.yaml>`
     - **Startup behavior**:
         - Connects to the gantry, clears the expected GRBL alarm state if present, and restores controller state.
         - Connects all board instruments before the first protocol step.
@@ -258,7 +257,7 @@ First-run scripts for verifying hardware after unboxing.
 - **`keyboard_input.py`**: Helper module that reads single keypresses (including arrow keys) without requiring Enter. Uses `tty`/`termios` (Unix only).
 
 ### Calibration (`calibration/`)
-- **`home_gantry.py`**: CNC homing wrapper that loads `configs/gantry/cub_xl.yaml`, connects to the gantry, and runs the configured homing sequence.
+- **`home_gantry.py`**: CNC homing wrapper that loads `configs/gantry/cub_xl_asmi.yaml`, connects to the gantry, and runs the configured homing sequence.
     - **Usage**: `python calibration/home_gantry.py`
 
 ### Development Commands

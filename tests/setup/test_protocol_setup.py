@@ -81,6 +81,8 @@ protocol:
       position: vial_1
 """
 
+GANTRY_WITH_INSTRUMENTS_YAML = GANTRY_YAML + "\n" + BOARD_YAML
+
 
 def _write_temp_yaml(content: str) -> str:
     f = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
@@ -125,6 +127,14 @@ class _TempYamlFiles:
 class TestSetupProtocol:
 
     def test_setup_returns_protocol_and_context(self):
+        with _TempYamlFiles(gantry=GANTRY_WITH_INSTRUMENTS_YAML) as f:
+            protocol, context = setup_protocol(
+                f.gantry_path, f.deck_path, f.protocol_path,
+            )
+            assert isinstance(protocol, Protocol)
+            assert isinstance(context, ProtocolContext)
+
+    def test_legacy_setup_still_accepts_direct_board_path(self):
         with _TempYamlFiles() as f:
             protocol, context = setup_protocol(
                 f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
@@ -133,9 +143,9 @@ class TestSetupProtocol:
             assert isinstance(context, ProtocolContext)
 
     def test_context_has_board_with_instruments(self):
-        with _TempYamlFiles() as f:
+        with _TempYamlFiles(gantry=GANTRY_WITH_INSTRUMENTS_YAML) as f:
             _, context = setup_protocol(
-                f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
+                f.gantry_path, f.deck_path, f.protocol_path,
             )
             assert "pipette" in context.board.instruments
 
@@ -264,6 +274,11 @@ labware:
                     f.gantry_path, f.deck_path, "/nonexistent/board.yaml", f.protocol_path,
                 )
 
+    def test_raises_when_embedded_instruments_are_missing(self):
+        with _TempYamlFiles() as f:
+            with pytest.raises(BoardLoaderError):
+                setup_protocol(f.gantry_path, f.deck_path, f.protocol_path)
+
     def test_raises_on_missing_protocol_file(self):
         with _TempYamlFiles() as f:
             with pytest.raises(ProtocolLoaderError):
@@ -303,9 +318,9 @@ instruments:
 class TestRunProtocolLifecycle:
 
     def test_run_protocol_connects_and_disconnects(self):
-        with _TempYamlFiles() as f:
+        with _TempYamlFiles(gantry=GANTRY_WITH_INSTRUMENTS_YAML) as f:
             results = run_protocol(
-                f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
+                f.gantry_path, f.deck_path, f.protocol_path,
                 mock_mode=True,
             )
             assert isinstance(results, list)

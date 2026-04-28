@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Dict, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from board.yaml_schema import InstrumentYamlEntry
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class WorkingVolumeYaml(BaseModel):
@@ -110,6 +111,7 @@ class GantryYamlSchema(BaseModel):
     cnc: CncYaml
     working_volume: WorkingVolumeYaml
     grbl_settings: Optional[GrblSettingsYaml] = None
+    instruments: Dict[str, InstrumentYamlEntry] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate_total_height_covers_working_z(self) -> "GantryYamlSchema":

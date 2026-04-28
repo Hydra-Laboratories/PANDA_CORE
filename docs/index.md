@@ -28,16 +28,15 @@ Run a safe offline validation first:
 
 ```bash
 python setup/validate_setup.py \
-  configs/gantry/cub_xl.yaml \
+  configs/gantry/cub.sample.yaml \
   configs/deck/mofcat_deck.yaml \
-  configs/board/mofcat_board.yaml \
   configs/protocol/scan.yaml
 ```
 
 ## What To Read First
 
 - [Getting Started](getting-started.md) for installation and first commands
-- [Configuration](configuration.md) for the four YAML surfaces
+- [Configuration](configuration.md) for the three YAML surfaces
 - [Protocol](protocol.md) for how protocol execution is assembled and validated
 - [Data](data.md) for persistence and analysis helpers
 - [API Reference](reference/index.md) for generated module docs

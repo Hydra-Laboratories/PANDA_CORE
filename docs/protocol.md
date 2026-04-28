@@ -117,5 +117,5 @@ The command implementations live under `src/protocol_engine/commands/`.
 
 - Prefer explicit instrument names instead of relying on implicit defaults
 - Use deck targets like `plate.A1` rather than hardcoded coordinates when possible
-- Keep hardware-setup changes in deck or board config, not in protocol YAML
+- Keep hardware-setup changes in gantry or deck config, not in protocol YAML
 - Treat protocols as experiment definitions, not as calibration files

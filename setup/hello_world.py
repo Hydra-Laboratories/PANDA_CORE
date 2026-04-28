@@ -24,11 +24,11 @@ CONFIGS_DIR = project_root / "configs"
 GANTRIES = {
     "CUB_XL": {
         "label": "Cub-XL (415x300x200mm)",
-        "config_file": CONFIGS_DIR / "gantry" / "cub_xl.yaml",
+        "config_file": CONFIGS_DIR / "gantry" / "cub_xl.sample.yaml",
     },
     "CUB": {
         "label": "Cub (300x200x80mm)",
-        "config_file": CONFIGS_DIR / "gantry" / "cub.yaml",
+        "config_file": CONFIGS_DIR / "gantry" / "cub.sample.yaml",
     },
 }
 

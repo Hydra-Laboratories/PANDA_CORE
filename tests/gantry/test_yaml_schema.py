@@ -128,6 +128,20 @@ class TestGantryYamlSchema:
         with pytest.raises(ValidationError):
             GantryYamlSchema.model_validate(data)
 
+    def test_embedded_instruments_parse(self):
+        data = _valid_gantry_dict()
+        data["instruments"] = {
+            "uvvis": {
+                "type": "uvvis_ccs",
+                "vendor": "thorlabs",
+                "measurement_height": 3.0,
+            },
+        }
+        schema = GantryYamlSchema.model_validate(data)
+
+        assert schema.instruments["uvvis"].type == "uvvis_ccs"
+        assert schema.instruments["uvvis"].measurement_height == 3.0
+
     def test_extra_working_volume_key_rejected(self):
         data = _valid_gantry_dict()
         data["working_volume"]["extra_field"] = 42

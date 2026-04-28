@@ -34,3 +34,16 @@ grbl_settings:
   max_travel_x: 300.0
   max_travel_y: 200.0
   max_travel_z: 80.0
+
+# Mounted instruments for the Sterling/MOFcat UV-Vis setup.
+instruments:
+  uvvis:
+    type: uvvis_ccs
+    vendor: thorlabs
+    serial_number: "M00801544"
+    dll_path: "TLCCS_64.dll"
+    default_integration_time_s: 0.24
+    offset_x: 0.0
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 3.0

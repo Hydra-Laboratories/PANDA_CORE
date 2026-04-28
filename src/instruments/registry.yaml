@@ -1,5 +1,5 @@
 # Supported instruments, their allowed vendors, and driver class paths.
-# The board loader uses this to validate board.yaml and import driver classes.
+# The board loader uses this to validate instrument config and import driver classes.
 
 instruments:
   asmi:

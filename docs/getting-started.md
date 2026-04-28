@@ -4,7 +4,7 @@
 
 There are two entrypoints:
 
-1. **YAML-based** — define your experiment across four YAML config files (gantry, deck, board, protocol) and run it from the command line. This is the recommended way to get started.
+1. **YAML-based** — define your experiment across three YAML config files (gantry, deck, protocol) and run it from the command line. This is the recommended way to get started.
 2. **Python API** — import `setup_protocol()` and build experiments programmatically. See the [API Reference](reference/index.md) for details.
 
 This guide focuses on the YAML-based workflow.
@@ -35,13 +35,12 @@ Validate your YAML setup offline (no hardware needed):
 
 ```bash
 python setup/validate_setup.py \
-    configs/gantry/asmi_gantry.yaml \
+    configs/gantry/cub_xl_asmi.yaml \
     configs/deck/asmi_deck.yaml \
-    configs/board/asmi_board.yaml \
     configs/protocol/asmi_indentation.yaml
 ```
 
-This loads all four configs, checks that every labware position and instrument-adjusted position is within the gantry working volume, and prints PASS/FAIL.
+This loads the gantry, deck, and protocol configs, checks that every labware position and instrument-adjusted position is within the gantry working volume, and prints PASS/FAIL.
 
 ## Running a Protocol
 
@@ -49,9 +48,8 @@ Once validation passes, connect the gantry and run:
 
 ```bash
 python setup/run_protocol.py \
-    configs/gantry/asmi_gantry.yaml \
+    configs/gantry/cub_xl_asmi.yaml \
     configs/deck/asmi_deck.yaml \
-    configs/board/asmi_board.yaml \
     configs/protocol/asmi_indentation.yaml
 ```
 

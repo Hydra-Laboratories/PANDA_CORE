@@ -25,3 +25,15 @@ grbl_settings:
   max_travel_x: 400.0
   max_travel_y: 300.0
   max_travel_z: 100.0
+
+# Mounted instruments for offline Cub-XL UV-Vis protocol checks.
+instruments:
+  uvvis:
+    type: uvvis_ccs
+    offline: true
+    vendor: thorlabs
+    offset_x: 0.0
+    offset_y: 0.0
+    depth: 0.0
+    safe_approach_height: 10.0
+    measurement_height: 3.0

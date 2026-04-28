@@ -1,15 +1,16 @@
-"""Validate a protocol setup by loading all configs and checking bounds.
+"""Validate a protocol setup by loading configs and checking bounds.
 
 Usage:
-    python setup/validate_setup.py <gantry.yaml> <deck.yaml> <board.yaml> <protocol.yaml>
+    python setup/validate_setup.py <gantry.yaml> <deck.yaml> <protocol.yaml>
 
 Example:
     python setup/validate_setup.py \\
-        configs/gantry/cub_xl.yaml \\
+        configs/gantry/cub.sample.yaml \\
         configs/deck/mofcat_deck.yaml \\
-        configs/board/mofcat_board.yaml \\
-        configs/protocol/protocol.sample.yaml
+        configs/protocol/scan.yaml
 """
+
+from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
@@ -19,7 +20,7 @@ project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
-from board.loader import load_board_from_yaml
+from board.loader import load_board_from_gantry_yaml, load_board_from_yaml
 from deck.deck import Deck
 from deck.labware.vial import Vial
 from deck.labware.well_plate import WellPlate
@@ -72,10 +73,12 @@ def _instrument_summary(board) -> list[str]:
 def run_validation(
     gantry_path: str,
     deck_path: str,
-    board_path: str,
     protocol_path: str,
+    board_path: str | None = None,
 ) -> ValidationResult:
     """Run full setup validation and return structured result."""
+    board_source_path = board_path or gantry_path
+    board_loader = load_board_from_yaml if board_path else load_board_from_gantry_yaml
     lines: list[str] = []
 
     def out(text: str = "") -> None:
@@ -126,20 +129,20 @@ def run_validation(
         out(summary_line)
     out()
 
-    # 3. Board
-    out("[3/4] Loading board config...")
+    # 3. Mounted instruments
+    out("[3/4] Loading mounted instruments...")
     try:
         offline_gantry = Gantry(offline=True)
-        board = load_board_from_yaml(board_path, offline_gantry, mock_mode=True)
+        board = board_loader(board_source_path, offline_gantry, mock_mode=True)
     except Exception as exc:
         out(f"  ERROR: {exc}")
         out()
         out(SEPARATOR)
-        out("RESULT: ERROR — could not load board config")
+        out("RESULT: ERROR — could not load instrument config")
         out(SEPARATOR)
         return ValidationResult(output="\n".join(lines), passed=False)
 
-    out(f"  OK: {board_path}")
+    out(f"  OK: {board_source_path}")
     out(f"  Instruments ({len(board.instruments)}):")
     for summary_line in _instrument_summary(board):
         out(summary_line)
@@ -222,19 +225,24 @@ def run_validation(
 
 
 def main() -> None:
-    if len(sys.argv) != 5:
-        print("Usage: python setup/validate_setup.py <gantry.yaml> <deck.yaml> <board.yaml> <protocol.yaml>")
+    if len(sys.argv) not in (4, 5):
+        print("Usage: python setup/validate_setup.py <gantry.yaml> <deck.yaml> <protocol.yaml>")
         print()
         print("Example:")
         print("  python setup/validate_setup.py \\")
-        print("    configs/gantry/cub_xl.yaml \\")
+        print("    configs/gantry/cub.sample.yaml \\")
         print("    configs/deck/mofcat_deck.yaml \\")
-        print("    configs/board/mofcat_board.yaml \\")
-        print("    configs/protocol/protocol.sample.yaml")
+        print("    configs/protocol/scan.yaml")
         sys.exit(1)
 
-    gantry_path, deck_path, board_path, protocol_path = sys.argv[1:5]
-    result = run_validation(gantry_path, deck_path, board_path, protocol_path)
+    if len(sys.argv) == 4:
+        gantry_path, deck_path, protocol_path = sys.argv[1:4]
+        result = run_validation(gantry_path, deck_path, protocol_path)
+    else:
+        gantry_path, deck_path, board_path, protocol_path = sys.argv[1:5]
+        result = run_validation(
+            gantry_path, deck_path, protocol_path, board_path=board_path,
+        )
     print(result.output)
     if not result.passed:
         sys.exit(1)

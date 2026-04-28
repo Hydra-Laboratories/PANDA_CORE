@@ -1,14 +1,13 @@
 # Configuration
 
-CubOS uses four YAML inputs to define a runnable experiment. Together they describe the machine, the layout, the mounted tools, and the step sequence.
+CubOS uses three YAML inputs to define a runnable experiment. Together they describe the machine with its mounted tools, the deck layout, and the step sequence.
 
 ## Directory Layout
 
 ```text
 configs/
-  gantry/     # Machine envelope, serial port, homing strategy
+  gantry/     # Machine envelope, serial port, homing strategy, instruments
   deck/       # Labware placement and calibration
-  board/      # Mounted instruments and offsets
   protocol/   # Ordered protocol steps
 ```
 
@@ -22,6 +21,7 @@ Gantry YAML defines:
 - Y-axis motion mode
 - working volume
 - optional GRBL settings expectations
+- mounted instruments and offsets
 
 Representative example:
 
@@ -39,6 +39,18 @@ working_volume:
   y_max: 200.0
   z_min: 0.0
   z_max: 80.0
+
+instruments:
+  uvvis:
+    type: uvvis_ccs
+    vendor: thorlabs
+    serial_number: "M00801544"
+    dll_path: "TLCCS_64.dll"
+    default_integration_time_s: 0.24
+    offset_x: 0.0
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 3.0
 ```
 
 Use this file when:
@@ -47,6 +59,9 @@ Use this file when:
 - changing travel limits
 - updating homing behavior
 - validating expected controller settings
+- a different instrument is mounted
+- instrument offsets or reach depths change
+- instrument-specific connection settings change
 
 ## Deck Config
 
@@ -83,32 +98,6 @@ Use this file when:
 - the physical deck arrangement changes
 - a different plate or vial layout is installed
 
-## Board Config
-
-Board YAML defines mounted instruments and their offsets relative to the gantry/router.
-
-Representative example:
-
-```yaml
-instruments:
-  uvvis:
-    type: uvvis_ccs
-    vendor: thorlabs
-    serial_number: "M00801544"
-    dll_path: "TLCCS_64.dll"
-    default_integration_time_s: 0.24
-    offset_x: 0.0
-    offset_y: 0.0
-    depth: 0.0
-    measurement_height: 3.0
-```
-
-Use this file when:
-
-- a different instrument is mounted
-- offsets or reach depths change
-- instrument-specific connection settings change
-
 ## Protocol Config
 
 Protocol YAML defines the experiment step sequence. It should be the file you change most often during routine experiment work.
@@ -133,4 +122,4 @@ Use this file when:
 
 ## Recommended Editing Rule
 
-If the physical machine setup has not changed, edit the protocol file and leave the gantry, deck, and board files alone.
+If the physical machine setup has not changed, edit the protocol file and leave the gantry and deck files alone.
