@@ -243,7 +243,7 @@ labware:
         assert isinstance(holder.contained_labware["plate"], WellPlate)
         assert deck.resolve("plate_holder.plate") == Coordinate3D(x=221.75, y=78.5, z=188.0)
         assert deck.resolve("plate_holder.plate.A1") == Coordinate3D(x=221.75, y=78.5, z=188.0)
-        assert deck.resolve("plate_holder.plate.B2") == Coordinate3D(x=230.75, y=87.5, z=188.0)
+        assert deck.resolve("plate_holder.plate.B2") == Coordinate3D(x=230.75, y=69.5, z=188.0)
     finally:
         Path(path).unlink(missing_ok=True)
 

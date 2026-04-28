@@ -41,7 +41,7 @@ labware:
         y: -10.0
         z: -15.0
     x_offset_mm: 9.0
-    y_offset_mm: -9.0
+    y_offset_mm: 9.0
     capacity_ul: 200.0
     working_volume_ul: 150.0
   vial_1:
@@ -245,7 +245,7 @@ labware:
     calibration:
       a2: { x: 10.0, y: 0.0, z: -5.0 }
     x_offset_mm: 10.0
-    y_offset_mm: -8.0
+    y_offset_mm: 8.0
     capacity_ul: 100.0
     working_volume_ul: 80.0
 """
@@ -266,7 +266,7 @@ labware:
 
 
 def test_calibration_horizontal_decreasing_columns():
-    """A2.x < A1.x, A2.y == A1.y: columns along -X."""
+    """A2.x < A1.x, A2.y == A1.y: A2 determines columns along -X."""
     yaml = """
 labware:
   p:
@@ -281,8 +281,43 @@ labware:
     a1: { x: 10.0, y: 0.0, z: -5.0 }
     calibration:
       a2: { x: 0.0, y: 0.0, z: -5.0 }
-    x_offset_mm: -10.0
-    y_offset_mm: -8.0
+    x_offset_mm: 10.0
+    y_offset_mm: 8.0
+    capacity_ul: 100.0
+    working_volume_ul: 80.0
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(yaml)
+        path = f.name
+    try:
+        result = load_deck_from_yaml(path)
+        plate = result["p"]
+        assert plate.get_well_center("A1").x == pytest.approx(10.0)
+        assert plate.get_well_center("A2").x == pytest.approx(0.0)
+        assert plate.get_well_center("A2").y == pytest.approx(0.0)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize("x_offset_literal", ["+10.0", "10.0"])
+def test_calibration_column_sign_comes_from_a1_a2_not_x_offset_sign(x_offset_literal):
+    """Positive and unsigned X offsets allow A1/A2 to set column sign."""
+    yaml = f"""
+labware:
+  p:
+    type: well_plate
+    name: small
+    model_name: small
+    rows: 2
+    columns: 2
+    length_mm: 20.0
+    width_mm: 20.0
+    height_mm: 10.0
+    a1: {{ x: 10.0, y: 0.0, z: -5.0 }}
+    calibration:
+      a2: {{ x: 0.0, y: 0.0, z: -5.0 }}
+    x_offset_mm: {x_offset_literal}
+    y_offset_mm: 8.0
     capacity_ul: 100.0
     working_volume_ul: 80.0
 """
@@ -353,7 +388,7 @@ labware:
     calibration:
       a2: { x: 0.0, y: 0.0, z: -5.0 }
     x_offset_mm: 10.0
-    y_offset_mm: -8.0
+    y_offset_mm: 8.0
     capacity_ul: 100.0
     working_volume_ul: 80.0
 """
@@ -366,6 +401,41 @@ labware:
         assert plate.get_well_center("A1").y == pytest.approx(8.0)
         assert plate.get_well_center("A2").y == pytest.approx(0.0)
         assert plate.get_well_center("A2").x == pytest.approx(0.0)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize("y_offset_literal", ["+8.0", "8.0"])
+def test_calibration_column_sign_comes_from_a1_a2_not_y_offset_sign(y_offset_literal):
+    """Positive and unsigned Y offsets allow A1/A2 to set column sign."""
+    yaml = f"""
+labware:
+  p:
+    type: well_plate
+    name: small
+    model_name: small
+    rows: 2
+    columns: 2
+    length_mm: 20.0
+    width_mm: 20.0
+    height_mm: 10.0
+    a1: {{ x: 0.0, y: 8.0, z: -5.0 }}
+    calibration:
+      a2: {{ x: 0.0, y: 0.0, z: -5.0 }}
+    x_offset_mm: 10.0
+    y_offset_mm: {y_offset_literal}
+    capacity_ul: 100.0
+    working_volume_ul: 80.0
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(yaml)
+        path = f.name
+    try:
+        result = load_deck_from_yaml(path)
+        plate = result["p"]
+        assert plate.get_well_center("A1").y == pytest.approx(8.0)
+        assert plate.get_well_center("A2").x == pytest.approx(0.0)
+        assert plate.get_well_center("A2").y == pytest.approx(0.0)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -387,7 +457,7 @@ labware:
     calibration:
       a2: { x: 10.0, y: 5.0, z: -5.0 }
     x_offset_mm: 10.0
-    y_offset_mm: -8.0
+    y_offset_mm: 8.0
     capacity_ul: 100.0
     working_volume_ul: 80.0
 """
@@ -418,7 +488,7 @@ labware:
     calibration:
       a2: { x: 10.0, y: 5.0, z: -5.0 }
     x_offset_mm: 10.0
-    y_offset_mm: -8.0
+    y_offset_mm: 8.0
     capacity_ul: 100.0
     working_volume_ul: 80.0
 """
@@ -465,7 +535,7 @@ def test_safe_loader_missing_file_has_clean_message():
 
 
 def test_zero_offsets_fail_schema_validation():
-    """x/y offsets must be non-zero in well plate schema."""
+    """x/y offsets must be positive in well plate schema."""
     yaml = """
 labware:
   p:
@@ -481,7 +551,7 @@ labware:
       a1: { x: 0.0, y: 0.0, z: -15.0 }
       a2: { x: 9.0, y: 0.0, z: -15.0 }
     x_offset_mm: 0.0
-    y_offset_mm: -9.0
+    y_offset_mm: 9.0
     capacity_ul: 200.0
     working_volume_ul: 150.0
 """
@@ -490,6 +560,41 @@ labware:
         path = f.name
     try:
         with pytest.raises(ValidationError):
+            load_deck_from_yaml(path)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize(
+    ("x_offset", "y_offset"),
+    [(-9.0, 9.0), (9.0, -9.0)],
+)
+def test_negative_offsets_fail_schema_validation(x_offset, y_offset):
+    """Offset fields are spacing magnitudes and must not be negative."""
+    yaml = f"""
+labware:
+  p:
+    type: well_plate
+    name: x
+    model_name: x
+    rows: 8
+    columns: 12
+    length_mm: 127.71
+    width_mm: 85.43
+    height_mm: 14.10
+    calibration:
+      a1: {{ x: 0.0, y: 0.0, z: -15.0 }}
+      a2: {{ x: 9.0, y: 0.0, z: -15.0 }}
+    x_offset_mm: {x_offset}
+    y_offset_mm: {y_offset}
+    capacity_ul: 200.0
+    working_volume_ul: 150.0
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(yaml)
+        path = f.name
+    try:
+        with pytest.raises(ValidationError, match="greater than 0"):
             load_deck_from_yaml(path)
     finally:
         Path(path).unlink(missing_ok=True)
@@ -512,7 +617,7 @@ labware:
     calibration:
       a2: { x: 0.0, y: 0.0, z: -5.0 }
     x_offset_mm: 10.0
-    y_offset_mm: -8.0
+    y_offset_mm: 8.0
     capacity_ul: 100.0
     working_volume_ul: 80.0
 """
@@ -555,7 +660,7 @@ labware:
     height_mm: 14.10
     a1: { x: 0.0, y: 0.0, z: -15.0 }
     x_offset_mm: 9.0
-    y_offset_mm: -9.0
+    y_offset_mm: 9.0
     capacity_ul: 200.0
     working_volume_ul: 150.0
 """
@@ -627,7 +732,7 @@ labware:
     calibration:
       a2: { x: 9.0, y: 0.0, z: -15.0 }
     x_offset_mm: 9.0
-    y_offset_mm: -9.0
+    y_offset_mm: 9.0
     capacity_ul: 200.0
     working_volume_ul: 150.0
     unknown_field: 1
@@ -661,7 +766,7 @@ labware:
     calibration:
       a2: { x: 9.0, y: 0.0, z: -15.0 }
     x_offset_mm: 9.0
-    y_offset_mm: -9.0
+    y_offset_mm: 9.0
     capacity_ul: 200.0
     working_volume_ul: 150.0
 """
@@ -693,7 +798,7 @@ labware:
     calibration:
       a2: { x: 9.0, y: 0.0, z: -15.0 }
     x_offset_mm: 9.0
-    y_offset_mm: -9.0
+    y_offset_mm: 9.0
     capacity_ul: 200.0
     working_volume_ul: 150.0
 """
@@ -726,7 +831,7 @@ labware:
     calibration:
       a2: { x: 9.0, y: 0.0, z: -15.0 }
     x_offset_mm: 9.0
-    y_offset_mm: -9.0
+    y_offset_mm: 9.0
     capacity_ul: 200.0
     working_volume_ul: 250.0
 """
@@ -757,7 +862,7 @@ labware:
     calibration:
       a2: { x: 9.0, y: 0.0, z: -15.0 }
     x_offset_mm: 9.0
-    y_offset_mm: -9.0
+    y_offset_mm: 9.0
     capacity_ul: 0.0
     working_volume_ul: 0.0
 """
@@ -787,7 +892,7 @@ labware:
     calibration:
       a2: { x: 19.0, y: 20.0, z: -5.0 }
     x_offset_mm: 9.0
-    y_offset_mm: -9.0
+    y_offset_mm: 9.0
 """
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(yaml_str)
@@ -821,7 +926,7 @@ labware:
     calibration:
       a2: { x: 9.0, y: 0.0, z: 0.0 }
     x_offset_mm: 9.0
-    y_offset_mm: -9.0
+    y_offset_mm: 9.0
     capacity_ul: 200.0
 """
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
@@ -857,7 +962,7 @@ def test_empty_labware_dict_allowed():
 
 def _make_entry(
     a1_x=0.0, a1_y=0.0, a2_x=10.0, a2_y=0.0,
-    x_offset=10.0, y_offset=-8.0, z=-5.0,
+    x_offset=10.0, y_offset=8.0, z=-5.0,
 ) -> WellPlateYamlEntry:
     """Build a minimal WellPlateYamlEntry for orientation tests."""
     return WellPlateYamlEntry(
@@ -877,7 +982,7 @@ class TestResolvePlateOrientation:
 
     def test_horizontal_columns_along_x(self):
         entry = _make_entry(a1_x=0.0, a1_y=0.0, a2_x=10.0, a2_y=0.0,
-                            x_offset=10.0, y_offset=-8.0)
+                            x_offset=10.0, y_offset=8.0)
         orient = _resolve_plate_orientation(entry)
         assert orient == _PlateOrientation(
             col_delta_x=10.0, col_delta_y=0.0,
@@ -893,30 +998,45 @@ class TestResolvePlateOrientation:
             row_delta_x=10.0, row_delta_y=0.0,
         )
 
-    def test_negative_x_column_step(self):
+    def test_negative_offsets_fail_schema_validation(self):
+        with pytest.raises(ValidationError, match="greater than 0"):
+            _make_entry(a1_x=10.0, a1_y=0.0, a2_x=0.0, a2_y=0.0,
+                        x_offset=-10.0, y_offset=8.0)
+        with pytest.raises(ValidationError, match="greater than 0"):
+            _make_entry(a1_x=10.0, a1_y=0.0, a2_x=0.0, a2_y=0.0,
+                        x_offset=10.0, y_offset=-8.0)
+
+    def test_negative_x_column_step_allows_positive_offset_magnitude(self):
         entry = _make_entry(a1_x=10.0, a1_y=0.0, a2_x=0.0, a2_y=0.0,
-                            x_offset=-10.0, y_offset=-8.0)
+                            x_offset=10.0, y_offset=8.0)
         orient = _resolve_plate_orientation(entry)
         assert orient.col_delta_x == pytest.approx(-10.0)
         assert orient.col_delta_y == pytest.approx(0.0)
 
     def test_negative_y_column_step(self):
         entry = _make_entry(a1_x=0.0, a1_y=8.0, a2_x=0.0, a2_y=0.0,
-                            x_offset=10.0, y_offset=-8.0)
+                            x_offset=10.0, y_offset=8.0)
+        orient = _resolve_plate_orientation(entry)
+        assert orient.col_delta_y == pytest.approx(-8.0)
+        assert orient.col_delta_x == pytest.approx(0.0)
+
+    def test_negative_y_column_step_allows_positive_offset_magnitude(self):
+        entry = _make_entry(a1_x=0.0, a1_y=8.0, a2_x=0.0, a2_y=0.0,
+                            x_offset=10.0, y_offset=8.0)
         orient = _resolve_plate_orientation(entry)
         assert orient.col_delta_y == pytest.approx(-8.0)
         assert orient.col_delta_x == pytest.approx(0.0)
 
     def test_mismatched_x_offset_raises(self):
         entry = _make_entry(a1_x=0.0, a1_y=0.0, a2_x=10.0, a2_y=0.0,
-                            x_offset=5.0, y_offset=-8.0)
-        with pytest.raises(ValueError, match="delta x must equal x_offset_mm"):
+                            x_offset=5.0, y_offset=8.0)
+        with pytest.raises(ValueError, match="delta x magnitude must equal x_offset_mm magnitude"):
             _resolve_plate_orientation(entry)
 
     def test_mismatched_y_offset_raises(self):
         entry = _make_entry(a1_x=0.0, a1_y=0.0, a2_x=0.0, a2_y=8.0,
                             x_offset=10.0, y_offset=4.0)
-        with pytest.raises(ValueError, match="delta y must equal y_offset_mm"):
+        with pytest.raises(ValueError, match="delta y magnitude must equal y_offset_mm magnitude"):
             _resolve_plate_orientation(entry)
 
     def test_returns_frozen_dataclass(self):

@@ -37,8 +37,8 @@ labware:
     calibration:
       a1: { x: -17.88, y: -42.23, z: -20.0 }
       a2: { x: -17.88, y: -51.23, z: -20.0 }
-    x_offset_mm: -9.0   # override signs if your deck orientation differs
-    y_offset_mm: -9.0
+    x_offset_mm: 9.0    # positive spacing magnitude; A1/A2 determine direction
+    y_offset_mm: 9.0
 ```
 
 Vendor-specific variants (e.g. Corning 360 µL round-bottom, deep-well
