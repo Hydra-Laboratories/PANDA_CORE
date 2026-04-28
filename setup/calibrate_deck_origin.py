@@ -491,6 +491,93 @@ def _looks_like_limit_alarm(exc: Exception) -> bool:
     )
 
 
+def _looks_like_soft_limit_jog_rejection(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(
+        token in message
+        for token in (
+            "error:15",
+            "travel exceeded",
+            "jog target exceeds machine travel",
+        )
+    )
+
+
+def _soft_limits_enabled_from_settings(settings: object) -> bool | None:
+    if not isinstance(settings, dict):
+        return None
+    value = settings.get("$20")
+    if value is None:
+        value = settings.get("20")
+    if value is None:
+        return None
+    try:
+        return float(value) != 0.0
+    except (TypeError, ValueError):
+        return None
+
+
+def _read_soft_limits_enabled_if_available(
+    gantry: _GantryLike,
+    *,
+    output: Callable[[str], None],
+) -> bool | None:
+    reader = getattr(gantry, "read_grbl_settings", None)
+    if not callable(reader):
+        return None
+    try:
+        return _soft_limits_enabled_from_settings(reader())
+    except MillConnectionError:
+        raise
+    except (CommandExecutionError, StatusReturnError, ValueError) as exc:
+        output(f"Could not read GRBL soft-limit state before jogging: {exc}")
+        output("Continuing; any GRBL error:15 jog rejection will be handled in-place.")
+        return None
+
+
+def _set_soft_limits_enabled_if_available(
+    gantry: _GantryLike,
+    enabled: bool,
+) -> bool:
+    setter = getattr(gantry, "set_grbl_setting", None)
+    if not callable(setter):
+        return False
+    setter("$20", 1 if enabled else 0)
+    return True
+
+
+def _temporarily_disable_soft_limits_for_origin_jog(
+    gantry: _GantryLike,
+    *,
+    output: Callable[[str], None],
+) -> bool:
+    enabled = _read_soft_limits_enabled_if_available(gantry, output=output)
+    if enabled is not True:
+        return False
+    output(
+        "Temporarily disabling GRBL soft limits ($20=0) for the interactive "
+        "origin jog so stale travel settings cannot block calibration."
+    )
+    output("Jog cautiously; this does not change the hard-limit setting.")
+    if not _set_soft_limits_enabled_if_available(gantry, False):
+        output("No GRBL setting writer is available; leaving soft limits unchanged.")
+        return False
+    return True
+
+
+def _restore_soft_limits_after_origin_jog(
+    gantry: _GantryLike,
+    *,
+    output: Callable[[str], None],
+) -> None:
+    output("Restoring GRBL soft limits ($20=1) after interactive origin jog.")
+    if not _set_soft_limits_enabled_if_available(gantry, True):
+        raise MillConnectionError(
+            "Cannot restore GRBL soft limits because this gantry object has no "
+            "setting writer."
+        )
+
+
 def _opposite_pull_off_delta(
     delta: dict[str, float],
     pull_off_mm: float,
@@ -633,17 +720,33 @@ def _interactive_jog_to_reference(
         except MillConnectionError:
             raise
         except (CommandExecutionError, StatusReturnError) as exc:
-            if not _looks_like_limit_alarm(exc):
+            if _looks_like_soft_limit_jog_rejection(exc):
+                output(
+                    "GRBL rejected that jog because the target exceeds the "
+                    "current soft-limit travel. The jog was ignored; reduce "
+                    "the step, choose another direction, or press ENTER if "
+                    "this is the intended safe origin point."
+                )
+                try:
+                    coords = gantry.get_coordinates()
+                except MillConnectionError:
+                    raise
+                except (CommandExecutionError, StatusReturnError) as read_exc:
+                    output(f"WPos readback after rejected jog failed: {read_exc}")
+                    output("Aborting calibration; gantry position is unknown.")
+                    raise
+            elif not _looks_like_limit_alarm(exc):
                 output(f"Jog command rejected by controller: {exc}")
                 output("Aborting calibration; gantry position is unknown.")
                 raise
-            coords = _recover_from_limit_alarm(
-                gantry,
-                delta,
-                pull_off_mm=limit_pull_off_mm,
-                feed_rate=feed_rate,
-                output=output,
-            )
+            else:
+                coords = _recover_from_limit_alarm(
+                    gantry,
+                    delta,
+                    pull_off_mm=limit_pull_off_mm,
+                    feed_rate=feed_rate,
+                    output=output,
+                )
         if coords is None:
             continue
         output(
@@ -765,6 +868,7 @@ def run_calibration(
     gantry_runtime_config = copy.deepcopy(raw_config)
     gantry_runtime_config.pop("grbl_settings", None)
     gantry = gantry_factory(config=gantry_runtime_config)
+    restore_soft_limits_after_origin_jog = False
     try:
         output("Connecting to gantry...")
         gantry.connect()
@@ -781,14 +885,25 @@ def run_calibration(
         gantry.clear_g92_offsets()
         stdin_flusher()
 
-        _interactive_jog_to_xy_origin(
-            gantry,
-            key_reader=key_reader,
-            output=output,
-            feed_rate=jog_feed_rate,
-            initial_step_mm=jog_step_mm,
-            limit_pull_off_mm=limit_pull_off_mm,
+        restore_soft_limits_after_origin_jog = (
+            _temporarily_disable_soft_limits_for_origin_jog(
+                gantry,
+                output=output,
+            )
         )
+        try:
+            _interactive_jog_to_xy_origin(
+                gantry,
+                key_reader=key_reader,
+                output=output,
+                feed_rate=jog_feed_rate,
+                initial_step_mm=jog_step_mm,
+                limit_pull_off_mm=limit_pull_off_mm,
+            )
+        finally:
+            if restore_soft_limits_after_origin_jog:
+                restore_soft_limits_after_origin_jog = False
+                _restore_soft_limits_after_origin_jog(gantry, output=output)
 
         output("Setting current physical pose to WPos X=0, Y=0...")
         gantry.set_work_coordinates(x=0.0, y=0.0)
@@ -942,9 +1057,14 @@ def run_calibration(
             plan=plan,
         )
     finally:
-        _set_serial_timeout_if_available(gantry, 0.05)
-        output("Disconnecting...")
-        gantry.disconnect()
+        try:
+            if restore_soft_limits_after_origin_jog:
+                restore_soft_limits_after_origin_jog = False
+                _restore_soft_limits_after_origin_jog(gantry, output=output)
+        finally:
+            _set_serial_timeout_if_available(gantry, 0.05)
+            output("Disconnecting...")
+            gantry.disconnect()
 
 
 def main() -> None:

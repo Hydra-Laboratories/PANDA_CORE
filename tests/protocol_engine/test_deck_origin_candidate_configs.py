@@ -156,9 +156,37 @@ def test_filmetrics_candidate_translates_legacy_deck_and_validates_setup():
 
 
 def test_sterling_candidate_validates_with_park_protocol():
-    setup_protocol(
+    _, context = setup_protocol(
         CONFIGS / "gantry/cub_xl_sterling.yaml",
         CONFIGS / "deck/sterling_deck.yaml",
         CONFIGS / "protocol/sterling_park.yaml",
-        mock_mode=True,
     )
+    assert context.board.instruments["asmi"]._offline is True
+
+
+def test_sterling_vial_scan_visits_vials_in_alternating_order():
+    protocol, context = setup_protocol(
+        CONFIGS / "gantry/cub_xl_sterling.yaml",
+        CONFIGS / "deck/sterling_deck.yaml",
+        CONFIGS / "protocol/sterling_vial_scan.yaml",
+    )
+
+    move_positions = [
+        step.args["position"]
+        for step in protocol.steps
+        if step.command_name == "move"
+    ]
+
+    assert move_positions == [
+        "park_position",
+        "vial_1_scan",
+        "vial_8_scan",
+        "vial_2_scan",
+        "vial_7_scan",
+        "vial_3_scan",
+        "vial_6_scan",
+        "vial_4_scan",
+        "vial_5_scan",
+        "park_position",
+    ]
+    assert context.board.instruments["asmi"]._offline is True

@@ -2,7 +2,7 @@ serial_port: /dev/ttyUSB0
 
 cnc:
   homing_strategy: standard
-  total_z_height: 137.0
+  total_z_height: 139.0
   y_axis_motion: head
   # Absolute deck-frame Z clearance plane for home/park/edge-risk moves.
   structure_clearance_z: 85.0
@@ -11,10 +11,10 @@ working_volume:
   x_min: 0.0
   x_max: 306.0
   y_min: 0.0
-  y_max: 306.0
+  y_max: 300.0
   # ASMI TCP lower reach from ruler-gap calibration: 24 mm above deck bottom.
   z_min: 24.0
-  z_max: 137.0
+  z_max: 139.0
 
 grbl_settings:
   dir_invert_mask: 1
@@ -24,15 +24,16 @@ grbl_settings:
   steps_per_mm_x: 400.0
   steps_per_mm_y: 400.0
   steps_per_mm_z: 400.0
-  max_travel_x: 308.0
+  max_travel_x: 306.0
   max_travel_y: 300.0
-  max_travel_z: 112.0
+  max_travel_z: 115.0
   soft_limits: true
 
 instruments:
   asmi:
     type: asmi
     vendor: vernier
+    offline: true
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
