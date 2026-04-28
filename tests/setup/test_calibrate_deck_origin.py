@@ -117,7 +117,7 @@ class _FakeGantry:
         self,
         settings: dict[str, float] | None,
         *,
-        source: str = "board",
+        source: str = "gantry",
     ) -> None:
         self.calls.append(("set_expected_grbl_settings", settings, source))
 
@@ -278,19 +278,31 @@ def test_run_calibration_assigns_ruler_gap_to_lower_reach_z(tmp_path):
     assert any("z_min: 43.000" in message for message in messages)
 
 
-def test_run_calibration_prints_full_board_yaml_with_grbl_settings(tmp_path):
-    path = _write_gantry(tmp_path / "gantry.yaml")
-    board_path = tmp_path / "board.yaml"
-    board_path.write_text(
+def test_run_calibration_prints_full_gantry_yaml_with_grbl_settings(tmp_path):
+    path = tmp_path / "gantry.yaml"
+    path.write_text(
         """\
+serial_port: /dev/ttyUSB0
+cnc:
+  homing_strategy: standard
+  total_z_height: 100.0
+  y_axis_motion: head
+  structure_clearance_z: 85.0
+working_volume:
+  x_min: 0.0
+  x_max: 400.0
+  y_min: 0.0
+  y_max: 300.0
+  z_min: 0.0
+  z_max: 100.0
+grbl_settings:
+  dir_invert_mask: 1
+  steps_per_mm_x: 400.0
 instruments:
   asmi:
     type: asmi
     vendor: vernier
     measurement_height: 26.0
-grbl_settings:
-  dir_invert_mask: 1
-  steps_per_mm_x: 400.0
 """,
         encoding="utf-8",
     )
@@ -304,13 +316,12 @@ grbl_settings:
         stdin_flusher=lambda: None,
         tip_gap_mm=24.0,
         z_reference_mode="ruler-gap",
-        board_path=board_path,
         skip_soft_limit_config=True,
     )
 
     assert isinstance(result, DeckOriginCalibrationResult)
     output_text = "\n".join(messages)
-    assert "Full board YAML to copy/paste:" in output_text
+    assert "Full gantry YAML to copy/paste:" in output_text
     assert "dir_invert_mask: 1" in output_text
     assert "steps_per_mm_x: 400.0" in output_text
     assert "soft_limits: true" in output_text
@@ -318,27 +329,13 @@ grbl_settings:
     assert "max_travel_x: 398.5" in output_text
     assert "max_travel_y: 299.25" in output_text
     assert "max_travel_z: 72.75" in output_text
-    assert _FakeGantry.instance.calls[0] == (
-        "set_expected_grbl_settings",
-        {"$3": 1.0, "$100": 400.0},
-        str(board_path.resolve()),
-    )
-    assert _FakeGantry.instance.calls[1] == ("connect",)
+    assert "instruments:" in output_text
+    assert _FakeGantry.instance.calls[0] == ("connect",)
 
 
-def test_run_calibration_can_prompt_and_write_board_yaml(tmp_path):
+def test_run_calibration_can_prompt_and_write_gantry_yaml(tmp_path):
     path = _write_gantry(tmp_path / "gantry.yaml")
-    board_path = tmp_path / "board.yaml"
-    board_path.write_text(
-        """\
-instruments:
-  asmi:
-    type: asmi
-    vendor: vernier
-""",
-        encoding="utf-8",
-    )
-    output_path = tmp_path / "written_board.yaml"
+    output_path = tmp_path / "written_gantry.yaml"
     responses = iter([str(output_path), "y"])
 
     run_calibration(
@@ -348,8 +345,7 @@ instruments:
         gantry_factory=_FakeGantry,
         key_reader=_key_reader([("\r", 1)]),
         stdin_flusher=lambda: None,
-        board_path=board_path,
-        write_board_yaml=True,
+        write_gantry_yaml=True,
         skip_soft_limit_config=True,
     )
 

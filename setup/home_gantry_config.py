@@ -9,7 +9,7 @@ sequence (``$H``), then disconnects.
 
 Usage::
 
-    python setup/home_gantry_config.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml
+    python setup/home_gantry_config.py --gantry configs/gantry/cub_xl_asmi.yaml
 """
 
 from __future__ import annotations

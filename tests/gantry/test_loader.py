@@ -27,6 +27,19 @@ working_volume:
   z_max: 80.0
 """
 
+GANTRY_WITH_INSTRUMENTS_YAML = VALID_GANTRY_YAML + """\
+grbl_settings:
+  status_report: 0
+  homing_enable: true
+instruments:
+  asmi:
+    type: asmi
+    vendor: vernier
+    measurement_height: 26.0
+    safe_approach_height: 35.0
+    sensor_channels: [1]
+"""
+
 
 def _write_temp_yaml(content: str) -> str:
     f = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
@@ -74,6 +87,16 @@ class TestLoadGantryFromYaml:
         try:
             config = load_gantry_from_yaml(path)
             assert config.homing_strategy == "standard"
+        finally:
+            os.unlink(path)
+
+    def test_loaded_gantry_has_instruments_and_grbl_settings(self):
+        path = _write_temp_yaml(GANTRY_WITH_INSTRUMENTS_YAML)
+        try:
+            config = load_gantry_from_yaml(path)
+            assert config.expected_grbl_settings == {"$10": 0.0, "$22": 1.0}
+            assert config.instruments["asmi"]["type"] == "asmi"
+            assert config.instruments["asmi"]["sensor_channels"] == [1]
         finally:
             os.unlink(path)
 

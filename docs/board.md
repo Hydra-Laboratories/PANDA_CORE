@@ -1,10 +1,13 @@
-# Board
+# Instruments On The Gantry
 
-The board defines which instruments are mounted on the gantry head, their type, and their XYZ offsets from the head reference point.
+Mounted instruments now live in the gantry machine YAML under the top-level
+`instruments` key. The runtime `Board` object still represents the mounted
+tools plus the gantry for motion planning, but there is no separate
+`configs/board/*.yaml` file in the active config set.
 
 ## Config
 
-Representative example:
+Representative gantry YAML excerpt:
 
 ```yaml
 instruments:
@@ -19,7 +22,7 @@ instruments:
     sensor_channels: [1]
 ```
 
-Use this file when:
+Edit the gantry machine file when:
 
 - a different instrument is mounted
 - offsets or reach depths change
@@ -39,11 +42,11 @@ Common optional fields are:
 - `measurement_height` - absolute deck-frame action Z used by measurement commands when no protocol-level override is supplied
 - `safe_approach_height` - absolute deck-frame XY travel Z used by `Board.move_to_labware`; it defaults to `measurement_height` and must be at or above it
 
-Driver-specific fields, such as serial ports, DLL paths, pipette models, or sensor channels, are passed through to the instrument driver constructor. Unknown top-level keys are rejected.
+Driver-specific fields, such as serial ports, DLL paths, pipette models, or sensor channels, are passed through to the instrument driver constructor. Unknown gantry-root keys are rejected.
 
 ## Supported Instruments
 
-The board loader validates each `type` and `vendor` against the instrument registry, then instantiates the matching driver. Offline validation can pass `mock_mode=True`, which creates the configured drivers with `offline=True`.
+The machine setup flow validates each `type` and `vendor` against the instrument registry, then instantiates the matching driver. Offline validation can pass `mock_mode=True`, which creates the configured drivers with `offline=True`.
 
 | Instrument | Type Key | Vendor | Description |
 |------------|----------|--------|-------------|

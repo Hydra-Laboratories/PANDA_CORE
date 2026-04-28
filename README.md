@@ -5,12 +5,13 @@ modified CNC gantry.
 
 ## Configuration
 
-Four YAML files define a runnable experiment:
+Three YAML files define a runnable experiment:
 
-### 1. Gantry (`configs_new/gantry/*.yaml`)
+### 1. Gantry (`configs/gantry/*.yaml`)
 
 Defines the controller serial port, homing strategy, working volume, optional
-GRBL expectations, and `cnc.total_z_height`.
+GRBL expectations, `cnc.total_z_height`, and the instruments mounted on that
+machine.
 
 Coordinate convention:
 
@@ -33,14 +34,25 @@ working_volume:
   y_max: 200.0
   z_min: 0.0
   z_max: 80.0
+
+instruments:
+  asmi:
+    type: asmi
+    vendor: vernier
+    offset_x: 0.0
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 26.0
+    safe_approach_height: 35.0
 ```
 
 Included examples:
 
 | Config | System |
 |--------|--------|
-| `configs_new/gantry/cub_filmetrics_deck_origin.yaml` | Cub + Filmetrics |
-| `configs_new/gantry/cub_xl_asmi_deck_origin.yaml` | Cub-XL + ASMI |
+| `configs/gantry/cub_filmetrics.yaml` | Cub + Filmetrics |
+| `configs/gantry/cub_xl_asmi.yaml` | Cub-XL + ASMI |
+| `configs/gantry/cub_xl_sterling.yaml` | Sterling ASMI |
 
 ### 2. Deck (`configs/deck/*.yaml`)
 
@@ -87,31 +99,14 @@ Included examples:
 
 - `configs/deck/panda_deck.yaml` — YAML deck config derived from `panda.json`, with two 2x15 tip racks, a nested well plate holder, and a nested vial holder. Contained vial / plate Z positions are generated from holder seat heights.
 
-### 3. Board (`configs/board/*.yaml`)
+Instrument Z semantics:
 
-Defines instruments mounted on the gantry head, including offsets and
-hardware-specific parameters.
+- `measurement_height` is the instrument's absolute deck-frame action Z.
+- `safe_approach_height` is the instrument's absolute deck-frame XY-travel Z.
+- These fields are used by generic deck-target motion such as `move` to a deck
+  target, `measure`, `scan`, and pipette commands.
 
-Board-level Z semantics:
-
-- `measurement_height` is the instrument's relative action offset from the
-  labware reference Z.
-- `safe_approach_height` is the instrument's relative XY-travel offset from
-  the labware reference Z.
-- These board-level fields are used by generic deck-target motion such as
-  `move` to a deck target, `measure`, and pipette commands.
-
-```yaml
-instruments:
-  pipette:
-    type: pipette
-    vendor: opentrons
-    offset_x: 5.0
-    offset_y: 0.0
-    depth: 0.0
-```
-
-### 4. Protocol (`configs/protocol/*.yaml`)
+### 3. Protocol (`configs/protocol/*.yaml`)
 
 Defines the experiment as a sequence of commands. Positions can reference
 labware by key and well ID, for example `plate_1.A1`.
@@ -137,19 +132,19 @@ Protocol motion notes:
 - `move` accepts optional `travel_z` for named/literal XYZ targets. That forces
   a retract-first transit: move Z to `travel_z`, travel in XY at that Z, then
   finish at the target position.
-- `scan.entry_travel_z` is an absolute Z used only for the first move into the
+- `scan.entry_travel_height` is an absolute Z used only for the first move into the
   first well.
-- `scan.safe_approach_height` is also an absolute Z, but only for well-to-well
+- `scan.interwell_travel_height` is also an absolute Z, but only for well-to-well
   travel inside the scan.
-- This is intentionally different from board-level `safe_approach_height`,
-  which remains a relative offset from labware for generic motion helpers.
+- Deck-target `move` commands use the instrument's gantry-configured
+  `safe_approach_height`.
 
 ASMI-specific note:
 
 - ASMI has two different `measurement_height` concepts.
-- Board YAML `measurement_height` is the generic relative instrument offset.
-- `scan.method_kwargs.measurement_height` for `ASMI.indentation()` is an
-  absolute Z where the indentation begins.
+- Gantry YAML `measurement_height` is the generic absolute instrument action Z.
+- Protocol scan `measurement_height` for `ASMI.indentation()` is the absolute Z
+  where the indentation begins.
 
 ## Setup and Execution
 
@@ -171,13 +166,13 @@ pip install -e ".[potentiostat]"
 Interactive jog test:
 
 ```bash
-python setup/hello_world.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml
+python setup/hello_world.py --gantry configs/gantry/cub_xl_asmi.yaml
 ```
 
 Deck-origin calibration:
 
 ```bash
-python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --instrument asmi
+python setup/calibrate_deck_origin.py --gantry configs/gantry/cub_xl_asmi.yaml --instrument asmi
 ```
 
 This establishes the persistent G54 work-coordinate frame used by protocol
@@ -187,27 +182,25 @@ Validate a setup:
 
 ```bash
 python setup/validate_setup.py \
-    configs_new/gantry/cub_xl_asmi_deck_origin.yaml \
-    configs_new/deck/asmi_deck_origin.yaml \
-    configs_new/board/asmi_board_deck_origin.yaml \
-    configs_new/protocol/asmi_move_a1_deck_origin.yaml
+    configs/gantry/cub_xl_asmi.yaml \
+    configs/deck/asmi_deck.yaml \
+    configs/protocol/asmi_move_a1.yaml
 ```
 
 Run a protocol:
 
 ```bash
 python setup/run_protocol.py \
-    configs_new/gantry/cub_xl_asmi_deck_origin.yaml \
-    configs_new/deck/asmi_deck_origin.yaml \
-    configs_new/board/asmi_board_deck_origin.yaml \
-    configs_new/protocol/asmi_move_a1_deck_origin.yaml
+    configs/gantry/cub_xl_asmi.yaml \
+    configs/deck/asmi_deck.yaml \
+    configs/protocol/asmi_move_a1.yaml
 ```
 
 `setup/run_protocol.py` runs offline validation first, then:
 
 - connects to the gantry
 - clears the expected GRBL alarm state if present and restores controller state
-- connects all board instruments
+- connects all configured instruments
 - executes the protocol
 - disconnects instruments and gantry in `finally`
 
@@ -217,10 +210,9 @@ Programmatic setup:
 from protocol_engine.setup import setup_protocol
 
 protocol, context = setup_protocol(
-    gantry_path="configs_new/gantry/cub_xl_asmi_deck_origin.yaml",
-    deck_path="configs_new/deck/asmi_deck_origin.yaml",
-    board_path="configs_new/board/asmi_board_deck_origin.yaml",
-    protocol_path="configs_new/protocol/asmi_move_a1_deck_origin.yaml",
+    gantry_path="configs/gantry/cub_xl_asmi.yaml",
+    deck_path="configs/deck/asmi_deck.yaml",
+    protocol_path="configs/protocol/asmi_move_a1.yaml",
     mock_mode=True,
 )
 protocol.run(context)

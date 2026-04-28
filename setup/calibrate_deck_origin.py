@@ -13,8 +13,8 @@ Instead, it separates XY origining from Z assignment:
 
 Usage:
 
-    python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml
-    python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --dry-run
+    python setup/calibrate_deck_origin.py --gantry configs/gantry/cub_xl_asmi.yaml
+    python setup/calibrate_deck_origin.py --gantry configs/gantry/cub_xl_asmi.yaml --dry-run
 """
 
 from __future__ import annotations
@@ -32,14 +32,12 @@ project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
-from board.yaml_schema import BoardYamlSchema  # noqa: E402
 from gantry import Gantry, load_gantry_from_yaml  # noqa: E402
 from gantry.gantry_driver.exceptions import (  # noqa: E402
     CommandExecutionError,
     MillConnectionError,
     StatusReturnError,
 )
-from gantry.grbl_settings import normalize_expected_grbl_settings  # noqa: E402
 from gantry.origin import (  # noqa: E402
     DeckOriginCalibrationPlan,
     build_deck_origin_calibration_plan,
@@ -129,14 +127,6 @@ def _load_raw_config(path: Path) -> dict:
     return config
 
 
-def _load_raw_yaml_dict(path: Path, *, label: str) -> dict[str, Any]:
-    with path.open(encoding="utf-8") as handle:
-        data = yaml.safe_load(handle)
-    if not isinstance(data, dict):
-        raise ValueError(f"{label} YAML is empty or invalid: {path}")
-    return data
-
-
 def _coords_tuple(coords: dict[str, float]) -> tuple[float, float, float]:
     return (float(coords["x"]), float(coords["y"]), float(coords["z"]))
 
@@ -192,6 +182,7 @@ def _updated_gantry_yaml_text(
     *,
     measured_coords: dict[str, float],
     z_min_mm: float,
+    max_travel: dict[str, float] | None = None,
 ) -> str:
     updated = copy.deepcopy(raw_config)
     updated.setdefault("cnc", {})["total_z_height"] = _round_mm(measured_coords["z"])
@@ -203,13 +194,16 @@ def _updated_gantry_yaml_text(
         "z_min": _round_mm(z_min_mm),
         "z_max": _round_mm(measured_coords["z"]),
     }
-    updated.pop("grbl_settings", None)
+    if max_travel is not None:
+        updated["grbl_settings"] = _build_gantry_grbl_settings(
+            gantry_raw=raw_config,
+            max_travel=max_travel,
+        )
     return yaml.safe_dump(updated, sort_keys=False)
 
 
-def _build_board_grbl_settings(
+def _build_gantry_grbl_settings(
     *,
-    board_raw: dict[str, Any],
     gantry_raw: dict[str, Any],
     max_travel: dict[str, float],
 ) -> dict[str, Any]:
@@ -217,9 +211,6 @@ def _build_board_grbl_settings(
     gantry_settings = gantry_raw.get("grbl_settings")
     if isinstance(gantry_settings, dict):
         settings.update(gantry_settings)
-    board_settings = board_raw.get("grbl_settings")
-    if isinstance(board_settings, dict):
-        settings.update(board_settings)
     settings.update(
         {
             "status_report": 0,
@@ -231,23 +222,6 @@ def _build_board_grbl_settings(
         }
     )
     return settings
-
-
-def _updated_board_yaml_text(
-    board_path: Path,
-    *,
-    gantry_raw: dict[str, Any],
-    max_travel: dict[str, float],
-) -> str:
-    board_raw = _load_raw_yaml_dict(board_path, label="Board")
-    updated = copy.deepcopy(board_raw)
-    updated["grbl_settings"] = _build_board_grbl_settings(
-        board_raw=board_raw,
-        gantry_raw=gantry_raw,
-        max_travel=max_travel,
-    )
-    BoardYamlSchema.model_validate(updated)
-    return yaml.safe_dump(updated, sort_keys=False)
 
 
 def _print_yaml_block(
@@ -264,7 +238,7 @@ def _print_yaml_block(
     output("```")
 
 
-def _maybe_write_board_yaml(
+def _maybe_write_gantry_yaml(
     *,
     yaml_text: str,
     output_path: Path | None,
@@ -275,20 +249,20 @@ def _maybe_write_board_yaml(
     if output_path is None and not write_requested:
         return
     if output_path is None:
-        raw = input_reader("Output board YAML filename: ").strip()
+        raw = input_reader("Output gantry YAML filename: ").strip()
         if not raw:
-            output("No board YAML filename supplied; skipping write.")
+            output("No gantry YAML filename supplied; skipping write.")
             return
         output_path = Path(raw)
     confirm = input_reader(
-        f"Write updated board YAML to {output_path}? [y/N]: "
+        f"Write updated gantry YAML to {output_path}? [y/N]: "
     ).strip().lower()
     if confirm not in ("y", "yes"):
-        output("Skipping board YAML write.")
+        output("Skipping gantry YAML write.")
         return
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(yaml_text, encoding="utf-8")
-    output(f"Wrote updated board YAML: {output_path}")
+    output(f"Wrote updated gantry YAML: {output_path}")
 
 
 def _assert_near_xy_origin(
@@ -720,10 +694,9 @@ def run_calibration(
     z_reference_mode: str = "bottom",
     measure_reachable_z_min: bool | None = False,
     instrument_name: str | None = None,
-    board_path: Path | None = None,
     skip_soft_limit_config: bool = False,
-    write_board_yaml: bool = False,
-    output_board_path: Path | None = None,
+    write_gantry_yaml: bool = False,
+    output_gantry_path: Path | None = None,
     homing_serial_timeout_s: float = 10.0,
     jog_serial_timeout_s: float = 1.0,
     output: Callable[[str], None] = print,
@@ -736,19 +709,8 @@ def run_calibration(
     gantry_path = gantry_path.resolve()
     gantry_config = load_gantry_from_yaml(gantry_path)
     raw_config = _load_raw_config(gantry_path)
-    board_expected_grbl_settings = None
-    if board_path is not None:
-        board_path = board_path.resolve()
-        board_schema = BoardYamlSchema.model_validate(
-            _load_raw_yaml_dict(board_path, label="Board")
-        )
-        board_expected_grbl_settings = normalize_expected_grbl_settings(
-            board_schema.grbl_settings
-        )
-    if output_board_path is not None:
-        output_board_path = output_board_path.resolve()
-    if (write_board_yaml or output_board_path is not None) and board_path is None:
-        raise ValueError("--board is required when writing updated board YAML.")
+    if output_gantry_path is not None:
+        output_gantry_path = output_gantry_path.resolve()
     plan = build_deck_origin_calibration_plan(gantry_config)
     if reference_surface_z_mm is not None:
         if tip_gap_mm is not None:
@@ -803,11 +765,6 @@ def run_calibration(
     gantry_runtime_config = copy.deepcopy(raw_config)
     gantry_runtime_config.pop("grbl_settings", None)
     gantry = gantry_factory(config=gantry_runtime_config)
-    if board_expected_grbl_settings and hasattr(gantry, "set_expected_grbl_settings"):
-        gantry.set_expected_grbl_settings(
-            board_expected_grbl_settings,
-            source=str(board_path),
-        )
     try:
         output("Connecting to gantry...")
         gantry.connect()
@@ -950,37 +907,24 @@ def run_calibration(
             instrument_name=instrument_name,
             output=output,
         )
+        gantry_yaml_text = _updated_gantry_yaml_text(
+            raw_config,
+            measured_coords=measured_coords,
+            z_min_mm=z_min_mm,
+            max_travel=max_travel,
+        )
         _print_yaml_block(
             title="Full gantry YAML to copy/paste:",
-            yaml_text=_updated_gantry_yaml_text(
-                raw_config,
-                measured_coords=measured_coords,
-                z_min_mm=z_min_mm,
-            ),
+            yaml_text=gantry_yaml_text,
             output=output,
         )
-
-        if board_path is not None:
-            board_yaml_text = _updated_board_yaml_text(
-                board_path,
-                gantry_raw=raw_config,
-                max_travel=max_travel,
-            )
-            _print_yaml_block(
-                title="Full board YAML to copy/paste:",
-                yaml_text=board_yaml_text,
-                output=output,
-            )
-            _maybe_write_board_yaml(
-                yaml_text=board_yaml_text,
-                output_path=output_board_path,
-                write_requested=write_board_yaml,
-                input_reader=input_reader,
-                output=output,
-            )
-        else:
-            output("")
-            output("No --board supplied; skipping full board YAML output.")
+        _maybe_write_gantry_yaml(
+            yaml_text=gantry_yaml_text,
+            output_path=output_gantry_path,
+            write_requested=write_gantry_yaml,
+            input_reader=input_reader,
+            output=output,
+        )
 
         return DeckOriginCalibrationResult(
             measured_working_volume=_coords_tuple(measured_coords),
@@ -1015,7 +959,7 @@ def main() -> None:
         "--gantry",
         type=Path,
         required=True,
-        help="Deck-origin gantry YAML from configs_new/gantry.",
+        help="Deck-origin machine gantry YAML from configs/gantry.",
     )
     parser.add_argument(
         "--dry-run",
@@ -1058,26 +1002,20 @@ def main() -> None:
         help="Optional instrument/TCP label used in reach-limit output, e.g. asmi.",
     )
     parser.add_argument(
-        "--board",
-        type=Path,
-        default=None,
-        help="Board YAML to merge calibrated GRBL settings into for copy/paste output.",
-    )
-    parser.add_argument(
         "--skip-soft-limit-config",
         action="store_true",
         help="Do not program GRBL soft limits after measuring the working volume.",
     )
     parser.add_argument(
-        "--write-board-yaml",
+        "--write-gantry-yaml",
         action="store_true",
-        help="Prompt for a filename and write the updated board YAML after confirmation.",
+        help="Prompt for a filename and write the updated gantry YAML after confirmation.",
     )
     parser.add_argument(
-        "--output-board",
+        "--output-gantry",
         type=Path,
         default=None,
-        help="Write updated board YAML to this path after confirmation.",
+        help="Write updated gantry YAML to this path after confirmation.",
     )
     reach_group = parser.add_mutually_exclusive_group()
     reach_group.add_argument(
@@ -1147,10 +1085,9 @@ def main() -> None:
             z_reference_mode=args.z_reference_mode,
             measure_reachable_z_min=args.measure_reachable_z_min,
             instrument_name=args.instrument_name,
-            board_path=args.board,
             skip_soft_limit_config=args.skip_soft_limit_config,
-            write_board_yaml=args.write_board_yaml,
-            output_board_path=args.output_board,
+            write_gantry_yaml=args.write_gantry_yaml,
+            output_gantry_path=args.output_gantry,
             homing_serial_timeout_s=args.homing_serial_timeout_s,
             jog_serial_timeout_s=args.jog_serial_timeout_s,
         )

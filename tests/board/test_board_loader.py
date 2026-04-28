@@ -5,8 +5,14 @@ from unittest.mock import MagicMock
 import pytest
 
 from board.errors import BoardLoaderError
-from board.loader import load_board_from_yaml, load_board_from_yaml_safe
+from board.loader import (
+    load_board_from_gantry_config,
+    load_board_from_gantry_yaml,
+    load_board_from_yaml,
+    load_board_from_yaml_safe,
+)
 from board.yaml_schema import BoardYamlSchema, InstrumentYamlEntry
+from gantry.loader import load_gantry_from_yaml
 from instruments.asmi.driver import ASMI
 from instruments.filmetrics.driver import Filmetrics
 from instruments.pipette.driver import Pipette
@@ -23,6 +29,12 @@ def _mock_gantry():
 def _write_yaml(tmp_path: Path, content: str) -> Path:
     """Write YAML text to a temp file and return the path."""
     path = tmp_path / "board.yaml"
+    path.write_text(textwrap.dedent(content))
+    return path
+
+
+def _write_gantry_yaml(tmp_path: Path, content: str) -> Path:
+    path = tmp_path / "gantry.yaml"
     path.write_text(textwrap.dedent(content))
     return path
 
@@ -257,6 +269,82 @@ class TestLoadBoardGantry:
             "$22": 1.0,
             "$130": 306.0,
         }
+
+
+class TestLoadBoardFromGantryConfig:
+
+    def test_loads_instruments_embedded_in_gantry_yaml(self, tmp_path):
+        gantry_path = _write_gantry_yaml(tmp_path, """\
+            serial_port: /dev/ttyUSB0
+            cnc:
+              homing_strategy: standard
+              total_z_height: 90.0
+            working_volume:
+              x_min: 0.0
+              x_max: 300.0
+              y_min: 0.0
+              y_max: 200.0
+              z_min: 0.0
+              z_max: 80.0
+            grbl_settings:
+              status_report: 0
+              homing_enable: true
+            instruments:
+              asmi:
+                type: asmi
+                vendor: vernier
+                measurement_height: 26.0
+                safe_approach_height: 35.0
+        """)
+        gantry_config = load_gantry_from_yaml(gantry_path)
+        board = load_board_from_gantry_config(
+            gantry_config,
+            _mock_gantry(),
+            mock_mode=True,
+        )
+
+        assert isinstance(board.instruments["asmi"], ASMI)
+        assert board.instruments["asmi"]._offline is True
+        assert board.expected_grbl_settings == {"$10": 0.0, "$22": 1.0}
+
+    def test_loads_directly_from_gantry_yaml(self, tmp_path):
+        gantry_path = _write_gantry_yaml(tmp_path, """\
+            serial_port: /dev/ttyUSB0
+            cnc:
+              homing_strategy: standard
+              total_z_height: 90.0
+            working_volume:
+              x_min: 0.0
+              x_max: 300.0
+              y_min: 0.0
+              y_max: 200.0
+              z_min: 0.0
+              z_max: 80.0
+            instruments:
+              uvvis:
+                type: uvvis_ccs
+                vendor: thorlabs
+        """)
+        board = load_board_from_gantry_yaml(gantry_path, _mock_gantry())
+        assert isinstance(board.instruments["uvvis"], UVVisCCS)
+
+    def test_requires_embedded_instruments(self, tmp_path):
+        gantry_path = _write_gantry_yaml(tmp_path, """\
+            serial_port: /dev/ttyUSB0
+            cnc:
+              homing_strategy: standard
+              total_z_height: 90.0
+            working_volume:
+              x_min: 0.0
+              x_max: 300.0
+              y_min: 0.0
+              y_max: 200.0
+              z_min: 0.0
+              z_max: 80.0
+        """)
+        gantry_config = load_gantry_from_yaml(gantry_path)
+        with pytest.raises(ValueError, match="instruments"):
+            load_board_from_gantry_config(gantry_config, _mock_gantry())
 
 
 # --- Loader: error cases -----------------------------------------------------

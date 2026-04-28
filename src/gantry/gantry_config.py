@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 
 class HomingStrategy(str, Enum):
@@ -64,6 +64,7 @@ class GantryConfig:
     y_axis_motion: YAxisMotion = YAxisMotion.HEAD
     structure_clearance_z: Optional[float] = None
     expected_grbl_settings: Optional[Dict[str, float]] = field(default=None)
+    instruments: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.total_z_height <= 0:
