@@ -28,16 +28,15 @@ Run a safe offline validation first:
 
 ```bash
 python setup/validate_setup.py \
-  configs_new/gantry/cub_xl_asmi_deck_origin.yaml \
-  configs_new/deck/asmi_deck_origin.yaml \
-  configs_new/board/asmi_board_deck_origin.yaml \
-  configs_new/protocol/asmi_move_a1_deck_origin.yaml
+  configs/gantry/cub_xl_asmi.yaml \
+  configs/deck/asmi_deck.yaml \
+  configs/protocol/asmi_move_a1.yaml
 ```
 
 ## What To Read First
 
 - [Getting Started](getting-started.md) for installation and first commands
-- [Configuration](configuration.md) for the four YAML surfaces
+- [Configuration](configuration.md) for the three YAML surfaces
 - [Protocol](protocol.md) for how protocol execution is assembled and validated
 - [Data](data.md) for persistence and analysis helpers
 - [API Reference](reference/index.md) for generated module docs

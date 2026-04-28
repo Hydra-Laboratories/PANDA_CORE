@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Dict, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .grbl_settings import GRBL_FIELD_TO_SETTING, GrblSettingsYaml
+from instruments.yaml_schema import InstrumentYamlEntry
+
+from .grbl_settings import GrblSettingsYaml
 
 
 class WorkingVolumeYaml(BaseModel):
@@ -56,15 +58,19 @@ class CncYaml(BaseModel):
 
 
 class GantryYamlSchema(BaseModel):
-    """Root gantry YAML schema."""
+    """Root gantry YAML schema.
+
+    A gantry YAML is the machine configuration: motion envelope, controller
+    expectations, and mounted instruments.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     serial_port: str
     cnc: CncYaml
     working_volume: WorkingVolumeYaml
-    # Deprecated; new configs should store controller expectations in board YAML.
     grbl_settings: Optional[GrblSettingsYaml] = None
+    instruments: Dict[str, InstrumentYamlEntry] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate_total_height_covers_working_z(self) -> "GantryYamlSchema":

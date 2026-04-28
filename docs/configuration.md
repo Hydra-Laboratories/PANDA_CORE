@@ -1,14 +1,13 @@
 # Configuration
 
-CubOS uses four YAML inputs to define a runnable experiment. Together they describe the machine, the layout, the mounted tools, and the step sequence.
+CubOS uses three YAML inputs to define a runnable experiment. Together they describe the machine, the deck layout, and the step sequence.
 
 ## Directory Layout
 
 ```text
 configs/
-  gantry/     # Machine envelope, serial port, homing strategy
+  gantry/     # Machine envelope, serial port, homing strategy, instruments
   deck/       # Labware placement and calibration
-  board/      # Mounted instruments and offsets
   protocol/   # Ordered protocol steps
 ```
 
@@ -23,6 +22,7 @@ Gantry YAML defines:
 - working volume
 - optional structure-clearance Z
 - optional GRBL settings expectations
+- mounted instruments, offsets, and driver-specific settings
 
 Representative example:
 
@@ -41,6 +41,18 @@ working_volume:
   y_max: 200.0
   z_min: 0.0
   z_max: 80.0
+
+instruments:
+  uvvis:
+    type: uvvis_ccs
+    vendor: thorlabs
+    serial_number: "M00801544"
+    dll_path: "TLCCS_64.dll"
+    default_integration_time_s: 0.24
+    offset_x: 0.0
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 3.0
 ```
 
 Use this file when:
@@ -49,6 +61,7 @@ Use this file when:
 - changing travel limits
 - updating homing behavior
 - validating expected controller settings
+- changing mounted instruments, offsets, reach depths, or instrument-specific connection settings
 
 CubOS is cut over to the deck-origin frame. Protocol `home` runs GRBL homing
 and preserves the persistent G54 work-coordinate frame established by
@@ -73,14 +86,14 @@ labware:
     columns: 12
     calibration:
       a1:
-        x: -17.88
-        y: -42.23
+        x: 100.0
+        y: 60.0
         z: 20.0
       a2:
-        x: -17.88
-        y: -51.23
+        x: 109.0
+        y: 60.0
         z: 20.0
-    x_offset_mm: -9.0
+    x_offset_mm: 9.0
     y_offset_mm: -9.0
     capacity_ul: 360.0
     working_volume_ul: 200.0
@@ -92,9 +105,10 @@ Use this file when:
 - the physical deck arrangement changes
 - a different plate or vial layout is installed
 
-## Board Config
+## Instrument Config
 
-Board YAML defines mounted instruments and their offsets relative to the gantry/router.
+Mounted instruments are defined inside the gantry YAML under `instruments`.
+Offsets are relative to the gantry/router reference point.
 `measurement_height` and `safe_approach_height` are absolute deck-frame Z planes, not labware-relative offsets.
 
 Representative example:
@@ -112,12 +126,6 @@ instruments:
     depth: 0.0
     measurement_height: 3.0
 ```
-
-Use this file when:
-
-- a different instrument is mounted
-- offsets or reach depths change
-- instrument-specific connection settings change
 
 ## Protocol Config
 
@@ -143,4 +151,4 @@ Use this file when:
 
 ## Recommended Editing Rule
 
-If the physical machine setup has not changed, edit the protocol file and leave the gantry, deck, and board files alone.
+If the physical machine setup has not changed, edit the protocol file and leave the gantry and deck files alone.

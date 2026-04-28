@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import re
-import warnings
 from typing import Any, Dict, Optional
 
 from .coordinate_translator import (
@@ -449,9 +448,9 @@ class Gantry:
         self,
         settings: Dict[str, float] | None,
         *,
-        source: str = "board",
+        source: str = "gantry",
     ) -> None:
-        """Set runtime GRBL expectations, typically loaded from board YAML."""
+        """Set runtime GRBL expectations loaded from machine configuration."""
         self._expected_grbl_settings_override = dict(settings) if settings else None
         self._expected_grbl_settings_source = source if settings else None
 
@@ -578,22 +577,9 @@ class Gantry:
             raw = self.config.get("grbl_settings")
             if not raw:
                 return None
-            warnings.warn(
-                "Gantry YAML grbl_settings is deprecated; move controller "
-                "settings to board YAML grbl_settings.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
             return normalize_expected_grbl_settings(raw)
 
         expected = getattr(self.config, "expected_grbl_settings", None)
-        if expected:
-            warnings.warn(
-                "GantryConfig.expected_grbl_settings is deprecated; move "
-                "controller settings to board YAML grbl_settings.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
         return dict(expected) if expected else None
 
     def _validate_grbl_settings(self) -> None:

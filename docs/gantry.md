@@ -13,6 +13,7 @@ Gantry YAML defines:
 - working volume
 - optional `structure_clearance_z`
 - optional GRBL settings expectations
+- mounted instruments and their offsets/settings
 
 Representative example:
 
@@ -45,6 +46,16 @@ grbl_settings:
   max_travel_x: 300.0
   max_travel_y: 200.0
   max_travel_z: 80.0
+
+instruments:
+  asmi:
+    type: asmi
+    vendor: vernier
+    offset_x: 0.0
+    offset_y: 0.0
+    depth: 0.0
+    measurement_height: 26.0
+    safe_approach_height: 35.0
 ```
 
 Use this file when:
@@ -53,6 +64,7 @@ Use this file when:
 - changing travel limits
 - updating homing behavior
 - validating expected controller settings
+- changing mounted instruments, offsets, reach depths, or driver-specific connection settings
 
 ## CNC Fields
 
@@ -182,7 +194,7 @@ Record `$3` and `$23` before changing anything.
 10. Calibrate the CubOS work origin using the deck-origin script:
 
    ```bash
-   python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --instrument asmi
+   python setup/calibrate_deck_origin.py --gantry configs/gantry/cub_xl_asmi.yaml --instrument asmi
    ```
 
    The script sends `$H`, clears transient `G92` offsets, prompts the operator
@@ -200,13 +212,13 @@ Record `$3` and `$23` before changing anything.
    deck-to-TCP gap explicitly:
 
    ```bash
-   python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --z-reference-mode ruler-gap --tip-gap-mm 5 --instrument filmetrics
+   python setup/calibrate_deck_origin.py --gantry configs/gantry/cub_filmetrics.yaml --z-reference-mode ruler-gap --tip-gap-mm 5 --instrument filmetrics
    ```
 
    For instruments that can touch true deck bottom:
 
    ```bash
-   python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --z-reference-mode bottom
+   python setup/calibrate_deck_origin.py --gantry configs/gantry/cub_xl_asmi.yaml --z-reference-mode bottom
    ```
 
    For one-instrument configs, use the measured lower-reach Z as
@@ -235,5 +247,6 @@ Record `$3` and `$23` before changing anything.
 
 | Config | System | Working Volume |
 |--------|--------|----------------|
-| `configs_new/gantry/cub_xl_asmi_deck_origin.yaml` | CubOS-XL / Genmitsu 3018 PRO + ASMI | 400 x 300 x 100 mm |
-| `configs_new/gantry/cub_filmetrics_deck_origin.yaml` | CubOS / Genmitsu 3018 PROVer V2 + Filmetrics | 280 x 175 x 90 mm |
+| `configs/gantry/cub_xl_asmi.yaml` | CubOS-XL / Genmitsu 3018 PRO + ASMI | 399 x 280 x 87 mm |
+| `configs/gantry/cub_xl_sterling.yaml` | Sterling ASMI | 306 x 306 x 113 mm usable Z span |
+| `configs/gantry/cub_filmetrics.yaml` | CubOS / Genmitsu 3018 PROVer V2 + Filmetrics | 280 x 175 x 90 mm |
