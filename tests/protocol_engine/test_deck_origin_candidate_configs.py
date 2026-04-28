@@ -21,21 +21,21 @@ from validation.protocol_semantics import validate_protocol_semantics
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CONFIGS_NEW = ROOT / "configs_new"
+CONFIGS = ROOT / "configs"
 
 
 def test_asmi_candidate_config_generates_deck_origin_scan_waypoints():
     gantry_config = load_gantry_from_yaml(
-        CONFIGS_NEW / "gantry/cub_xl_asmi_deck_origin.yaml"
+        CONFIGS / "gantry/cub_xl_asmi.yaml"
     )
     deck = load_deck_from_yaml(
-        CONFIGS_NEW / "deck/asmi_deck_origin.yaml",
+        CONFIGS / "deck/asmi_deck.yaml",
         total_z_height=gantry_config.total_z_height,
     )
     mock_gantry = MagicMock()
     mock_gantry.get_coordinates.return_value = {"x": 0.0, "y": 0.0, "z": 85.0}
     board = load_board_from_yaml(
-        CONFIGS_NEW / "board/asmi_board_deck_origin.yaml",
+        CONFIGS / "board/asmi_board.yaml",
         mock_gantry,
         mock_mode=True,
     )
@@ -58,7 +58,7 @@ def test_asmi_candidate_config_generates_deck_origin_scan_waypoints():
 
     board.instruments["asmi"].indentation = fake_indentation
     protocol = load_protocol_from_yaml(
-        CONFIGS_NEW / "protocol/asmi_indentation_deck_origin.yaml"
+        CONFIGS / "protocol/asmi_indentation.yaml"
     )
 
     scan_step = next(step for step in protocol.steps if step.command_name == "scan")
@@ -106,13 +106,13 @@ def test_asmi_candidate_config_generates_deck_origin_scan_waypoints():
 
 def test_panda_candidate_deck_origin_layout_and_placeholders_parse():
     gantry_config = load_gantry_from_yaml(
-        CONFIGS_NEW / "gantry/cub_xl_panda_deck_origin.yaml"
+        CONFIGS / "gantry/cub_xl_panda.yaml"
     )
     deck = load_deck_from_yaml(
-        CONFIGS_NEW / "deck/panda_deck_origin.yaml",
+        CONFIGS / "deck/panda_deck.yaml",
         total_z_height=gantry_config.total_z_height,
     )
-    with (CONFIGS_NEW / "board/panda_board_deck_origin.yaml").open() as handle:
+    with (CONFIGS / "board/panda_board.yaml").open() as handle:
         board_schema = BoardYamlSchema.model_validate(yaml.safe_load(handle))
 
     plate = deck.resolve("well_plate_holder.plate.A1")
@@ -133,10 +133,10 @@ def test_panda_candidate_deck_origin_layout_and_placeholders_parse():
 
 
 def test_filmetrics_candidate_translates_legacy_deck_and_validates_setup():
-    gantry_path = CONFIGS_NEW / "gantry/cub_filmetrics_deck_origin.yaml"
-    deck_path = CONFIGS_NEW / "deck/filmetrics_deck_origin.yaml"
-    board_path = CONFIGS_NEW / "board/filmetrics_board_deck_origin.yaml"
-    protocol_path = CONFIGS_NEW / "protocol/filmetrics_scan_deck_origin.yaml"
+    gantry_path = CONFIGS / "gantry/cub_filmetrics.yaml"
+    deck_path = CONFIGS / "deck/filmetrics_deck.yaml"
+    board_path = CONFIGS / "board/filmetrics_board.yaml"
+    protocol_path = CONFIGS / "protocol/filmetrics_scan.yaml"
 
     gantry_config = load_gantry_from_yaml(gantry_path)
     deck = load_deck_from_yaml(deck_path, total_z_height=gantry_config.total_z_height)
