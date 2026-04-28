@@ -42,10 +42,6 @@ RAPID_MILL_MOVE = "G00 X{} Y{} Z{}"  # Move to specified coordinates at the maxi
 DEFAULT_FEED_RATE = 2000
 HOMING_FEED_RATE = 5000
 HOMING_TIMEOUT = 90
-MAX_TRAVEL_LIMIT = 320.0  # mm
-HOMING_BACKOFF = 2.0      # mm
-HOMING_FAST_FEED = 500
-HOMING_STEP_SIZE = 50.0   # mm
 
 # Compile regex patterns for extracting coordinates from the mill status
 wpos_pattern = re.compile(r"WPos:([\d.-]+),([\d.-]+),([\d.-]+)")
@@ -514,7 +510,11 @@ class Mill:
         self.logger.debug("Jog command: %s", cmd)
         self.ser_mill.write((cmd + "\n").encode("ascii"))
         response = self.read().lower()
-        if "error" in response:
+        if (
+            "error" in response
+            or "alarm" in response
+            or "check limits" in response
+        ):
             # error:8 = "not idle" (planner buffer full) — safe to ignore
             if "error:8" in response:
                 self.logger.debug("Jog buffer full, skipping")
@@ -566,13 +566,25 @@ class Mill:
         self.execute_command("$H")
         time.sleep(1)
         start_time = time.time()
+        last_status_error = None
 
         while True:
-            status = self.current_status()
-
             if time.time() - start_time > timeout:
                 self.logger.warning("Homing timed out")
+                if last_status_error is not None:
+                    raise StatusReturnError(
+                        f"Homing timed out after {timeout} seconds; "
+                        f"last status error: {last_status_error}"
+                    ) from last_status_error
                 raise StatusReturnError(f"Homing timed out after {timeout} seconds")
+
+            try:
+                status = self.current_status()
+            except StatusReturnError as exc:
+                last_status_error = exc
+                self.logger.warning("No valid status during homing; retrying: %s", exc)
+                time.sleep(0.5)
+                continue
 
             if "Idle" in status:
                 self.logger.info("Homing completed")
@@ -584,151 +596,6 @@ class Mill:
                 self.execute_command("$H")
 
             time.sleep(0.5)
-
-    def home_xy_hard_limits(self):
-        """
-        Custom homing strategy for machines without valid Z homing.
-        Homes X and Y axes independently using hard limits.
-
-        Sets WPos to 0 at the home position after backing off.
-        Gantry._enforce_positive_wpos() handles the final WPos
-        calibration using dir_invert_mask from the YAML config.
-        """
-        self.logger.info("Starting Custom XY Hard Limit Homing...")
-
-        def home_axis(axis: str, direction: int):
-            self.logger.info(f"Homing Axis: {axis}, Direction: {direction}")
-
-            self.execute_command("G91")
-
-            dist_moved = 0.0
-            switch_hit = False
-
-            while dist_moved < MAX_TRAVEL_LIMIT:
-                move_cmd = f"G1 {axis}{HOMING_STEP_SIZE * direction} F{HOMING_FAST_FEED}"
-                is_hit = False
-
-                try:
-                    self.execute_command(move_cmd, suppress_errors=True)
-                    dist_moved += HOMING_STEP_SIZE
-                except Exception as e:
-                    err_msg = str(e)
-                    if "error:9" in err_msg or "Alarm" in err_msg:
-                        is_hit = True
-                        self.logger.info(f"Hit detected via exception: {err_msg}")
-
-                status = ""
-                try:
-                    status = self.current_status()
-                except Exception as e:
-                    status_err = str(e)
-                    if "Alarm" in status_err or "Pn:" in status_err:
-                         status = status_err
-                         is_hit = True
-
-                if "Alarm" in status:
-                    is_hit = True
-                if "Pn:" in status:
-                     triggered_pins = status.split("Pn:")[1].split("|")[0]
-                     if axis in triggered_pins:
-                         is_hit = True
-
-                if is_hit:
-                    self.logger.info(f"Hard limit hit for {axis}!")
-                    switch_hit = True
-
-                    self.logger.info("Clearing Alarm ($X)...")
-                    try:
-                        self.execute_command("$X")
-                    except Exception:
-                        pass
-                    time.sleep(1)
-                    break
-
-            if not switch_hit:
-                self.logger.error(f"Failed to home {axis}: Max travel reached without hitting switch.")
-                raise MillConnectionError(f"Homing failed for {axis}")
-
-            self.logger.info(f"Backing off {axis}...")
-            self.execute_command("G91")
-            self.execute_command(f"G0 {axis}{-HOMING_BACKOFF * direction}")
-
-            self.logger.info(f"Setting {axis} WPos to 0 at home position...")
-            self.execute_command(f"G10 L20 P1 {axis}0")
-
-            self.execute_command("G90")
-
-        home_axis("X", 1)
-        home_axis("Y", 1)
-
-        self.homed = True
-        self.logger.info("Custom XY Homing Complete.")
-
-    def home_manual_origin(self):
-        """Interactive manual homing: jog to origin, press Enter to set zero.
-
-        The user moves the gantry to the desired origin (top-left-back corner)
-        using arrow keys for X/Y and Z/X keys for Z. Pressing Enter confirms
-        the position and sets it as the work coordinate zero on all axes.
-        """
-        import sys
-        from pathlib import Path as _Path
-
-        setup_dir = _Path(__file__).parent.parent.parent.parent / "setup"
-        if str(setup_dir) not in sys.path:
-            sys.path.insert(0, str(setup_dir))
-
-        from keyboard_input import read_keypress_batch, flush_stdin
-
-        self.interactive_mode = True
-        step = 1.0
-        max_step = 10.0
-
-        print("\n" + "=" * 50)
-        print("  Manual Origin Homing")
-        print("=" * 50)
-        print("\nJog the gantry to the origin (top-left-back corner).")
-        print("Controls:")
-        print("  Arrow LEFT/RIGHT  — Move X axis (±1mm)")
-        print("  Arrow UP/DOWN     — Move Y axis (±1mm)")
-        print("  Z                 — Move Z down (1mm)")
-        print("  X                 — Move Z up (1mm)")
-        print("  ENTER             — Confirm origin and set zero")
-
-        while True:
-            key, count = read_keypress_batch()
-            move_step = min(step * count, max_step)
-
-            if key == "\r" or key == "\n" or key == "ENTER":
-                break
-
-            command = None
-            if key == "LEFT":
-                command = f"G91\nG0 X{-move_step}\nG90"
-            elif key == "RIGHT":
-                command = f"G91\nG0 X{move_step}\nG90"
-            elif key == "UP":
-                command = f"G91\nG0 Y{move_step}\nG90"
-            elif key == "DOWN":
-                command = f"G91\nG0 Y{-move_step}\nG90"
-            elif key == "Z":
-                command = f"G91\nG0 Z{-move_step}\nG90"
-            elif key == "X":
-                command = f"G91\nG0 Z{move_step}\nG90"
-
-            if command:
-                for cmd in command.split("\n"):
-                    self.execute_command(cmd)
-                flush_stdin()
-
-                coords = self.current_coordinates()
-                print(f"  Position -> X: {coords.x:.1f}  Y: {coords.y:.1f}  Z: {coords.z:.1f}")
-
-        self.execute_command("G10 L20 P1 X0 Y0 Z0")
-        self.homed = True
-        self.interactive_mode = False
-        self.logger.info("Manual origin homing complete. Work zero set at current position.")
-        print("\nOrigin set. All axes zeroed at current position.")
 
     def __wait_for_completion(self, incoming_status, suppress_errors: bool = False, timeout=5):
         """Wait for the mill to complete the previous command."""
@@ -956,8 +823,6 @@ class Mill:
             raise ValueError("Invalid status mode")
 
         max_attempts = 3
-        homing_pull_off = float(self.config["$27"])
-
         pattern = wpos_pattern if status_mode in [0, 2] else mpos_pattern
         coord_type = "WPos" if status_mode in [0, 2] else "MPos"
 

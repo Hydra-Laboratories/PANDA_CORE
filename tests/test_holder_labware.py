@@ -164,9 +164,9 @@ labware:
         assert isinstance(deck["waste"], TipDisposal)
         assert isinstance(deck["slide_holder"], WellPlateHolder)
         assert isinstance(deck["vial_holder"], VialHolder)
-        assert deck["waste"].location.z == pytest.approx(80.0)
+        assert deck["waste"].location.z == pytest.approx(10.0)
         assert deck.resolve("slide_holder.plate") == Coordinate3D(x=51.0, y=61.0, z=12.0)
-        assert deck.resolve("vial_holder.vial_1") == Coordinate3D(x=71.0, y=81.0, z=75.0)
+        assert deck.resolve("vial_holder.vial_1") == Coordinate3D(x=71.0, y=81.0, z=15.0)
     finally:
         Path(path).unlink(missing_ok=True)
 

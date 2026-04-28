@@ -59,10 +59,9 @@ def scan(
         method:        Name of the method on the instrument to call per well.
         delay_s:       Seconds to pause between wells (default 0.0).
         measurement_height:
-                       Optional protocol-level action/start Z. Under the
-                       current positive-down convention this is an absolute
-                       Z override; later deck-origin phases will make this a
-                       deck-relative height.
+                       Optional protocol-level action/start Z. This is an
+                       absolute deck-frame Z plane, not a labware-relative
+                       offset.
         entry_travel_height:
                        Optional absolute Z coordinate used only for the
                        initial transit into the first well of the scan.
@@ -169,7 +168,7 @@ def scan(
         final_approach_z = (
             normalized.interwell_travel_z
             if normalized.interwell_travel_z is not None
-            else last_well.z - instr.safe_approach_height
+            else instr.safe_approach_height
         )
         context.board.move(instrument, (last_well.x, last_well.y, final_approach_z))
 

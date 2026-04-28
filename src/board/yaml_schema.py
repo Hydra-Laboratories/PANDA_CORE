@@ -6,6 +6,8 @@ from typing import Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from gantry.grbl_settings import GrblSettingsYaml
+
 
 class InstrumentYamlEntry(BaseModel):
     """Schema for one instrument in board YAML.
@@ -13,11 +15,11 @@ class InstrumentYamlEntry(BaseModel):
     Common fields are declared explicitly. Driver-specific fields
     (e.g. serial_number, dll_path) pass through via extra="allow".
 
-    Z-offset semantics (see BaseInstrument docstring):
-      * ``measurement_height`` — Z offset during the measurement/action.
-      * ``safe_approach_height`` — Z offset during XY travel (defaults
-        to ``measurement_height`` when omitted). Must be >=
-        ``measurement_height`` — enforced at parse time.
+    Z semantics (see BaseInstrument docstring):
+      * ``measurement_height`` — absolute deck-frame action Z.
+      * ``safe_approach_height`` — absolute deck-frame XY-travel Z
+        (defaults to ``measurement_height`` when omitted). Must be >=
+        ``measurement_height`` in the +Z-up frame.
     """
 
     model_config = ConfigDict(extra="allow")
@@ -46,8 +48,9 @@ class InstrumentYamlEntry(BaseModel):
 
 
 class BoardYamlSchema(BaseModel):
-    """Root board YAML schema: only 'instruments' key allowed."""
+    """Root board YAML schema."""
 
     model_config = ConfigDict(extra="forbid")
 
+    grbl_settings: Optional[GrblSettingsYaml] = None
     instruments: Dict[str, InstrumentYamlEntry]

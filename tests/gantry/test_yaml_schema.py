@@ -11,7 +11,7 @@ from gantry.yaml_schema import GantryYamlSchema
 def _valid_gantry_dict() -> dict:
     return {
         "serial_port": "/dev/cu.usbserial-2130",
-        "cnc": {"homing_strategy": "xy_hard_limits", "total_z_height": 90.0},
+        "cnc": {"homing_strategy": "standard", "total_z_height": 90.0},
         "working_volume": {
             "x_min": 0.0,
             "x_max": 300.0,
@@ -30,7 +30,7 @@ class TestGantryYamlSchema:
         schema = GantryYamlSchema.model_validate(data)
 
         assert schema.serial_port == "/dev/cu.usbserial-2130"
-        assert schema.cnc.homing_strategy == "xy_hard_limits"
+        assert schema.cnc.homing_strategy == "standard"
         assert schema.cnc.total_z_height == 90.0
         assert schema.working_volume.x_min == 0.0
         assert schema.working_volume.x_max == 300.0
@@ -39,9 +39,8 @@ class TestGantryYamlSchema:
         assert schema.working_volume.z_min == 0.0
         assert schema.working_volume.z_max == 80.0
 
-    def test_standard_homing_strategy_accepted(self):
+    def test_only_standard_homing_strategy_accepted(self):
         data = _valid_gantry_dict()
-        data["cnc"]["homing_strategy"] = "standard"
         schema = GantryYamlSchema.model_validate(data)
         assert schema.cnc.homing_strategy == "standard"
 
@@ -120,6 +119,18 @@ class TestGantryYamlSchema:
         data = _valid_gantry_dict()
         data["cnc"]["total_z_height"] = 79.9
         with pytest.raises(ValidationError, match="total_z_height"):
+            GantryYamlSchema.model_validate(data)
+
+    def test_structure_clearance_z_is_optional_and_parsed(self):
+        data = _valid_gantry_dict()
+        data["cnc"]["structure_clearance_z"] = 75.0
+        schema = GantryYamlSchema.model_validate(data)
+        assert schema.cnc.structure_clearance_z == 75.0
+
+    def test_structure_clearance_z_must_not_be_negative(self):
+        data = _valid_gantry_dict()
+        data["cnc"]["structure_clearance_z"] = -1.0
+        with pytest.raises(ValidationError, match="structure_clearance_z"):
             GantryYamlSchema.model_validate(data)
 
     def test_extra_top_level_key_rejected(self):

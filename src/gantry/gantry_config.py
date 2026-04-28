@@ -10,9 +10,7 @@ from typing import Dict, Optional
 class HomingStrategy(str, Enum):
     """Supported CNC homing strategies."""
 
-    XY_HARD_LIMITS = "xy_hard_limits"
     STANDARD = "standard"
-    MANUAL_ORIGIN = "manual_origin"
 
 
 class YAxisMotion(str, Enum):
@@ -26,8 +24,8 @@ class YAxisMotion(str, Enum):
 class WorkingVolume:
     """Gantry working volume bounds in millimeters.
 
-    Bounds are inclusive and may be either positive-space or negative-space,
-    depending on the gantry calibration in use.
+    Bounds are inclusive and use the CubOS deck-origin frame for supported
+    protocol execution.
     """
 
     x_min: float
@@ -64,6 +62,7 @@ class GantryConfig:
     total_z_height: float
     working_volume: WorkingVolume
     y_axis_motion: YAxisMotion = YAxisMotion.HEAD
+    structure_clearance_z: Optional[float] = None
     expected_grbl_settings: Optional[Dict[str, float]] = field(default=None)
 
     def __post_init__(self) -> None:
@@ -71,3 +70,13 @@ class GantryConfig:
             raise ValueError(
                 f"total_z_height ({self.total_z_height}) must be > 0"
             )
+        if self.structure_clearance_z is not None:
+            if not (
+                self.working_volume.z_min
+                <= self.structure_clearance_z
+                <= self.working_volume.z_max
+            ):
+                raise ValueError(
+                    "structure_clearance_z must be within the configured "
+                    "working-volume Z bounds."
+                )

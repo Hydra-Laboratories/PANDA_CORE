@@ -214,6 +214,28 @@ class TestCNCDriverLogic(unittest.TestCase):
         with self.assertRaises(StatusReturnError):
             mill.home(timeout=1)
 
+    @patch('gantry.gantry_driver.driver.time.sleep')
+    @patch('gantry.gantry_driver.driver.time.time', side_effect=[0.0, 0.2, 0.4])
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_home_retries_transient_status_failures(
+        self, mock_cmd_logger, mock_mill_logger, mock_serial, mock_time, mock_sleep,
+    ):
+        mill = Mill()
+        mill.execute_command = MagicMock()
+        mill.current_status = MagicMock(
+            side_effect=[
+                StatusReturnError("Failed to get status from the mill"),
+                "<Idle|WPos:0,0,0|FS:0,0>",
+            ]
+        )
+
+        mill.home(timeout=1)
+
+        self.assertTrue(mill.homed)
+        self.assertEqual(mill.current_status.call_count, 2)
+
     @patch('gantry.gantry_driver.driver.serial.Serial')
     @patch('gantry.gantry_driver.driver.set_up_mill_logger')
     @patch('gantry.gantry_driver.driver.set_up_command_logger')
@@ -253,6 +275,22 @@ class TestCNCDriverLogic(unittest.TestCase):
         mill.execute_command.assert_called_once_with("$$")
         self.assertEqual(settings["$130"], "400.000")
         self.assertEqual(mill.config["$130"], "400.000")
+
+    @patch('gantry.gantry_driver.driver.time.sleep')
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_current_coordinates_does_not_require_homing_pull_off_setting(
+        self, mock_cmd_logger, mock_mill_logger, mock_serial, mock_sleep,
+    ):
+        mill = Mill()
+        mill.ser_mill = MagicMock()
+        mill.read = MagicMock(return_value="<Idle|WPos:1.000,2.000,3.000|FS:0,0>")
+        mill.config = {"$10": "0"}
+
+        coords = mill.current_coordinates()
+
+        self.assertEqual(coords, Coordinates(1.0, 2.0, 3.0))
 
     @patch('gantry.gantry_driver.driver.serial.Serial')
     @patch('gantry.gantry_driver.driver.set_up_mill_logger')
@@ -297,6 +335,36 @@ class TestCNCDriverLogic(unittest.TestCase):
         mill.ser_mill = None
         with self.assertRaises(MillConnectionError):
             mill.jog(x=1.0)
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_jog_raises_on_alarm_response(self, mock_cmd_logger, mock_mill_logger, mock_serial):
+        """Test that jog treats alarm responses as failed motion."""
+        from gantry.gantry_driver.exceptions import CommandExecutionError
+        mill = Mill()
+        mill.ser_mill = MagicMock()
+        mill.read = MagicMock(return_value="<Alarm|WPos:0,0,0|Pn:Y>")
+
+        with self.assertRaises(CommandExecutionError):
+            mill.jog(y=-1.0)
+
+        mill.ser_mill.write.assert_called_once()
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_jog_raises_on_check_limits_response(self, mock_cmd_logger, mock_mill_logger, mock_serial):
+        """Test that GRBL check-limits messages are treated as failed jogs."""
+        from gantry.gantry_driver.exceptions import CommandExecutionError
+        mill = Mill()
+        mill.ser_mill = MagicMock()
+        mill.read = MagicMock(return_value="[MSG:Check Limits]\nok")
+
+        with self.assertRaises(CommandExecutionError):
+            mill.jog(y=-1.0)
+
+        mill.ser_mill.write.assert_called_once()
 
     @patch('gantry.gantry_driver.driver.serial.Serial')
     @patch('gantry.gantry_driver.driver.set_up_mill_logger')

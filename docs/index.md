@@ -28,10 +28,10 @@ Run a safe offline validation first:
 
 ```bash
 python setup/validate_setup.py \
-  configs/gantry/cub_xl.yaml \
-  configs/deck/mofcat_deck.yaml \
-  configs/board/mofcat_board.yaml \
-  configs/protocol/scan.yaml
+  configs_new/gantry/cub_xl_asmi_deck_origin.yaml \
+  configs_new/deck/asmi_deck_origin.yaml \
+  configs_new/board/asmi_board_deck_origin.yaml \
+  configs_new/protocol/asmi_move_a1_deck_origin.yaml
 ```
 
 ## What To Read First

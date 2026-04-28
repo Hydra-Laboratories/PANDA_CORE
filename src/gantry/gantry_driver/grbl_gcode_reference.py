@@ -145,7 +145,7 @@ grbl_settings = {
 }
 
 
-def get_command_description(command):
+def get_command_description(command: str) -> str:
     """
     Retrieve the description of a given GRBL command.
 
@@ -210,7 +210,7 @@ def get_alarm_description(alarm_code):
         return "Unknown alarm code"
 
 
-def get_all_commands():
+def get_all_commands() -> dict:
     """
     Retrieve all GRBL commands and their descriptions.
 
@@ -273,7 +273,7 @@ def get_code_description(code):
         return "Unknown code"
 
 
-def validate_gcode(gcode):
+def validate_gcode(gcode: str) -> bool:
     """
     Validate a given G-code command.
 

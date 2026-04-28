@@ -35,10 +35,10 @@ Validate your YAML setup offline (no hardware needed):
 
 ```bash
 python setup/validate_setup.py \
-    configs/gantry/asmi_gantry.yaml \
-    configs/deck/asmi_deck.yaml \
-    configs/board/asmi_board.yaml \
-    configs/protocol/asmi_indentation.yaml
+    configs_new/gantry/cub_xl_asmi_deck_origin.yaml \
+    configs_new/deck/asmi_deck_origin.yaml \
+    configs_new/board/asmi_board_deck_origin.yaml \
+    configs_new/protocol/asmi_move_a1_deck_origin.yaml
 ```
 
 This loads all four configs, checks that every labware position and instrument-adjusted position is within the gantry working volume, and prints PASS/FAIL.
@@ -49,18 +49,41 @@ Once validation passes, connect the gantry and run:
 
 ```bash
 python setup/run_protocol.py \
-    configs/gantry/asmi_gantry.yaml \
-    configs/deck/asmi_deck.yaml \
-    configs/board/asmi_board.yaml \
-    configs/protocol/asmi_indentation.yaml
+    configs_new/gantry/cub_xl_asmi_deck_origin.yaml \
+    configs_new/deck/asmi_deck_origin.yaml \
+    configs_new/board/asmi_board_deck_origin.yaml \
+    configs_new/protocol/asmi_move_a1_deck_origin.yaml
 ```
 
 ## Interactive Jog Test
 
-To verify hardware connectivity, connect the CNC gantry via USB and run:
+For deck-origin configs, normalize `$3`/`$23` first, then calibrate WPos in
+two parts: first jog to the front-left XY origin and lowest safe reachable Z
+for the active TCP, then assign Z from bottom contact or a ruler-measured
+deck-to-TCP gap:
 
 ```bash
-python setup/hello_world.py
+python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --instrument asmi
 ```
 
-This homes the gantry and drops into an interactive jog mode (arrow keys for XY, Z/X keys for Z).
+If the TCP cannot reach true deck bottom, measure the vertical gap from deck to
+TCP with a ruler and pass that gap explicitly:
+
+```bash
+python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --z-reference-mode ruler-gap --tip-gap-mm 5 --instrument filmetrics
+```
+
+If the TCP can safely touch true deck bottom, use bottom mode instead:
+
+```bash
+python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --z-reference-mode bottom
+```
+
+For one-instrument configs, use the measured lower-reach Z as
+`working_volume.z_min`. For example, a TCP that stops 5 mm above deck and homes
+to `Z=105` should use `z_min: 5.0`, `z_max: 105.0`. Multi-instrument configs
+will need per-instrument lower-reach limits instead of one global Z minimum.
+
+```bash
+python setup/hello_world.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml
+```

@@ -11,6 +11,7 @@ Gantry YAML defines:
 - total Z reference height
 - Y-axis motion mode
 - working volume
+- optional `structure_clearance_z`
 - optional GRBL settings expectations
 
 Representative example:
@@ -18,9 +19,10 @@ Representative example:
 ```yaml
 serial_port: /dev/ttyUSB0
 cnc:
-  homing_strategy: xy_hard_limits
+  homing_strategy: standard
   total_z_height: 90.0
   y_axis_motion: head
+  structure_clearance_z: 75.0
 
 working_volume:
   x_min: 0.0
@@ -54,28 +56,25 @@ Use this file when:
 
 ## CNC Fields
 
-`homing_strategy` must be one of:
+`homing_strategy` must be `standard`, which runs GRBL `$H`.
 
-- `xy_hard_limits`
-- `standard`
-- `manual_origin`
-
-`total_z_height` is required and must be greater than zero. Deck labware can use a `height` field instead of explicit Z coordinates; in that case CubOS computes user-space Z as `total_z_height - height`.
+`total_z_height` is required and must be greater than zero. It describes the configured vertical envelope. Deck labware can use a `height` field instead of explicit Z coordinates; under the deck-origin convention that `height` is used directly as the deck-frame Z value.
 
 `y_axis_motion` is optional and defaults to `head`. Use `head` when the gantry head moves along Y, and `bed` when the machine bed moves along Y.
 
-Working volume bounds are inclusive. Current configs include both positive-space gantries and the older ASMI negative-space gantry, so match the coordinate convention used by your selected gantry config.
+`structure_clearance_z` is optional. When set, validation requires first-entry scan travel and explicit named/literal move `travel_z` values to meet or exceed that absolute Z plane before entering home/park/edge-risk regions.
 
-## Planned Deck-Origin CubOS Convention
+Working volume bounds are inclusive and use the CubOS deck frame:
 
-Issue #87 tracks a refactor to make the user-facing CubOS frame deck-origin
-instead of gantry-top-origin. Until that migration lands, check the selected
-config and tests before assuming these semantics are active everywhere.
-
-Target convention:
-
-- CubOS `(0, 0, 0)` is the front-left-bottom reachable work volume after
-  homing, backing off limits, and setting WPos zero.
+- CubOS `(0, 0, 0)` is the front-left-bottom reachable work volume. Because
+  normalized machines home at the opposite top-back-right corner, run the
+  deck-origin calibration script to jog to the front-left XY origin and lowest
+  safe reachable Z for the active TCP, assign only `X=0`, `Y=0`, then assign
+  Z from either bottom contact (`Z=0`) or a ruler-measured deck-to-TCP gap.
+  If the TCP cannot reach bottom, the one-instrument config should use that
+  gap as `working_volume.z_min`. Protocol setup requires X/Y minima at `0.0`
+  and a non-negative Z minimum. The homed pose after assignment is measured as
+  `(x_max, y_max, z_max)`.
 - `+X` moves right from the operator perspective.
 - `+Y` moves away from the operator, toward the back of the deck.
 - `+Z` moves up, away from the deck.
@@ -83,24 +82,16 @@ Target convention:
 - GRBL may still physically home at top-back-right. That machine-frame detail
   should remain isolated inside the gantry/GRBL boundary.
 
-Under that target convention, protocol movement names should describe intent:
+Protocol movement names describe absolute deck-frame Z planes:
 
 - `measurement_height` is where an instrument performs its action. For ASMI,
   this is the indentation start height.
 - `interwell_travel_height` is the scan travel height between wells and should
   default to `measurement_height` when omitted.
 - `entry_travel_height` is the first scan transit height.
-- `park_position` is an explicit rest pose and should replace ambiguous names
-  such as `safe_z` in examples.
-
-Phase 1 uses only the new protocol names:
-
-- `interwell_travel_height`
-- `entry_travel_height`
-- ASMI `indentation_limit`
-
-Until the deck-origin semantic change lands, scan-level heights remain absolute
-Z coordinates in the current positive-down user space.
+- `park_position` is an explicit rest pose.
+- ASMI `indentation_limit` is the lower/deeper stopping Z, so a downward
+  indentation has `indentation_limit < measurement_height`.
 
 ## GRBL Axis And Homing Normalization
 
@@ -188,10 +179,48 @@ Record `$3` and `$23` before changing anything.
      homing_dir_mask: 3
    ```
 
+10. Calibrate the CubOS work origin using the deck-origin script:
+
+   ```bash
+   python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --instrument asmi
+   ```
+
+   The script sends `$H`, clears transient `G92` offsets, prompts the operator
+   to jog one reference TCP to the front-left XY origin and lowest safe
+   reachable Z, then sets only `G10 L20 P1 X0 Y0`. It then asks whether the
+   TCP is touching true deck bottom. If yes, it sets `G10 L20 P1 Z0`. If no,
+   measure the vertical gap from deck to TCP with a ruler and enter that gap;
+   the script sets `G10 L20 P1 Z<gap_mm>`. It then re-homes and reads WPos at
+   the homed back-right-top corner. That measured WPos is the physical working
+   volume for the setup. Do not treat nominal or configured max-travel values
+   as physical truth until this measurement is done.
+
+   In guided mode, the script asks whether the TCP can safely touch true deck
+   bottom at the current lower-reach pose. If no or unsure, enter the measured
+   deck-to-TCP gap explicitly:
+
+   ```bash
+   python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --z-reference-mode ruler-gap --tip-gap-mm 5 --instrument filmetrics
+   ```
+
+   For instruments that can touch true deck bottom:
+
+   ```bash
+   python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --z-reference-mode bottom
+   ```
+
+   For one-instrument configs, use the measured lower-reach Z as
+   `working_volume.z_min`. For example, if the TCP stops 5 mm above deck and
+   the homed WPos reads `Z=105`, use `z_min: 5.0`, `z_max: 105.0`. A future
+   multi-instrument config should move this into per-instrument lower-reach
+   limits rather than one global `z_min` for every tool.
+
 ### Acceptance Criteria
 
 - `$H` always goes to back-right-top
 - `+X`, `+Y`, and `+Z` always move right, back, and up
+- after `setup/calibrate_deck_origin.py`, homed WPos reports the measured
+  physical working-volume maxima
 - the same `$3` / `$23` pair is documented and reused for identical machines
 
 ### Quick Reference
@@ -206,5 +235,5 @@ Record `$3` and `$23` before changing anything.
 
 | Config | System | Working Volume |
 |--------|--------|----------------|
-| `cub_xl.yaml` | CubOS-XL / Genmitsu 3018 PRO | 400 x 300 x 80 mm |
-| `cub.yaml` | CubOS / Genmitsu 3018 PROVer V2 | 300 x 200 x 80 mm |
+| `configs_new/gantry/cub_xl_asmi_deck_origin.yaml` | CubOS-XL / Genmitsu 3018 PRO + ASMI | 400 x 300 x 100 mm |
+| `configs_new/gantry/cub_filmetrics_deck_origin.yaml` | CubOS / Genmitsu 3018 PROVer V2 + Filmetrics | 280 x 175 x 90 mm |

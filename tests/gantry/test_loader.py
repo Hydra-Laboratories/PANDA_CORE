@@ -15,8 +15,9 @@ from gantry.loader import load_gantry_from_yaml, load_gantry_from_yaml_safe
 VALID_GANTRY_YAML = """\
 serial_port: /dev/cu.usbserial-2130
 cnc:
-  homing_strategy: xy_hard_limits
+  homing_strategy: standard
   total_z_height: 90.0
+  structure_clearance_z: 75.0
 working_volume:
   x_min: 0.0
   x_max: 300.0
@@ -56,6 +57,7 @@ class TestLoadGantryFromYaml:
             assert vol.z_min == 0.0
             assert vol.z_max == 80.0
             assert config.total_z_height == 90.0
+            assert config.structure_clearance_z == 75.0
         finally:
             os.unlink(path)
 
@@ -71,7 +73,7 @@ class TestLoadGantryFromYaml:
         path = _write_temp_yaml(VALID_GANTRY_YAML)
         try:
             config = load_gantry_from_yaml(path)
-            assert config.homing_strategy == "xy_hard_limits"
+            assert config.homing_strategy == "standard"
         finally:
             os.unlink(path)
 

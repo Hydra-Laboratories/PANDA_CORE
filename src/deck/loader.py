@@ -96,13 +96,10 @@ def _resolve_user_z(
     context: str,
     default_z: float | None = None,
 ) -> float:
-    """Resolve a user-space Z using explicit z or total_z_height - height."""
+    """Resolve a deck-frame Z using explicit z or a direct height value."""
     if height is not None:
-        if total_z_height is None:
-            raise ValueError(
-                f"{context}: total_z_height is required when labware `height` is provided."
-            )
-        return total_z_height - height
+        del total_z_height, context
+        return height
 
     if explicit_z is None:
         if default_z is not None:

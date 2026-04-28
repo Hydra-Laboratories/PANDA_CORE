@@ -4,9 +4,9 @@ Every command that *engages* with a labware (measure, scan, aspirate,
 dispense, etc.) follows the same two-phase motion:
 
     1. Approach: ``board.move_to_labware`` — retract (if below approach)
-       and travel XY at the current positive-down approach Z.
+       and travel XY at the absolute deck-frame approach Z.
     2. Descend: raw ``board.move`` straight down to
-       the current positive-down action Z.
+       the absolute deck-frame action Z.
 
 Centralising that composition here prevents docstring/behaviour drift
 between command modules.
@@ -51,30 +51,27 @@ def approach_and_descend(
                     absolute Z coordinate.
         measurement_height:
                     Optional protocol-level override for the action/start
-                    absolute Z coordinate. This is a Phase 1 compatibility
-                    hook; the deck-origin refactor will change the formula in
-                    a later phase.
+                    absolute deck-frame Z coordinate.
     """
     instr = context.board.instruments[instrument]
     x, y, z = unpack_xyz(coord)
     action_z = (
         measurement_height
         if measurement_height is not None
-        else z - instr.measurement_height
+        else instr.measurement_height
     )
     if safe_approach_height is None:
         context.board.move_to_labware(instrument, coord)
     else:
-        if safe_approach_height > action_z:
+        if safe_approach_height < action_z:
             raise ValueError(
-                f"safe_approach_height ({safe_approach_height}) must be <= "
-                f"action_z ({action_z}) for instrument {instrument!r}."
+                f"safe_approach_height ({safe_approach_height}) must be >= "
+                f"action_z ({action_z}) for instrument {instrument!r} under "
+                "the deck-origin +Z-up convention."
             )
         approach_z = safe_approach_height
         context.board.move(
             instrument, (x, y, approach_z), travel_z=approach_z,
         )
-    # User-space Z is positive-down; subtract so a positive ``measurement_height``
-    # means "above the labware surface" (non-contact probes) and a negative
-    # one means "dipping into the sample" (contact instruments).
+    del z
     context.board.move(instrument, (x, y, action_z))

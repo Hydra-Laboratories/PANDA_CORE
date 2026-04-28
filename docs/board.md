@@ -35,8 +35,9 @@ The top-level YAML key is `instruments`. Each instrument entry requires:
 Common optional fields are:
 
 - `offset_x` and `offset_y` - XY offset from the gantry head reference point
-- `depth` - Z offset from the gantry head reference point
-- `measurement_height` - instrument-specific height offset used by measurement commands
+- `depth` - positive tool depth below the gantry head reference point; in the +Z-up deck frame, gantry Z is computed as target/tool Z plus `depth`
+- `measurement_height` - absolute deck-frame action Z used by measurement commands when no protocol-level override is supplied
+- `safe_approach_height` - absolute deck-frame XY travel Z used by `Board.move_to_labware`; it defaults to `measurement_height` and must be at or above it
 
 Driver-specific fields, such as serial ports, DLL paths, pipette models, or sensor channels, are passed through to the instrument driver constructor. Unknown top-level keys are rejected.
 

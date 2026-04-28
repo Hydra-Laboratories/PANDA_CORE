@@ -16,10 +16,10 @@ Representative example:
 
 ```yaml
 positions:
-  park_position: [0.0, 0.0, 20.0]
+  park_position: [360.0, 260.0, 85.0]
 
 protocol:
-  # Home the gantry and zero coordinates
+  # Home the gantry without redefining calibrated deck-origin WPos
   - home:
 
   # Scan all wells: move to each well, run indentation
@@ -27,13 +27,13 @@ protocol:
       plate: plate
       instrument: asmi
       method: indentation
-      entry_travel_height: 20.0
-      interwell_travel_height: 70.0
+      measurement_height: 26.0
+      entry_travel_height: 85.0
+      interwell_travel_height: 35.0
+      indentation_limit: 24.0
       method_kwargs:
-        indentation_limit: 75.0
         step_size: 0.01
         force_limit: 10.0
-        measurement_height: 73.0
         baseline_samples: 10
         measure_with_return: false  # true = down + return (up) sampling
 
@@ -80,24 +80,23 @@ The `move` command accepts:
 - raw `[x, y, z]` coordinates
 - a deck target string such as `plate_1.A1` or `vial_1`
 
-The `measure` command requires both `instrument` and `position`. It resolves the deck target, applies the instrument's `measurement_height`, moves there, and then calls the selected method. The default method is `measure`.
+The `measure` command requires both `instrument` and `position`. It resolves the deck target, approaches with the instrument's absolute `safe_approach_height`, descends to the instrument's absolute `measurement_height`, and then calls the selected method. The default method is `measure`.
 
 ## Scan Heights
 
-Use the Phase 1 scan names for new protocols:
+Use these scan names for new protocols:
 
-- `measurement_height` is the action/start Z for a scan target.
+- `measurement_height` is the absolute deck-frame action/start Z for a scan target.
 - `interwell_travel_height` is the between-well travel Z. When omitted, it
   defaults to `measurement_height`.
 - `entry_travel_height` is the first transit Z into the scan. When omitted, it
   defaults to `interwell_travel_height`.
 - `indentation_limit` is the ASMI indentation stopping Z. The legacy ASMI name
-  `z_limit` is no longer accepted.
+  `z_limit` is no longer accepted. Under the +Z-up deck frame, downward ASMI
+  indentation requires `indentation_limit < measurement_height`.
 
-During the current positive-down transition, scan-level heights are absolute Z
-coordinates. The deck-origin refactor tracked in issue #87 will update the
-underlying formula so `measurement_height` becomes deck-relative across all
-instruments.
+These fields are absolute deck-frame Z planes, not offsets from the labware Z.
+Runtime motion must not add them to, or subtract them from, labware Z.
 
 Example:
 

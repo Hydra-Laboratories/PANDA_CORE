@@ -12,6 +12,7 @@ from deck.loader import load_deck_from_yaml_safe
 from gantry.gantry import Gantry
 from gantry.gantry_config import GantryConfig
 from gantry.loader import load_gantry_from_yaml_safe
+from gantry.origin import validate_deck_origin_minima
 from protocol_engine.loader import load_protocol_from_yaml_safe
 from protocol_engine.protocol import Protocol, ProtocolContext
 from validation.bounds import validate_deck_positions, validate_gantry_positions
@@ -24,7 +25,7 @@ def setup_protocol(
     deck_path: str | Path,
     board_path: str | Path,
     protocol_path: str | Path,
-    gantry=None,
+    gantry: Any | None = None,
     mock_mode: bool = False,
 ) -> Tuple[Protocol, ProtocolContext]:
     """Load all configs, validate bounds, and return a ready-to-run protocol.
@@ -58,6 +59,7 @@ def setup_protocol(
         SetupValidationError: If any positions violate gantry bounds.
     """
     gantry_config: GantryConfig = load_gantry_from_yaml_safe(gantry_path)
+    validate_deck_origin_minima(gantry_config)
     deck: Deck = load_deck_from_yaml_safe(
         deck_path,
         total_z_height=gantry_config.total_z_height,
@@ -68,6 +70,11 @@ def setup_protocol(
     board: Board = load_board_from_yaml_safe(
         board_path, gantry, mock_mode=mock_mode,
     )
+    if hasattr(gantry, "set_expected_grbl_settings"):
+        gantry.set_expected_grbl_settings(
+            board.expected_grbl_settings,
+            source="board",
+        )
 
     protocol: Protocol = load_protocol_from_yaml_safe(protocol_path)
 
@@ -76,7 +83,9 @@ def setup_protocol(
     if violations:
         raise SetupValidationError(violations)
 
-    semantic_violations = validate_protocol_semantics(protocol, board, deck)
+    semantic_violations = validate_protocol_semantics(
+        protocol, board, deck, gantry_config,
+    )
     if semantic_violations:
         raise ProtocolSemanticValidationError(semantic_violations)
 
@@ -89,7 +98,7 @@ def run_protocol(
     deck_path: str | Path,
     board_path: str | Path,
     protocol_path: str | Path,
-    gantry=None,
+    gantry: Any | None = None,
     mock_mode: bool = False,
 ) -> List[Any]:
     """Load configs, validate, and execute the protocol in one call.

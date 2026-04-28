@@ -11,8 +11,7 @@ import serial
 from .driver import Mill as RealMill
 from .instruments import Coordinates
 
-# Mock WCO: simulates machine where homing puts MPos at these values
-# and work zero is set so WPos = 0,0,0 at home.
+# Mock WCO: simulates a calibrated deck-origin work coordinate offset.
 MOCK_WCO_X = -300.0
 MOCK_WCO_Y = -200.0
 MOCK_WCO_Z = -80.0
@@ -132,12 +131,6 @@ class MockMill(RealMill):
         """Simulate homing the mill"""
         self.logger.info("Homing the mill")
         self.ser_mill.write(b"$H\n")
-
-    def home_manual_origin(self):
-        """Simulate manual origin homing."""
-        self.logger.info("Manual origin homing (mock): setting homed = True")
-        self.homed = True
-
 
 class MockSerialToMill:
     """A class that simulates a serial connection to the mill for testing purposes."""

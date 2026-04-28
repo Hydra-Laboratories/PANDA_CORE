@@ -242,10 +242,10 @@ class ASMI(BaseInstrument):
     ) -> None:
         if step_size <= 0:
             raise ValueError(f"step_size must be positive, got {step_size}")
-        if indentation_limit <= measurement_height:
+        if indentation_limit >= measurement_height:
             raise ValueError(
-                "indentation_limit must be greater than measurement_height under the "
-                "current positive-down ASMI convention."
+                "indentation_limit must be less than measurement_height under the "
+                "deck-origin +Z-up ASMI convention."
             )
 
     def indentation(
@@ -260,17 +260,16 @@ class ASMI(BaseInstrument):
     ) -> dict:
         """Perform step-by-step indentation at the current XY position.
 
-        Coordinate convention (positive-down): user-space Z is 0 at the
-        gantry's home position and grows toward the deck. ``measurement_height``
-        is the absolute Z to start the indent; ``indentation_limit`` must be larger
-        (deeper) and is the maximum the descent will reach. Each "down"
-        step INCREASES z by ``step_size``.
+        Coordinate convention (deck-origin, +Z up): ``measurement_height``
+        is the absolute Z to start the indent; ``indentation_limit`` must be
+        lower (deeper) and is the minimum Z the descent will reach. Each
+        "down" step DECREASES z by ``step_size``.
 
         The scan command positions the gantry at the well before calling
         this method. Indentation then:
         1. Lowers to measurement_height (descend to start of indent)
         2. Takes baseline force readings
-        3. Steps z toward indentation_limit (z increases), reading force at each step
+        3. Steps z toward indentation_limit (z decreases), reading force at each step
         4. Stops on force_limit or indentation_limit, whichever fires first
 
         Args:
@@ -328,14 +327,14 @@ class ASMI(BaseInstrument):
         force_exceeded = False
         max_steps = _step_count_bound(_well_top_z, _z_target, _step_size)
 
-        # Descent: positive-down, so each step INCREASES z toward the deck.
+        # Descent: deck-origin +Z-up, so each step DECREASES z toward the deck.
         for _ in range(max_steps):
             coords = gantry.get_coordinates()
             current_z = coords["z"]
-            if current_z >= _z_target:
+            if current_z <= _z_target:
                 self.logger.info("Reached z_target %.3f mm", _z_target)
                 break
-            next_z = current_z + _step_size
+            next_z = max(current_z - _step_size, _z_target)
             self._move_z(gantry, cur_x, cur_y, next_z)
 
             coords = gantry.get_coordinates()
@@ -374,18 +373,18 @@ class ASMI(BaseInstrument):
                 len(measurements),
             )
             return_cap = _step_count_bound(_well_top_z, _z_target, _step_size)
-            # Return: walk z back up to well_top by DECREASING z each step.
+            # Return: walk z back up to well_top by INCREASING z each step.
             for _ in range(return_cap):
                 coords = gantry.get_coordinates()
                 current_z = coords["z"]
-                if current_z <= _well_top_z:
+                if current_z >= _well_top_z:
                     break
-                next_z = max(current_z - _step_size, _well_top_z)
+                next_z = min(current_z + _step_size, _well_top_z)
                 self._move_z(gantry, cur_x, cur_y, next_z)
                 coords = gantry.get_coordinates()
                 # Break if the gantry did not retract — prevents infinite loop
                 # on stalled axis. get_coordinates reflects the real position.
-                if coords["z"] >= current_z:
+                if coords["z"] <= current_z:
                     self.logger.warning(
                         "Return sweep aborted: gantry Z did not retract (%.3f)",
                         current_z,
@@ -425,9 +424,9 @@ class ASMI(BaseInstrument):
     ) -> dict:
         """Fast offline indentation — no idle-wait, synthetic data.
 
-        Positive-down convention: descent INCREASES z toward indentation_limit
-        (which is larger than measurement_height); the optional return
-        sweep walks z back DOWN to measurement_height.
+        Deck-origin +Z-up convention: descent DECREASES z toward
+        indentation_limit (which is lower than measurement_height); the
+        optional return sweep walks z back UP to measurement_height.
         """
         coords = gantry.get_coordinates()
         cur_x, cur_y = coords["x"], coords["y"]
@@ -439,7 +438,7 @@ class ASMI(BaseInstrument):
         ) - _STEP_COUNT_SAFETY_MARGIN
         measurements = []
         for i in range(1, n_down + 1):
-            z = min(measurement_height + i * step_size, indentation_limit)
+            z = max(measurement_height - i * step_size, indentation_limit)
             gantry.move_to(cur_x, cur_y, z)
             measurements.append({
                 "timestamp": time.time(),
@@ -448,14 +447,14 @@ class ASMI(BaseInstrument):
                 "corrected_force_n": 0.0,
                 "direction": "down",
             })
-            if z >= indentation_limit:
+            if z <= indentation_limit:
                 break
 
         if measure_with_return:
             z_bottom = measurements[-1]["z_mm"] if measurements else measurement_height
             n_up = _step_count_bound(measurement_height, z_bottom, step_size) - _STEP_COUNT_SAFETY_MARGIN
             for i in range(1, n_up + 1):
-                z = max(z_bottom - i * step_size, measurement_height)
+                z = min(z_bottom + i * step_size, measurement_height)
                 gantry.move_to(cur_x, cur_y, z)
                 measurements.append({
                     "timestamp": time.time(),
@@ -464,7 +463,7 @@ class ASMI(BaseInstrument):
                     "corrected_force_n": 0.0,
                     "direction": "up",
                 })
-                if z <= measurement_height:
+                if z >= measurement_height:
                     break
 
         return {

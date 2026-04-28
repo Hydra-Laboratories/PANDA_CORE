@@ -1,0 +1,8 @@
+# Candidate Filmetrics scan protocol for the deck-origin refactor.
+# Uses board-configured absolute deck-frame measurement/safe heights.
+
+protocol:
+  - scan:
+      plate: plate_1
+      instrument: filmetrics
+      method: measure

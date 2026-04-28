@@ -250,16 +250,16 @@ class TestValidateGantryPositions:
         assert len(violations) >= 1
         assert any(v.axis == "x" and v.bound_name == "x_min" for v in violations)
 
-    def test_instrument_depth_pushes_gantry_outside_z_min_fails(self):
-        # vial at z=5.0, instrument depth=10.0
-        # gantry_z = 5.0 - 10.0 = -5.0 < z_min=0.0
-        gantry = _make_gantry(z_min=0.0)
-        deck = _make_deck(vial_1=_make_vial(x=30.0, y=40.0, z=5.0))
+    def test_instrument_depth_pushes_gantry_outside_z_max_fails(self):
+        # vial at z=75.0, instrument depth=10.0
+        # gantry_z = 75.0 + 10.0 = 85.0 > z_max=80.0
+        gantry = _make_gantry(z_max=80.0)
+        deck = _make_deck(vial_1=_make_vial(x=30.0, y=40.0, z=75.0))
         instr = _make_instrument(depth=10.0)
         board = _make_board(("deep_instr", instr))
         violations = validate_gantry_positions(gantry, deck, board)
         assert len(violations) >= 1
-        assert any(v.axis == "z" and v.bound_name == "z_min" for v in violations)
+        assert any(v.axis == "z" and v.bound_name == "z_max" for v in violations)
 
     def test_gantry_position_exactly_on_boundary_passes(self):
         # vial at x=5.0, offset_x=5.0 -> gantry_x = 0.0 = x_min

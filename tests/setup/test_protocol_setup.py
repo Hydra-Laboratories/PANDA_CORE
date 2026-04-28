@@ -188,6 +188,14 @@ protocol:
             assert isinstance(context.gantry, GantryConfig)
             assert context.gantry.working_volume.x_min == 0.0
 
+    def test_rejects_negative_space_gantry_config(self):
+        legacy_gantry = GANTRY_YAML.replace("  x_min: 0.0\n", "  x_min: -300.0\n")
+        with _TempYamlFiles(gantry=legacy_gantry) as f:
+            with pytest.raises(ValueError, match="Deck-origin calibration requires"):
+                setup_protocol(
+                    f.gantry_path, f.deck_path, f.board_path, f.protocol_path,
+                )
+
     def test_protocol_has_expected_steps(self):
         with _TempYamlFiles() as f:
             protocol, _ = setup_protocol(

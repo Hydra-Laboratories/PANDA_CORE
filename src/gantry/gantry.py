@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import warnings
 from typing import Any, Dict, Optional
 
 from .coordinate_translator import (
@@ -9,6 +10,7 @@ from .coordinate_translator import (
     to_user_coordinates,
     translate_status_string,
 )
+from .grbl_settings import format_setting_value, normalize_expected_grbl_settings
 from .gantry_driver.driver import DEFAULT_FEED_RATE, Mill
 from .gantry_driver.exceptions import (
     CommandExecutionError,
@@ -16,6 +18,7 @@ from .gantry_driver.exceptions import (
     MillConnectionError,
     StatusReturnError,
 )
+from .origin import format_set_work_position_command
 
 _STATUS_RE = re.compile(r"<([^|>]+)")
 
@@ -25,9 +28,9 @@ logger = logging.getLogger(__name__)
 class Gantry:
     """High-level gantry wrapper around the low-level Mill driver.
 
-    X/Y coordinates are passed to the controller unchanged. Z remains
-    inverted at the boundary so higher-level code can keep the existing
-    vertical convention without depending directly on the low-level driver.
+    CubOS coordinates use the deck-origin frame at this boundary:
+    front-left-bottom origin, +X operator-right, +Y back, +Z up.
+    Controller GRBL settings are expected to make WPos match that frame.
     """
 
     def __init__(
@@ -40,6 +43,8 @@ class Gantry:
         self._offline = offline
         self._offline_coords = {"x": 0.0, "y": 0.0, "z": 0.0}
         self._mill: Mill | None = None if offline else Mill()
+        self._expected_grbl_settings_override: Dict[str, float] | None = None
+        self._expected_grbl_settings_source: str | None = None
 
     @property
     def total_z_height(self) -> Optional[float]:
@@ -111,25 +116,10 @@ class Gantry:
         assert self._mill is not None
         strategy = self._homing_strategy()
         try:
-            if strategy == "manual_origin":
-                self._mill.home_manual_origin()
-            elif strategy == "standard":
+            if strategy == "standard":
                 self._mill.home()
-            elif strategy == "xy_hard_limits":
-                self._mill.home_xy_hard_limits()
             else:
                 raise ValueError(f"Unknown homing strategy: {strategy!r}")
-        except (MillConnectionError, StatusReturnError) as exc:
-            self.logger.error("Error homing gantry: %s", exc)
-            raise
-
-    def home_xy(self) -> None:
-        """Home X/Y using the hard-limits strategy, ignoring config."""
-        if self._offline:
-            return
-        assert self._mill is not None
-        try:
-            self._mill.home_xy_hard_limits()
         except (MillConnectionError, StatusReturnError) as exc:
             self.logger.error("Error homing gantry: %s", exc)
             raise
@@ -242,7 +232,7 @@ class Gantry:
             return
         assert self._mill is not None
         try:
-            self._mill.jog(x=x, y=y, z=-z, feed_rate=feed_rate)
+            self._mill.jog(x=x, y=y, z=z, feed_rate=feed_rate)
         except (MillConnectionError, CommandExecutionError) as exc:
             self.logger.error("Jog error: %s", exc)
             raise
@@ -347,17 +337,89 @@ class Gantry:
         if self._mill.ser_mill is not None:
             self._mill.ser_mill.timeout = timeout
 
-    def zero_coordinates(self) -> None:
-        """Zero the work coordinate system at the current position."""
+    def clear_g92_offsets(self) -> None:
+        """Clear transient G92 offsets before assigning a durable WPos."""
         if self._offline:
-            self._offline_coords = {"x": 0.0, "y": 0.0, "z": 0.0}
             return
         assert self._mill is not None
         try:
-            self._mill.execute_command("G92 X0 Y0 Z0")
-            self.logger.info("Work coordinates zeroed")
+            self._mill.execute_command("G92.1")
+            self.logger.info("G92 offsets cleared")
         except (MillConnectionError, CommandExecutionError) as exc:
-            self.logger.error("Error zeroing coordinates: %s", exc)
+            self.logger.error("Error clearing G92 offsets: %s", exc)
+            raise
+
+    def enforce_work_position_reporting(self) -> None:
+        """Force GRBL status reports to use WPos and absolute positioning."""
+        if self._offline:
+            return
+        assert self._mill is not None
+        try:
+            self._mill._enforce_wpos_mode()
+        except CommandExecutionError as exc:
+            self.logger.error("Error enforcing WPos status reporting: %s", exc)
+            raise
+
+    def activate_work_coordinate_system(self, system: str = "G54") -> None:
+        """Select the active GRBL work coordinate system."""
+        if system not in {"G54", "G55", "G56", "G57", "G58", "G59"}:
+            raise ValueError(f"Unsupported work coordinate system: {system!r}")
+        if self._offline:
+            return
+        assert self._mill is not None
+        try:
+            self._mill.execute_command(system)
+            self.logger.info("Activated work coordinate system %s", system)
+        except (MillConnectionError, CommandExecutionError) as exc:
+            self.logger.error(
+                "Error activating work coordinate system %s: %s",
+                system,
+                exc,
+            )
+            raise
+
+    def set_work_coordinates(
+        self,
+        x: float | None = None,
+        y: float | None = None,
+        z: float | None = None,
+    ) -> None:
+        """Assign the current physical pose to the given work coordinates."""
+        if x is None and y is None and z is None:
+            raise ValueError("At least one work-coordinate axis must be supplied.")
+        x_work, y_work, z_work = (None, None, None)
+        if x is not None or y is not None or z is not None:
+            tx = 0.0 if x is None else x
+            ty = 0.0 if y is None else y
+            tz = 0.0 if z is None else z
+            translated = to_machine_coordinates(tx, ty, tz)
+            if x is not None:
+                x_work = translated[0]
+            if y is not None:
+                y_work = translated[1]
+            if z is not None:
+                z_work = translated[2]
+        if self._offline:
+            if x_work is not None:
+                self._offline_coords["x"] = x_work
+            if y_work is not None:
+                self._offline_coords["y"] = y_work
+            if z_work is not None:
+                self._offline_coords["z"] = z_work
+            return
+        assert self._mill is not None
+        try:
+            self._mill.execute_command(
+                format_set_work_position_command(x_work, y_work, z_work)
+            )
+            self.logger.info(
+                "Work coordinates set to X=%s Y=%s Z=%s",
+                x_work,
+                y_work,
+                z_work,
+            )
+        except (MillConnectionError, CommandExecutionError) as exc:
+            self.logger.error("Error setting work coordinates: %s", exc)
             raise
 
     def configure_speeds(
@@ -383,16 +445,112 @@ class Gantry:
                 self._mill.set_grbl_setting(code, str(acceleration))
         self.logger.info("Speed config applied")
 
+    def set_expected_grbl_settings(
+        self,
+        settings: Dict[str, float] | None,
+        *,
+        source: str = "board",
+    ) -> None:
+        """Set runtime GRBL expectations, typically loaded from board YAML."""
+        self._expected_grbl_settings_override = dict(settings) if settings else None
+        self._expected_grbl_settings_source = source if settings else None
+
+    def read_grbl_settings(self) -> Dict[str, str]:
+        """Read live GRBL settings from the connected controller."""
+        if self._offline:
+            return {}
+        assert self._mill is not None
+        return self._mill.grbl_settings()
+
+    def set_grbl_setting(self, setting: str, value: float | int | bool) -> None:
+        """Set one GRBL ``$`` setting."""
+        if self._offline:
+            return
+        assert self._mill is not None
+        code = setting[1:] if setting.startswith("$") else setting
+        self._mill.set_grbl_setting(code, format_setting_value(value))
+
+    def configure_soft_limits_from_spans(
+        self,
+        *,
+        max_travel_x: float,
+        max_travel_y: float,
+        max_travel_z: float,
+        tolerance_mm: float = 0.001,
+    ) -> None:
+        """Program GRBL soft limits from calibrated travel spans."""
+        spans = {
+            "$130": max_travel_x,
+            "$131": max_travel_y,
+            "$132": max_travel_z,
+        }
+        invalid = [
+            f"{code}={value}"
+            for code, value in spans.items()
+            if float(value) <= tolerance_mm
+        ]
+        if invalid:
+            raise ValueError(
+                "Cannot configure soft limits with non-positive travel spans: "
+                + ", ".join(invalid)
+            )
+        if self._offline:
+            return
+
+        # Disable soft limits while changing travel extents, then re-enable.
+        soft_limits_disabled = False
+        try:
+            self.set_grbl_setting("$20", 0)
+            soft_limits_disabled = True
+            self.set_grbl_setting("$130", max_travel_x)
+            self.set_grbl_setting("$131", max_travel_y)
+            self.set_grbl_setting("$132", max_travel_z)
+            self.set_grbl_setting("$22", 1)
+            self.set_grbl_setting("$20", 1)
+            soft_limits_disabled = False
+        except Exception as exc:
+            if soft_limits_disabled:
+                try:
+                    self.set_grbl_setting("$20", 1)
+                except Exception as restore_exc:
+                    raise MillConnectionError(
+                        "Failed to restore GRBL soft limits after soft-limit "
+                        f"programming failed. Original error: {exc}; "
+                        f"restore error: {restore_exc}"
+                    ) from exc
+            raise
+
+        live = self.read_grbl_settings()
+        expected = {
+            "$20": 1.0,
+            "$22": 1.0,
+            "$130": float(max_travel_x),
+            "$131": float(max_travel_y),
+            "$132": float(max_travel_z),
+        }
+        misses = []
+        for code, expected_value in expected.items():
+            live_raw = live.get(code)
+            if live_raw is None:
+                misses.append(f"{code}: missing")
+                continue
+            if abs(float(live_raw) - expected_value) > tolerance_mm:
+                misses.append(f"{code}: expected {expected_value:g}, got {live_raw}")
+        if misses:
+            raise MillConnectionError(
+                "GRBL soft-limit settings did not verify: " + "; ".join(misses)
+            )
+
     def _homing_strategy(self) -> str:
         """Extract the configured homing strategy from dict or dataclass config."""
         if isinstance(self.config, dict):
             cnc = self.config.get("cnc", {})
             if isinstance(cnc, dict):
-                return cnc.get("homing_strategy", "xy_hard_limits")
+                return cnc.get("homing_strategy", "standard")
         if hasattr(self.config, "homing_strategy"):
             value = getattr(self.config, "homing_strategy")
             return getattr(value, "value", value)
-        return "xy_hard_limits"
+        return "standard"
 
     def _extract_status(self) -> str:
         """Extract the GRBL state word from the last raw status string."""
@@ -413,21 +571,30 @@ class Gantry:
 
     def _expected_grbl_settings(self) -> Optional[Dict[str, float]]:
         """Return expected GRBL settings normalized to $-code keys."""
+        if self._expected_grbl_settings_override:
+            return dict(self._expected_grbl_settings_override)
+
         if isinstance(self.config, dict):
             raw = self.config.get("grbl_settings")
             if not raw:
                 return None
-            from .yaml_schema import GRBL_FIELD_TO_SETTING
-
-            expected: Dict[str, float] = {}
-            for field_name, grbl_code in GRBL_FIELD_TO_SETTING.items():
-                value = raw.get(field_name)
-                if value is not None:
-                    expected[grbl_code] = float(value)
-            return expected
+            warnings.warn(
+                "Gantry YAML grbl_settings is deprecated; move controller "
+                "settings to board YAML grbl_settings.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            return normalize_expected_grbl_settings(raw)
 
         expected = getattr(self.config, "expected_grbl_settings", None)
-        return expected or None
+        if expected:
+            warnings.warn(
+                "GantryConfig.expected_grbl_settings is deprecated; move "
+                "controller settings to board YAML grbl_settings.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        return dict(expected) if expected else None
 
     def _validate_grbl_settings(self) -> None:
         """Compare configured GRBL expectations against the connected controller."""
@@ -452,7 +619,18 @@ class Gantry:
             self.logger.info("GRBL settings validation passed")
             return
 
-        critical = {"$3", "$23", "$100", "$101", "$102", "$130", "$131", "$132"}
+        critical = {
+            "$3",
+            "$20",
+            "$22",
+            "$23",
+            "$100",
+            "$101",
+            "$102",
+            "$130",
+            "$131",
+            "$132",
+        }
         critical_mismatches = [item for item in mismatches if item[0] in critical]
         for grbl_code, expected_value, live_value in mismatches:
             self.logger.error(

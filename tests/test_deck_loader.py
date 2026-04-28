@@ -113,7 +113,7 @@ def test_loaded_vial_has_location_and_volume():
         Path(path).unlink(missing_ok=True)
 
 
-def test_vial_height_uses_total_z_height() -> None:
+def test_vial_height_is_direct_deck_frame_z() -> None:
     yaml = """
 labware:
   vial_1:
@@ -135,12 +135,12 @@ labware:
     try:
         result = load_deck_from_yaml(path, total_z_height=80.0)
         vial = result["vial_1"]
-        assert vial.location.z == pytest.approx(50.0)
+        assert vial.location.z == pytest.approx(30.0)
     finally:
         Path(path).unlink(missing_ok=True)
 
 
-def test_well_plate_height_uses_total_z_height() -> None:
+def test_well_plate_height_is_direct_deck_frame_z() -> None:
     yaml = """
 labware:
   plate_1:
@@ -167,8 +167,8 @@ labware:
     try:
         result = load_deck_from_yaml(path, total_z_height=80.0)
         plate = result["plate_1"]
-        assert plate.get_well_center("A1").z == pytest.approx(65.0)
-        assert plate.get_well_center("B2").z == pytest.approx(65.0)
+        assert plate.get_well_center("A1").z == pytest.approx(15.0)
+        assert plate.get_well_center("B2").z == pytest.approx(15.0)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -200,7 +200,7 @@ labware:
         Path(path).unlink(missing_ok=True)
 
 
-def test_height_requires_total_z_height() -> None:
+def test_height_does_not_require_total_z_height() -> None:
     yaml = """
 labware:
   vial_1:
@@ -220,8 +220,8 @@ labware:
         f.write(yaml)
         path = f.name
     try:
-        with pytest.raises(ValueError, match="total_z_height"):
-            load_deck_from_yaml(path)
+        result = load_deck_from_yaml(path)
+        assert result["vial_1"].location.z == pytest.approx(30.0)
     finally:
         Path(path).unlink(missing_ok=True)
 

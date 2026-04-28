@@ -1,0 +1,42 @@
+# Candidate Filmetrics board config for the deck-origin refactor.
+#
+# These are placeholder/default TCP values. The optical head offset, depth, and
+# measurement plane should be recalibrated on the physical setup.
+
+grbl_settings:
+  # Copied from the legacy Filmetrics controller config as a starting point.
+  # Re-verify live settings before trusting physical motion.
+  dir_invert_mask: 2
+  status_report: 0
+  hard_limits: true
+  homing_enable: true
+  homing_dir_mask: 0
+  homing_pull_off: 2.0
+  steps_per_mm_x: 800.0
+  steps_per_mm_y: 800.0
+  steps_per_mm_z: 800.0
+  max_rate_x: 2000.0
+  max_rate_y: 2000.0
+  max_rate_z: 2000.0
+  accel_x: 50.0
+  accel_y: 50.0
+  accel_z: 50.0
+  max_travel_x: 300.0
+  max_travel_y: 200.0
+  max_travel_z: 80.0
+
+instruments:
+  filmetrics:
+    type: filmetrics
+    vendor: kla
+    offline: true
+    offset_x: 0.0
+    offset_y: 0.0
+    depth: 0.0
+    # The legacy mock Filmetrics board used measurement/safe height 10.0 in the
+    # old positive-down 90 mm frame, so this placeholder preserves that as
+    # 90 - 10 = 80 mm in deck-origin +Z-up coordinates.
+    measurement_height: 80.0
+    safe_approach_height: 80.0
+    exe_path: ""
+    recipe_name: ""

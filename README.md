@@ -7,7 +7,7 @@ modified CNC gantry.
 
 Four YAML files define a runnable experiment:
 
-### 1. Gantry (`configs/gantry/*.yaml`)
+### 1. Gantry (`configs_new/gantry/*.yaml`)
 
 Defines the controller serial port, homing strategy, working volume, optional
 GRBL expectations, and `cnc.total_z_height`.
@@ -15,14 +15,10 @@ GRBL expectations, and `cnc.total_z_height`.
 Coordinate convention:
 
 - User-facing coordinates are always treated as positive `X`, `Y`, and `Z`.
-- Callers should think in the lab/workcell coordinate system, not raw CNC
-  machine coordinates.
-- The underlying gantry boundary code currently translates user-facing `Z`
-  values to negative machine `Z` before sending them to the controller, similar
-  to CNC mode. Callers should not manually negate `Z`; that translation stays
-  internal.
-- TODO: in a later PR, redefine `Z` from the base deck reference instead of
-  the gantry head/top reference.
+- Callers should think in the CubOS deck frame: front-left-bottom origin,
+  `+X` right, `+Y` back, and `+Z` up.
+- Protocol homing preserves the calibrated G54 work-coordinate frame and does
+  not rewrite WPos after homing.
 
 ```yaml
 serial_port: /dev/ttyUSB0
@@ -43,8 +39,8 @@ Included examples:
 
 | Config | System |
 |--------|--------|
-| `cub.yaml` | Cub |
-| `cub_xl.yaml` | Cub-XL |
+| `configs_new/gantry/cub_filmetrics_deck_origin.yaml` | Cub + Filmetrics |
+| `configs_new/gantry/cub_xl_asmi_deck_origin.yaml` | Cub-XL + ASMI |
 
 ### 2. Deck (`configs/deck/*.yaml`)
 
@@ -175,37 +171,36 @@ pip install -e ".[potentiostat]"
 Interactive jog test:
 
 ```bash
-python setup/hello_world.py
+python setup/hello_world.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml
 ```
 
-Manual-origin homing:
+Deck-origin calibration:
 
 ```bash
-python setup/home_manual.py
+python setup/calibrate_deck_origin.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml --instrument asmi
 ```
 
-This uses the same user-facing positive `X/Y/Z` convention. The script and
-high-level gantry wrapper handle any controller-specific `Z` translation
-internally.
+This establishes the persistent G54 work-coordinate frame used by protocol
+`home`. Protocol homing does not rewrite WPos.
 
 Validate a setup:
 
 ```bash
 python setup/validate_setup.py \
-    configs/gantry/cub.yaml \
-    configs/deck/mofcat_deck.yaml \
-    configs/board/mofcat_board.yaml \
-    configs/protocol/protocol.sample.yaml
+    configs_new/gantry/cub_xl_asmi_deck_origin.yaml \
+    configs_new/deck/asmi_deck_origin.yaml \
+    configs_new/board/asmi_board_deck_origin.yaml \
+    configs_new/protocol/asmi_move_a1_deck_origin.yaml
 ```
 
 Run a protocol:
 
 ```bash
 python setup/run_protocol.py \
-    configs/gantry/cub.yaml \
-    configs/deck/mofcat_deck.yaml \
-    configs/board/mofcat_board.yaml \
-    configs/protocol/protocol.sample.yaml
+    configs_new/gantry/cub_xl_asmi_deck_origin.yaml \
+    configs_new/deck/asmi_deck_origin.yaml \
+    configs_new/board/asmi_board_deck_origin.yaml \
+    configs_new/protocol/asmi_move_a1_deck_origin.yaml
 ```
 
 `setup/run_protocol.py` runs offline validation first, then:
@@ -222,10 +217,10 @@ Programmatic setup:
 from protocol_engine.setup import setup_protocol
 
 protocol, context = setup_protocol(
-    gantry_path="configs/gantry/cub.yaml",
-    deck_path="configs/deck/mofcat_deck.yaml",
-    board_path="configs/board/mofcat_board.yaml",
-    protocol_path="configs/protocol/protocol.sample.yaml",
+    gantry_path="configs_new/gantry/cub_xl_asmi_deck_origin.yaml",
+    deck_path="configs_new/deck/asmi_deck_origin.yaml",
+    board_path="configs_new/board/asmi_board_deck_origin.yaml",
+    protocol_path="configs_new/protocol/asmi_move_a1_deck_origin.yaml",
     mock_mode=True,
 )
 protocol.run(context)

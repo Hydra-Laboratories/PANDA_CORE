@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from instruments.base_instrument import BaseInstrument
 from instruments.registry import get_instrument_class, validate_instrument
+from gantry.grbl_settings import normalize_expected_grbl_settings
 
 from .board import Board
 from .errors import BoardLoaderError
@@ -32,7 +33,7 @@ def _format_loader_exception(path: Path, error: Exception) -> str:
         if "missing" in error_type or "Field required" in detail:
             guidance = "Add the missing required YAML field shown in the error location."
         elif "extra_forbidden" in error_type or "Extra inputs are not permitted" in detail:
-            guidance = "Remove unknown YAML fields; only 'instruments' is allowed at root."
+            guidance = "Remove unknown YAML fields; only 'instruments' and 'grbl_settings' are allowed at root."
         else:
             guidance = "Review the YAML values against the board schema."
 
@@ -95,7 +96,11 @@ def load_board_from_yaml(
         cls = get_instrument_class(type_key)
         instruments[name] = cls(**kwargs)
 
-    return Board(gantry=gantry, instruments=instruments)
+    return Board(
+        gantry=gantry,
+        instruments=instruments,
+        expected_grbl_settings=normalize_expected_grbl_settings(schema.grbl_settings),
+    )
 
 
 def load_board_from_yaml_safe(
