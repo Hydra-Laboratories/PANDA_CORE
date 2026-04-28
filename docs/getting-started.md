@@ -35,10 +35,10 @@ Validate your YAML setup offline (no hardware needed):
 
 ```bash
 python setup/validate_setup.py \
-    configs/gantry/asmi_gantry.yaml \
-    configs/deck/asmi_deck.yaml \
-    configs/board/asmi_board.yaml \
-    configs/protocol/asmi_indentation.yaml
+    configs_new/gantry/cub_xl_asmi_deck_origin.yaml \
+    configs_new/deck/asmi_deck_origin.yaml \
+    configs_new/board/asmi_board_deck_origin.yaml \
+    configs_new/protocol/asmi_move_a1_deck_origin.yaml
 ```
 
 This loads all four configs, checks that every labware position and instrument-adjusted position is within the gantry working volume, and prints PASS/FAIL.
@@ -49,10 +49,10 @@ Once validation passes, connect the gantry and run:
 
 ```bash
 python setup/run_protocol.py \
-    configs/gantry/asmi_gantry.yaml \
-    configs/deck/asmi_deck.yaml \
-    configs/board/asmi_board.yaml \
-    configs/protocol/asmi_indentation.yaml
+    configs_new/gantry/cub_xl_asmi_deck_origin.yaml \
+    configs_new/deck/asmi_deck_origin.yaml \
+    configs_new/board/asmi_board_deck_origin.yaml \
+    configs_new/protocol/asmi_move_a1_deck_origin.yaml
 ```
 
 ## Interactive Jog Test
@@ -84,9 +84,6 @@ For one-instrument configs, use the measured lower-reach Z as
 to `Z=105` should use `z_min: 5.0`, `z_max: 105.0`. Multi-instrument configs
 will need per-instrument lower-reach limits instead of one global Z minimum.
 
-The older jog helper is still available for connectivity checks, but it predates
-the deck-origin bring-up flow:
-
 ```bash
-python setup/hello_world.py
+python setup/hello_world.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml
 ```

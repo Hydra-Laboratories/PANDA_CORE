@@ -116,25 +116,10 @@ class Gantry:
         assert self._mill is not None
         strategy = self._homing_strategy()
         try:
-            if strategy == "manual_origin":
-                self._mill.home_manual_origin()
-            elif strategy == "standard":
+            if strategy == "standard":
                 self._mill.home()
-            elif strategy == "xy_hard_limits":
-                self._mill.home_xy_hard_limits()
             else:
                 raise ValueError(f"Unknown homing strategy: {strategy!r}")
-        except (MillConnectionError, StatusReturnError) as exc:
-            self.logger.error("Error homing gantry: %s", exc)
-            raise
-
-    def home_xy(self) -> None:
-        """Home X/Y using the hard-limits strategy, ignoring config."""
-        if self._offline:
-            return
-        assert self._mill is not None
-        try:
-            self._mill.home_xy_hard_limits()
         except (MillConnectionError, StatusReturnError) as exc:
             self.logger.error("Error homing gantry: %s", exc)
             raise
@@ -352,19 +337,6 @@ class Gantry:
         if self._mill.ser_mill is not None:
             self._mill.ser_mill.timeout = timeout
 
-    def zero_coordinates(self) -> None:
-        """Zero the work coordinate system at the current position."""
-        if self._offline:
-            self._offline_coords = {"x": 0.0, "y": 0.0, "z": 0.0}
-            return
-        assert self._mill is not None
-        try:
-            self._mill.execute_command("G92 X0 Y0 Z0")
-            self.logger.info("Work coordinates zeroed")
-        except (MillConnectionError, CommandExecutionError) as exc:
-            self.logger.error("Error zeroing coordinates: %s", exc)
-            raise
-
     def clear_g92_offsets(self) -> None:
         """Clear transient G92 offsets before assigning a durable WPos."""
         if self._offline:
@@ -526,12 +498,27 @@ class Gantry:
             return
 
         # Disable soft limits while changing travel extents, then re-enable.
-        self.set_grbl_setting("$20", 0)
-        self.set_grbl_setting("$130", max_travel_x)
-        self.set_grbl_setting("$131", max_travel_y)
-        self.set_grbl_setting("$132", max_travel_z)
-        self.set_grbl_setting("$22", 1)
-        self.set_grbl_setting("$20", 1)
+        soft_limits_disabled = False
+        try:
+            self.set_grbl_setting("$20", 0)
+            soft_limits_disabled = True
+            self.set_grbl_setting("$130", max_travel_x)
+            self.set_grbl_setting("$131", max_travel_y)
+            self.set_grbl_setting("$132", max_travel_z)
+            self.set_grbl_setting("$22", 1)
+            self.set_grbl_setting("$20", 1)
+            soft_limits_disabled = False
+        except Exception as exc:
+            if soft_limits_disabled:
+                try:
+                    self.set_grbl_setting("$20", 1)
+                except Exception as restore_exc:
+                    raise MillConnectionError(
+                        "Failed to restore GRBL soft limits after soft-limit "
+                        f"programming failed. Original error: {exc}; "
+                        f"restore error: {restore_exc}"
+                    ) from exc
+            raise
 
         live = self.read_grbl_settings()
         expected = {
@@ -559,11 +546,11 @@ class Gantry:
         if isinstance(self.config, dict):
             cnc = self.config.get("cnc", {})
             if isinstance(cnc, dict):
-                return cnc.get("homing_strategy", "xy_hard_limits")
+                return cnc.get("homing_strategy", "standard")
         if hasattr(self.config, "homing_strategy"):
             value = getattr(self.config, "homing_strategy")
             return getattr(value, "value", value)
-        return "xy_hard_limits"
+        return "standard"
 
     def _extract_status(self) -> str:
         """Extract the GRBL state word from the last raw status string."""

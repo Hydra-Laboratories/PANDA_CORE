@@ -10,8 +10,8 @@ This file is intentionally temporary. Keep it current while issue #87 is being i
 - GitHub issue: `Ursa-Laboratories/CubOS#87`
 - Working split: former Phase 2 and Phase 3 are combined into one working cutover PR so only runnable behavior is merged.
 - Candidate deck-origin configs live in `configs_new/`.
-- Current production runtime still has legacy positive-down/top-reference behavior in several places; the combined cutover must change code, validation, tests, and docs together.
-- The local implementation has cut over the high-level gantry boundary, board movement, scan/measure/pipette movement helpers, ASMI indentation direction, setup semantic validation, and deck `height` handling to the deck-origin +Z-up contract.
+- The local implementation has cut over the high-level gantry boundary, board movement, scan/measure/pipette movement helpers, ASMI indentation direction, setup semantic validation, deck `height` handling, and protocol/setup homing to the deck-origin +Z-up contract.
+- Legacy home-zero paths and custom zeroing homing strategies have been removed from supported runtime code; physical hardware validation is still pending.
 
 ## Non-Negotiable Semantics
 
@@ -457,14 +457,14 @@ Required hardware validation before trusting real runs:
 - Confirm high-clearance homing/first-entry/park moves clear Y rails and tall mounted tools on the multi-instrument board.
 - Confirm an ASMI indentation run on a sacrificial plate/sample with conservative limits before using real samples.
 
-Legacy calibration/setup scripts to remove or replace before final cleanup:
+Legacy calibration/setup scripts removed or replaced during full cutover:
 
-- `setup/home_gantry_config.py`: still exposes the old `G92 X0 Y0 Z0` homed-corner
-  flow and should not be used for deck-origin calibration.
+- Protocol `home` and `setup/home_gantry_config.py` now home only and do not
+  rewrite WPos.
+- `manual_origin`, custom `xy_hard_limits` homing, `setup/home_manual.py`, and
+  `calibration/home_gantry.py` were removed from the supported homing surface.
 - `setup/hello_world.py`: jog prompts/control text predate the +Z-up deck-origin
   bring-up path.
-- `calibration/home_gantry.py`: legacy homing wrapper; it does not assign
-  top-back-right home to deck-origin maxima.
 
 Current testing status: offline/config validation plus user-reported ASMI
 move/scan/single-well indentation hardware validation. Filmetrics hardware,

@@ -260,7 +260,12 @@ def _validate_move_waypoints(
     elif isinstance(position, str):
         try:
             coord = deck.resolve(position)
-        except Exception:
+        except (KeyError, AttributeError, ValueError) as exc:
+            violations.append(ProtocolSemanticViolation(
+                step_index,
+                "move",
+                f"position {position!r} cannot be resolved on the deck: {exc}",
+            ))
             return violations
         approach_z = board.instruments[instrument].safe_approach_height
         target = (coord.x, coord.y, approach_z)

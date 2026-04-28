@@ -1,61 +1,38 @@
-# LEGACY ASMI indentation protocol.
+# Candidate ASMI indentation protocol for the deck-origin refactor.
 #
-# This file is retained as the pre-issue-87 positive-down ASMI example and is
-# not a post-cutover runnable deck-origin config. Use
-# configs_new/protocol/asmi_indentation_deck_origin.yaml with the matching
-# configs_new gantry/deck/board files for the deck-origin motion contract.
-#
-# ASMI indentation protocol.
-# Scans the well plate, performing step-by-step indentation at each well.
-# Uses CubOS protocol engine.
-#
-# Legacy coordinate convention (positive-down): user-space Z is 0 at the gantry's
-# home position and grows toward the deck. "Above" = smaller z; "below" =
-# larger z. Indentation steps descend by INCREASING z, capped at
-# indentation_limit.
-#
-# Flow per well (handled by scan + indentation method):
-#   1. Move to well XY at interwell_travel_height above labware
-#   2. Descend to measurement_height (absolute z to start the indent)
-#   3. Step z toward indentation_limit (increasing), reading force at each step
-#   4. Stop on force_limit or indentation_limit (whichever comes first)
-#
-# Protocol-level flow:
-#   home -> scan all wells -> move park_position -> home
+# In the CubOS deck-origin frame, +Z is up and -Z is down. Run this only
+# after staged jog-direction, homing, WPos calibration, and clearance checks pass.
 
 positions:
-  # Park near home, well clear of labware.
-  park_position: [0.0, 0.0, 20.0]
+  # High park pose near the back-right/home side, intentionally below the
+  # physical max Z but high enough to clear the Y rail in the side view.
+  park_position: [360.0, 260.0, 85.0]
 
 protocol:
-  # Home the gantry and zero coordinates
   - home:
 
-  # Scan all wells: move to each well, run indentation
   - scan:
       plate: plate
       instrument: asmi
       method: indentation
-      # Absolute Z used only for the first transit into A1.
-      entry_travel_height: 20.0
-      # Absolute Z used for XY travel between wells.
-      interwell_travel_height: 70.0
+      # Intended as an absolute first-entry clearance in the deck-origin frame.
+      entry_travel_height: 85.0
+      # Absolute well-to-well travel plane. The estimated well top is z=27.0,
+      # so z=35.0 is 8 mm above the well top.
+      interwell_travel_height: 35.0
+      # Absolute action/start height and lower indentation limit. Downward
+      # indentation decreases Z in the deck-origin frame.
+      measurement_height: 32.0
+      indentation_limit: 30.0
       method_kwargs:
-        # Absolute Zs (not offsets). measurement_height is where the
-        # indent starts; indentation_limit is the deepest the tip is allowed to
-        # reach (legacy positive-down file: must be > measurement_height).
-        measurement_height: 73.0
-        indentation_limit: 75.0
-        step_size: 0.1 # usually .01, .1 for testing
+        step_size: 0.1
         force_limit: 10.0
         baseline_samples: 10
         measure_with_return: false
 
-  # Return to safe Z after scan
   - move:
       instrument: asmi
       position: park_position
-      travel_z: 20.0
+      travel_z: 85.0
 
-  # Home the gantry
   - home:

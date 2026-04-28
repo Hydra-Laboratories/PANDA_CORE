@@ -6,6 +6,10 @@ from pathlib import Path
 
 import pytest
 
+from gantry.gantry_driver.exceptions import (
+    CommandExecutionError,
+    StatusReturnError,
+)
 from setup.calibrate_deck_origin import (
     DeckOriginCalibrationResult,
     run_calibration,
@@ -109,6 +113,14 @@ class _FakeGantry:
     def set_serial_timeout(self, timeout: float) -> None:
         self.calls.append(("set_serial_timeout", timeout))
 
+    def set_expected_grbl_settings(
+        self,
+        settings: dict[str, float] | None,
+        *,
+        source: str = "board",
+    ) -> None:
+        self.calls.append(("set_expected_grbl_settings", settings, source))
+
     def configure_soft_limits_from_spans(
         self,
         *,
@@ -144,14 +156,14 @@ class _LimitRecoveringFakeGantry(_FakeGantry):
         if self.fail_next_jog:
             self.fail_next_jog = False
             self.calls.append(("jog", x, y, z, feed_rate))
-            raise RuntimeError("Alarm in status: <Alarm|WPos:0,0,0|Pn:Y>")
+            raise CommandExecutionError("Alarm in status: <Alarm|WPos:0,0,0|Pn:Y>")
         super().jog(x=x, y=y, z=z, feed_rate=feed_rate)
 
     def get_coordinates(self) -> dict[str, float]:
         if self.fail_next_recovery_readback:
             self.fail_next_recovery_readback = False
             self.calls.append(("get_coordinates_failed",))
-            raise RuntimeError("")
+            raise StatusReturnError("WPos readback unavailable")
         return super().get_coordinates()
 
 
@@ -306,6 +318,12 @@ grbl_settings:
     assert "max_travel_x: 398.5" in output_text
     assert "max_travel_y: 299.25" in output_text
     assert "max_travel_z: 72.75" in output_text
+    assert _FakeGantry.instance.calls[0] == (
+        "set_expected_grbl_settings",
+        {"$3": 1.0, "$100": 400.0},
+        str(board_path.resolve()),
+    )
+    assert _FakeGantry.instance.calls[1] == ("connect",)
 
 
 def test_run_calibration_can_prompt_and_write_board_yaml(tmp_path):
@@ -497,31 +515,33 @@ def test_run_calibration_recovers_from_limit_alarm_during_jog(tmp_path):
     assert any("Limit alarm detected" in message for message in messages)
 
 
-def test_run_calibration_continues_when_recovery_readback_is_unavailable(tmp_path):
+def test_run_calibration_aborts_when_recovery_readback_is_unavailable(tmp_path):
+    """Recovery readback failure must abort calibration: silently continuing
+    would let the operator zero WPos at an unknown physical pose."""
     path = _write_gantry(tmp_path / "gantry.yaml")
     messages: list[str] = []
 
-    result = run_calibration(
-        path,
-        output=messages.append,
-        gantry_factory=_LimitRecoveringNoReadbackFakeGantry,
-        key_reader=_key_reader(
-            [
-                ("DOWN", 1),
-                ("DOWN", 1),
-                ("\r", 1),
-                ("\r", 1),
-            ]
-        ),
-        stdin_flusher=lambda: None,
-        limit_pull_off_mm=2.0,
-    )
+    with pytest.raises(StatusReturnError):
+        run_calibration(
+            path,
+            output=messages.append,
+            gantry_factory=_LimitRecoveringNoReadbackFakeGantry,
+            key_reader=_key_reader(
+                [
+                    ("DOWN", 1),
+                    ("DOWN", 1),
+                    ("\r", 1),
+                    ("\r", 1),
+                ]
+            ),
+            stdin_flusher=lambda: None,
+            limit_pull_off_mm=2.0,
+        )
 
-    assert isinstance(result, DeckOriginCalibrationResult)
     assert ("get_coordinates_failed",) in (
         _LimitRecoveringNoReadbackFakeGantry.instance.calls
     )
-    assert any("WPos readback is not available" in message for message in messages)
+    assert any("WPos readback after pull-off failed" in message for message in messages)
 
 
 def test_dry_run_prints_commands_without_connecting(tmp_path):

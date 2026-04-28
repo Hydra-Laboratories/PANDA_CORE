@@ -8,7 +8,12 @@ import yaml
 from pydantic import ValidationError
 
 from .errors import GantryLoaderError
-from .gantry_config import GantryConfig, HomingStrategy, WorkingVolume, YAxisMotion
+from .gantry_config import (
+    GantryConfig,
+    HomingStrategy,
+    WorkingVolume,
+    YAxisMotion,
+)
 from .grbl_settings import normalize_expected_grbl_settings
 from .yaml_schema import GantryYamlSchema
 

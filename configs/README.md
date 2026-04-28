@@ -6,11 +6,13 @@ silently replaced before hardware validation completes.
 
 Use them as Phase 2/3 fixtures for movement-plan tests, waypoint validation,
 and staged hardware bring-up. Do not run them on hardware until jog direction,
-homing, WPos zeroing, and structure-clearance checks have passed.
+homing, WPos calibration, and structure-clearance checks have passed.
 
 ## Coordinate Frame
 
 - Origin `(0, 0, 0)` is the front-left-bottom reachable work volume.
+- Protocol `home` preserves the calibrated persistent G54 WPos instead of
+  rewriting work coordinates after homing.
 - `+X` moves to the operator's right.
 - `+Y` moves away from the operator, toward the back of the gantry.
 - `+Z` moves up, away from the deck.

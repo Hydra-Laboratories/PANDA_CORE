@@ -10,9 +10,7 @@ from typing import Dict, Optional
 class HomingStrategy(str, Enum):
     """Supported CNC homing strategies."""
 
-    XY_HARD_LIMITS = "xy_hard_limits"
     STANDARD = "standard"
-    MANUAL_ORIGIN = "manual_origin"
 
 
 class YAxisMotion(str, Enum):
@@ -26,8 +24,8 @@ class YAxisMotion(str, Enum):
 class WorkingVolume:
     """Gantry working volume bounds in millimeters.
 
-    Bounds are inclusive and may be either positive-space or negative-space,
-    depending on the gantry calibration in use.
+    Bounds are inclusive and use the CubOS deck-origin frame for supported
+    protocol execution.
     """
 
     x_min: float

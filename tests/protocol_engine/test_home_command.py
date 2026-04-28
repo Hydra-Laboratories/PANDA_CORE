@@ -5,7 +5,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from gantry.gantry_config import GantryConfig, HomingStrategy, WorkingVolume
+from gantry.gantry_config import (
+    GantryConfig,
+    HomingStrategy,
+    WorkingVolume,
+)
 from protocol_engine.commands.home import home
 
 
@@ -37,7 +41,6 @@ def test_home_preserves_calibrated_wpos_for_deck_origin_config():
     home(context)
 
     gantry.home.assert_called_once_with()
-    gantry.zero_coordinates.assert_not_called()
     gantry.clear_g92_offsets.assert_not_called()
     gantry.set_work_coordinates.assert_not_called()
     assert gantry.set_serial_timeout.call_args_list[0].args == (10,)
@@ -63,12 +66,11 @@ def test_home_preserves_calibrated_wpos_for_one_instrument_nonzero_z_min():
     home(context)
 
     gantry.home.assert_called_once_with()
-    gantry.zero_coordinates.assert_not_called()
     gantry.clear_g92_offsets.assert_not_called()
     gantry.set_work_coordinates.assert_not_called()
 
 
-def test_home_keeps_legacy_zero_behavior_without_deck_origin_config():
+def test_home_preserves_calibrated_wpos_for_negative_space_config():
     config = GantryConfig(
         serial_port="/dev/ttyUSB0",
         homing_strategy=HomingStrategy.STANDARD,
@@ -87,17 +89,38 @@ def test_home_keeps_legacy_zero_behavior_without_deck_origin_config():
     home(context)
 
     gantry.home.assert_called_once_with()
-    gantry.zero_coordinates.assert_called_once_with()
     gantry.clear_g92_offsets.assert_not_called()
     gantry.set_work_coordinates.assert_not_called()
 
 
-def test_home_keeps_legacy_zero_behavior_without_config():
+def test_home_preserves_calibrated_wpos_for_zero_minimum_config():
+    config = GantryConfig(
+        serial_port="/dev/ttyUSB0",
+        homing_strategy=HomingStrategy.STANDARD,
+        total_z_height=100.0,
+        working_volume=WorkingVolume(
+            x_min=0.0,
+            x_max=400.0,
+            y_min=0.0,
+            y_max=300.0,
+            z_min=0.0,
+            z_max=100.0,
+        ),
+    )
+    context, gantry = _context(config)
+
+    home(context)
+
+    gantry.home.assert_called_once_with()
+    gantry.clear_g92_offsets.assert_not_called()
+    gantry.set_work_coordinates.assert_not_called()
+
+
+def test_home_preserves_calibrated_wpos_without_config():
     context, gantry = _context(None)
 
     home(context)
 
     gantry.home.assert_called_once_with()
-    gantry.zero_coordinates.assert_called_once_with()
     gantry.clear_g92_offsets.assert_not_called()
     gantry.set_work_coordinates.assert_not_called()

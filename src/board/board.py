@@ -103,7 +103,6 @@ class Board:
         instr = self._resolve_instrument(instrument)
         x, y, z = self._resolve_position(labware)
         self._validate_finite_xyz(x, y, z, instr.name)
-        del z
         approach_z = instr.safe_approach_height
         self.move(instr, (x, y, approach_z), travel_z=approach_z)
 

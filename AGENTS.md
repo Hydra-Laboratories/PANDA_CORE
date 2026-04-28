@@ -148,7 +148,7 @@ A modular system for executing experiment sequences defined in code or YAML.
 - **`registry.py`**: `CommandRegistry` singleton and `@protocol_command()` decorator for registering commands.
 - **`setup.py`**: `setup_protocol(gantry_path, deck_path, board_path, protocol_path)` — loads all configs, validates bounds, and returns `(Protocol, ProtocolContext)` ready to run. Uses an offline `Gantry` by default for offline validation.
 - **`commands/`**: Protocol command implementations:
-  - `home`: home the gantry. With deck-origin configs it preserves the calibrated WPos frame; legacy non-deck-origin configs still zero at the homed pose.
+  - `home`: home the gantry while preserving the calibrated deck-origin WPos frame; it does not rewrite work coordinates after homing.
   - `move`: move an instrument to a named position, raw `[x, y, z]`, or deck target.
     - Named/literal XYZ moves may also supply `travel_z` to force a retract-first transit (`Z -> XY -> final Z`).
     - Deck targets ignore `travel_z` and use `Board.move_to_labware()` with the instrument's board-configured absolute `safe_approach_height`.
@@ -169,9 +169,9 @@ Gantry YAML loader and domain model for CNC gantry working volume and homing str
 
 - **Coordinate convention**: At the repo/user level we work in the CubOS deck frame: front-left-bottom origin, `+X` operator-right, `+Y` back/away, `+Z` up, `-Z` down. The `Gantry` boundary does not apply a hidden `Z` sign flip; controller settings must make WPos match this frame.
 - **`yaml_schema.py`**: `GantryYamlSchema` with strict Pydantic validation (working volume bounds, homing strategy, serial port, and `cnc.total_z_height`).
-- **`gantry_config.py`**: `GantryConfig` and `WorkingVolume` frozen dataclasses. `WorkingVolume.contains(x, y, z)` checks if a point is within bounds (inclusive). `GantryConfig.total_z_height` is the configured vertical envelope; deck `height` values are direct deck-frame Z values, not `total_z_height - height`. `GantryConfig.structure_clearance_z` is an optional absolute Z plane for home/park/edge-risk clearance. `HomingStrategy` enum: `STANDARD`, `XY_HARD_LIMITS`, `MANUAL_ORIGIN`.
+- **`gantry_config.py`**: `GantryConfig` and `WorkingVolume` frozen dataclasses. `WorkingVolume.contains(x, y, z)` checks if a point is within bounds (inclusive). `GantryConfig.total_z_height` is the configured vertical envelope; deck `height` values are direct deck-frame Z values, not `total_z_height - height`. `GantryConfig.structure_clearance_z` is an optional absolute Z plane for home/park/edge-risk clearance. `HomingStrategy` enum: `STANDARD`.
 - **`loader.py`**: `load_gantry_from_yaml(path)` and `load_gantry_from_yaml_safe(path)`.
-- **Config files**: `configs/gantry/` (e.g., `cub_xl.yaml`).
+- **Config files**: deck-origin gantry candidates live in `configs_new/gantry/`.
 
 ### Validation (`src/validation`)
 Bounds validation for protocol setup — ensures all deck positions and gantry-computed positions are within the gantry's working volume before the protocol runs.
@@ -256,16 +256,11 @@ First-run scripts for verifying hardware after unboxing.
     - **Ruler gap for non-bottom-reaching TCP**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --z-reference-mode ruler-gap --tip-gap-mm 5 --instrument filmetrics`
     - **Bottom contact**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --z-reference-mode bottom`
     - **Dry run**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --dry-run`
-    - **Safety**: only use with deck-origin gantry configs whose X/Y working-volume minima are `0.0` and whose Z minimum is non-negative; old negative-space configs are rejected.
-- **`hello_world.py`**: Interactive jog test. Connects to the gantry (auto-scan, no config), homes the gantry, then lets you move the router with arrow keys and see live position updates.
-    - **Usage**: `python3 setup/hello_world.py`
+    - **Safety**: only use with deck-origin gantry configs whose X/Y working-volume minima are `0.0` and whose Z minimum is non-negative; pre-cutover or negative-space configs are rejected.
+- **`hello_world.py`**: Interactive deck-origin jog test. Loads an explicit gantry YAML, homes without rewriting WPos, then lets you jog in the CubOS deck frame.
+    - **Usage**: `python3 setup/hello_world.py --gantry configs_new/gantry/cub_xl_asmi_deck_origin.yaml`
     - **Controls**: Arrow keys (X/Y ±1mm), Z key (Z down 1mm), X key (Z up 1mm), Q (quit)
-    - **Dependencies**: `src/hardware/gantry.py` (Gantry class)
-    - **TODO**: Replace or remove this legacy flow for the deck-origin scheme; its prompts/control text predate the new `+Z up` convention.
-- **`home_manual.py`**: Manual origin homing script for the Genmitsu Desktop CNC (CUB). Connects to the CNC, runs the `manual_origin` homing strategy (interactive keyboard jogging to set work zero), and prints the working volume bounds.
-    - **Usage**: `python setup/home_manual.py`
-    - **Controls**: Arrow keys (X/Y ±1mm), Z key (Z down 1mm), X key (Z up 1mm), Enter (confirm origin)
-    - **Dependencies**: `src/gantry` (Gantry, loader), `setup/keyboard_input.py`
+    - **Dependencies**: `src/gantry` (Gantry class), `setup/keyboard_input.py`
 - **`validate_setup.py`**: Validate a protocol setup by loading all 4 configs (gantry, deck, board, protocol) and checking that all deck and gantry positions are within the gantry's working volume.
     - **Usage**: `python setup/validate_setup.py <gantry.yaml> <deck.yaml> <board.yaml> <protocol.yaml>`
     - **Output**: Step-by-step loading status, labware/instrument summaries, bounds validation results, and a final PASS/FAIL verdict.
@@ -278,11 +273,6 @@ First-run scripts for verifying hardware after unboxing.
         - Disconnects instruments and gantry in `finally`, even on protocol failure.
     - **Dependencies**: `src/gantry`, `src/deck`, `src/board`, `src/protocol_engine`, `src/validation`
 - **`keyboard_input.py`**: Helper module that reads single keypresses (including arrow keys) without requiring Enter. Uses `tty`/`termios` (Unix only).
-
-### Calibration (`calibration/`)
-- **`home_gantry.py`**: CNC homing wrapper that loads `configs/gantry/cub_xl.yaml`, connects to the gantry, and runs the configured homing sequence.
-    - **Usage**: `python calibration/home_gantry.py`
-    - **TODO**: Replace or remove this legacy wrapper; deck-origin calibration should use `setup/calibrate_deck_origin.py` so X/Y origining and bottom/ruler-gap Z assignment are explicitly completed before homed WPos is treated as measured working volume.
 
 ### Development Commands
 - **Install for development**:

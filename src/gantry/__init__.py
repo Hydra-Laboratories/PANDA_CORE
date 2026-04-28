@@ -2,7 +2,11 @@
 
 from .errors import GantryLoaderError
 from .gantry import Gantry
-from .gantry_config import GantryConfig, HomingStrategy, WorkingVolume
+from .gantry_config import (
+    GantryConfig,
+    HomingStrategy,
+    WorkingVolume,
+)
 from .loader import load_gantry_from_yaml, load_gantry_from_yaml_safe
 
 __all__ = [

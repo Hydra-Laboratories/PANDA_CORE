@@ -38,7 +38,7 @@ class CncYaml(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    homing_strategy: Literal["xy_hard_limits", "standard", "manual_origin"]
+    homing_strategy: Literal["standard"]
     total_z_height: float
     y_axis_motion: Literal["head", "bed"] = "head"
     structure_clearance_z: Optional[float] = None

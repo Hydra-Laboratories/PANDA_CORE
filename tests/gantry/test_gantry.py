@@ -119,7 +119,7 @@ class TestGantry(unittest.TestCase):
     @patch("gantry.gantry.Mill")
     def test_home_raises_on_connection_error(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
-        mock_mill.home_xy_hard_limits.side_effect = MillConnectionError("homing failed")
+        mock_mill.home.side_effect = MillConnectionError("homing failed")
         gantry = Gantry(config=self.config)
         with self.assertRaises(MillConnectionError):
             gantry.home()
@@ -127,7 +127,7 @@ class TestGantry(unittest.TestCase):
     @patch("gantry.gantry.Mill")
     def test_home_raises_on_status_error(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
-        mock_mill.home_xy_hard_limits.side_effect = StatusReturnError("alarm")
+        mock_mill.home.side_effect = StatusReturnError("alarm")
         gantry = Gantry(config=self.config)
         with self.assertRaises(StatusReturnError):
             gantry.home()
@@ -135,10 +135,17 @@ class TestGantry(unittest.TestCase):
     @patch("gantry.gantry.Mill")
     def test_home_does_not_catch_unexpected_errors(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
-        mock_mill.home_xy_hard_limits.side_effect = RuntimeError("unexpected")
+        mock_mill.home.side_effect = RuntimeError("unexpected")
         gantry = Gantry(config=self.config)
         with self.assertRaises(RuntimeError):
             gantry.home()
+
+    @patch("gantry.gantry.Mill")
+    def test_home_uses_standard_grbl_homing_by_default(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        gantry = Gantry(config=self.config)
+        gantry.home()
+        mock_mill.home.assert_called_once_with()
 
     @patch("gantry.gantry.Mill")
     def test_home_raises_on_unknown_strategy(self, mock_mill_cls):
@@ -290,13 +297,6 @@ class TestGantry(unittest.TestCase):
         self.assertEqual(gantry._extract_status(), "Unknown")
 
     @patch("gantry.gantry.Mill")
-    def test_zero_coordinates_sends_g92(self, mock_mill_cls):
-        mock_mill = mock_mill_cls.return_value
-        gantry = Gantry(config=self.config)
-        gantry.zero_coordinates()
-        mock_mill.execute_command.assert_called_with("G92 X0 Y0 Z0")
-
-    @patch("gantry.gantry.Mill")
     def test_clear_g92_offsets_sends_g92_1(self, mock_mill_cls):
         mock_mill = mock_mill_cls.return_value
         gantry = Gantry(config=self.config)
@@ -365,6 +365,34 @@ class TestGantry(unittest.TestCase):
                 unittest.mock.call("131", "306"),
                 unittest.mock.call("132", "113"),
                 unittest.mock.call("22", "1"),
+                unittest.mock.call("20", "1"),
+            ],
+        )
+
+    @patch("gantry.gantry.Mill")
+    def test_configure_soft_limits_reenables_soft_limits_on_write_failure(
+        self, mock_mill_cls
+    ):
+        mock_mill = mock_mill_cls.return_value
+        mock_mill.set_grbl_setting.side_effect = [
+            None,
+            CommandExecutionError("write failed"),
+            None,
+        ]
+        gantry = Gantry(config=self.config)
+
+        with self.assertRaises(CommandExecutionError):
+            gantry.configure_soft_limits_from_spans(
+                max_travel_x=306.0,
+                max_travel_y=306.0,
+                max_travel_z=113.0,
+            )
+
+        self.assertEqual(
+            mock_mill.set_grbl_setting.call_args_list,
+            [
+                unittest.mock.call("20", "0"),
+                unittest.mock.call("130", "306"),
                 unittest.mock.call("20", "1"),
             ],
         )

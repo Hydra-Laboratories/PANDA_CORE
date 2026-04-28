@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from gantry.gantry_config import GantryConfig, HomingStrategy, WorkingVolume
+from gantry.gantry_config import (
+    GantryConfig,
+    HomingStrategy,
+    WorkingVolume,
+)
 
 
 def _make_volume(
@@ -104,13 +108,13 @@ class TestGantryConfig:
         vol = _make_volume()
         config = GantryConfig(
             serial_port="/dev/ttyUSB0",
-            homing_strategy=HomingStrategy.XY_HARD_LIMITS,
+            homing_strategy=HomingStrategy.STANDARD,
             total_z_height=90.0,
             working_volume=vol,
             structure_clearance_z=75.0,
         )
         assert config.serial_port == "/dev/ttyUSB0"
-        assert config.homing_strategy == HomingStrategy.XY_HARD_LIMITS
+        assert config.homing_strategy == HomingStrategy.STANDARD
         assert config.total_z_height == 90.0
         assert config.working_volume is vol
         assert config.structure_clearance_z == 75.0

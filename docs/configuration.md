@@ -29,7 +29,7 @@ Representative example:
 ```yaml
 serial_port: /dev/cu.usbserial-140
 cnc:
-  homing_strategy: xy_hard_limits
+  homing_strategy: standard
   total_z_height: 90.0
   y_axis_motion: head
   structure_clearance_z: 75.0
@@ -49,6 +49,12 @@ Use this file when:
 - changing travel limits
 - updating homing behavior
 - validating expected controller settings
+
+CubOS is cut over to the deck-origin frame. Protocol `home` runs GRBL homing
+and preserves the persistent G54 work-coordinate frame established by
+`setup/calibrate_deck_origin.py`; it does not zero WPos after homing. Protocol
+setup rejects gantry configs whose X/Y minima are not `0.0` or whose Z minimum
+is negative.
 
 ## Deck Config
 

@@ -34,6 +34,12 @@ sys.path.insert(0, str(project_root / "src"))
 
 from board.yaml_schema import BoardYamlSchema  # noqa: E402
 from gantry import Gantry, load_gantry_from_yaml  # noqa: E402
+from gantry.gantry_driver.exceptions import (  # noqa: E402
+    CommandExecutionError,
+    MillConnectionError,
+    StatusReturnError,
+)
+from gantry.grbl_settings import normalize_expected_grbl_settings  # noqa: E402
 from gantry.origin import (  # noqa: E402
     DeckOriginCalibrationPlan,
     build_deck_origin_calibration_plan,
@@ -539,29 +545,39 @@ def _recover_from_limit_alarm(
     )
     try:
         gantry.jog_cancel()
-    except Exception as exc:
-        output(f"Jog cancel during recovery did not complete: {exc}")
+    except MillConnectionError:
+        raise
+    except (CommandExecutionError, StatusReturnError) as exc:
+        output(f"Jog cancel during recovery failed: {exc}")
+        output("Aborting calibration; use E-stop and rerun before continuing.")
+        raise
 
     try:
         gantry.unlock()
-    except Exception as exc:
+    except MillConnectionError:
+        raise
+    except (CommandExecutionError, StatusReturnError) as exc:
         output(f"Unlock during limit recovery failed: {exc}")
         output("Use the controller/E-stop reset path before continuing.")
-        return None
+        raise
 
     try:
         gantry.jog(feed_rate=feed_rate, **pull_off)
-    except Exception as exc:
-        output(f"Automatic pull-off jog did not complete: {exc}")
-        output("Try a small jog in the opposite direction, or press Q to abort.")
-        return None
+    except MillConnectionError:
+        raise
+    except (CommandExecutionError, StatusReturnError) as exc:
+        output(f"Automatic pull-off jog failed: {exc}")
+        output("Aborting calibration; gantry position is unknown.")
+        raise
 
     try:
         return gantry.get_coordinates()
-    except Exception as exc:
-        output(f"Pull-off sent, but WPos readback is not available yet: {exc}")
-        output("Continue with small opposite-direction jogs, or press Q to abort.")
-        return None
+    except MillConnectionError:
+        raise
+    except (CommandExecutionError, StatusReturnError) as exc:
+        output(f"WPos readback after pull-off failed: {exc}")
+        output("Aborting calibration; gantry position is unknown.")
+        raise
 
 
 def _interactive_jog_to_reference(
@@ -640,11 +656,13 @@ def _interactive_jog_to_reference(
         try:
             gantry.jog(feed_rate=feed_rate, **delta)
             coords = gantry.get_coordinates()
-        except Exception as exc:
+        except MillConnectionError:
+            raise
+        except (CommandExecutionError, StatusReturnError) as exc:
             if not _looks_like_limit_alarm(exc):
-                output(f"WPos readback after jog failed: {exc}")
-                output("Continuing; press Q to abort if the machine state is unclear.")
-                continue
+                output(f"Jog command rejected by controller: {exc}")
+                output("Aborting calibration; gantry position is unknown.")
+                raise
             coords = _recover_from_limit_alarm(
                 gantry,
                 delta,
@@ -718,9 +736,15 @@ def run_calibration(
     gantry_path = gantry_path.resolve()
     gantry_config = load_gantry_from_yaml(gantry_path)
     raw_config = _load_raw_config(gantry_path)
+    board_expected_grbl_settings = None
     if board_path is not None:
         board_path = board_path.resolve()
-        BoardYamlSchema.model_validate(_load_raw_yaml_dict(board_path, label="Board"))
+        board_schema = BoardYamlSchema.model_validate(
+            _load_raw_yaml_dict(board_path, label="Board")
+        )
+        board_expected_grbl_settings = normalize_expected_grbl_settings(
+            board_schema.grbl_settings
+        )
     if output_board_path is not None:
         output_board_path = output_board_path.resolve()
     if (write_board_yaml or output_board_path is not None) and board_path is None:
@@ -779,6 +803,11 @@ def run_calibration(
     gantry_runtime_config = copy.deepcopy(raw_config)
     gantry_runtime_config.pop("grbl_settings", None)
     gantry = gantry_factory(config=gantry_runtime_config)
+    if board_expected_grbl_settings and hasattr(gantry, "set_expected_grbl_settings"):
+        gantry.set_expected_grbl_settings(
+            board_expected_grbl_settings,
+            source=str(board_path),
+        )
     try:
         output("Connecting to gantry...")
         gantry.connect()

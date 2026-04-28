@@ -19,7 +19,7 @@ Representative example:
 ```yaml
 serial_port: /dev/ttyUSB0
 cnc:
-  homing_strategy: xy_hard_limits
+  homing_strategy: standard
   total_z_height: 90.0
   y_axis_motion: head
   structure_clearance_z: 75.0
@@ -56,11 +56,7 @@ Use this file when:
 
 ## CNC Fields
 
-`homing_strategy` must be one of:
-
-- `xy_hard_limits`
-- `standard`
-- `manual_origin`
+`homing_strategy` must be `standard`, which runs GRBL `$H`.
 
 `total_z_height` is required and must be greater than zero. It describes the configured vertical envelope. Deck labware can use a `height` field instead of explicit Z coordinates; under the deck-origin convention that `height` is used directly as the deck-frame Z value.
 
@@ -76,8 +72,9 @@ Working volume bounds are inclusive and use the CubOS deck frame:
   safe reachable Z for the active TCP, assign only `X=0`, `Y=0`, then assign
   Z from either bottom contact (`Z=0`) or a ruler-measured deck-to-TCP gap.
   If the TCP cannot reach bottom, the one-instrument config should use that
-  gap as `working_volume.z_min`. The homed pose after assignment is measured
-  as `(x_max, y_max, z_max)`.
+  gap as `working_volume.z_min`. Protocol setup requires X/Y minima at `0.0`
+  and a non-negative Z minimum. The homed pose after assignment is measured as
+  `(x_max, y_max, z_max)`.
 - `+X` moves right from the operator perspective.
 - `+Y` moves away from the operator, toward the back of the deck.
 - `+Z` moves up, away from the deck.
@@ -238,5 +235,5 @@ Record `$3` and `$23` before changing anything.
 
 | Config | System | Working Volume |
 |--------|--------|----------------|
-| `cub_xl.yaml` | CubOS-XL / Genmitsu 3018 PRO | 400 x 300 x 80 mm |
-| `cub.yaml` | CubOS / Genmitsu 3018 PROVer V2 | 300 x 200 x 80 mm |
+| `configs_new/gantry/cub_xl_asmi_deck_origin.yaml` | CubOS-XL / Genmitsu 3018 PRO + ASMI | 400 x 300 x 100 mm |
+| `configs_new/gantry/cub_filmetrics_deck_origin.yaml` | CubOS / Genmitsu 3018 PROVer V2 + Filmetrics | 280 x 175 x 90 mm |
