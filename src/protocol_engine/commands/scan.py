@@ -115,9 +115,9 @@ def scan(
 
         well = plate_obj.get_well_center(well_id)
         approach_z = (
-            normalized.entry_travel_z
-            if i == 0 and normalized.entry_travel_z is not None
-            else normalized.interwell_travel_z
+            normalized.entry_travel_height
+            if i == 0 and normalized.entry_travel_height is not None
+            else normalized.interwell_travel_height
         )
         approach_and_descend(
             context,
@@ -166,8 +166,8 @@ def scan(
     if sorted_wells:
         last_well = plate_obj.get_well_center(sorted_wells[-1])
         final_approach_z = (
-            normalized.interwell_travel_z
-            if normalized.interwell_travel_z is not None
+            normalized.interwell_travel_height
+            if normalized.interwell_travel_height is not None
             else instr.safe_approach_height
         )
         context.board.move(instrument, (last_well.x, last_well.y, final_approach_z))

@@ -1,7 +1,6 @@
-# Candidate PANDA gantry configuration for the deck-origin refactor.
+# PANDA gantry configuration for the CubOS deck-origin frame.
 #
-# This is NOT a drop-in replacement for configs/gantry/*.yaml until staged
-# hardware validation passes. It encodes the CubOS deck frame:
+# This setup still needs staged hardware validation. It encodes the CubOS deck frame:
 # front-left-bottom origin, +X right, +Y back, +Z up, -Z down.
 #
 # Estimated work volume from the Cub XL / Genmitsu PROVerXL 4030 V2 setup.

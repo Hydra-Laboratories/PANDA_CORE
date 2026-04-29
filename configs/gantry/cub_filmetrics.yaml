@@ -1,4 +1,4 @@
-# Candidate Filmetrics gantry configuration for the deck-origin refactor.
+# Filmetrics gantry configuration for the CubOS deck-origin frame.
 #
 # This translates configs/gantry/cub_filmetrics.yaml into the CubOS deck frame:
 # front-left-bottom origin, +X right, +Y back, +Z up, -Z down.
@@ -52,9 +52,8 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    # The legacy mock Filmetrics board used measurement/safe height 10.0 in the
-    # old positive-down 90 mm frame, so this placeholder preserves that as
-    # 90 - 10 = 80 mm in deck-origin +Z-up coordinates.
+    # Placeholder carried forward from the prior mock Filmetrics setup. Validate
+    # this absolute deck-frame height on hardware before real motion.
     measurement_height: 80.0
     safe_approach_height: 80.0
     exe_path: ""
