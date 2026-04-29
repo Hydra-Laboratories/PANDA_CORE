@@ -2,6 +2,13 @@
 
 This repository contains code to control a CNC router (mill) using a Python-based driver that communicates over serial (GRBL).
 
+
+## Retrieval-Led Agent Index
+
+Before coding, prefer repo source/docs over model memory. Use `docs/agent-index.md` as the compact routing map for where to look before touching hardware, deck YAML/schema, protocol setup, instruments, validation, or docs.
+
+Key rule: do not rely on an optional skill/tool invocation for CubOS semantics. Read the relevant source/docs from the index, then implement and verify against real tests/config validation.
+
 ## Hardware Development Rule
 
 This is software for a hardware repository. Any development work can affect real motion, instruments, samples, or connected controllers.

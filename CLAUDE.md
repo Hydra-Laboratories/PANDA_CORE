@@ -8,3 +8,5 @@ Always write clean code, using the principles from the book "Clean Code" by Robe
 When you finish a task, make sure to update your progress in the progress/ directory.
 If the task makes a fundamental change (i.e. you add a new command line argument, you add a brand new feature) make sure to add it to AGENTS.md and README.md such that another agent or human can understand for context easily if changes need to be made.
 Always create a plan that I will review before executing when in planning mode.
+
+Agent retrieval rule: before coding, read `AGENTS.md` and `docs/agent-index.md`, then retrieve the specific source/docs named there for the subsystem you are touching. Prefer repo-grounded reasoning over model memory for CubOS semantics, especially hardware motion, coordinate frames, YAML schema, validation, and protocol setup.
