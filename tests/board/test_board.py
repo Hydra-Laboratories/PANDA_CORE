@@ -312,9 +312,9 @@ class TestBoardMoveToLabware:
 
         assert gantry.move_to.call_count == 1
         call = gantry.move_to.call_args
-        # Deck-origin +Z-up: safe_approach_height is an absolute Z plane.
-        assert call.args == (100.0, 50.0, 3.0)
-        assert call.kwargs == {"travel_z": 3.0}
+        # approach_z = labware.z - safe_approach_height = 20 - 3 = 17.
+        assert call.args == (100.0, 50.0, 17.0)
+        assert call.kwargs == {"travel_z": 17.0}
 
     def test_contact_instrument_travel_at_approach_above_action(self):
         """Contact instrument with safe_approach > measurement: travel_z
@@ -326,9 +326,9 @@ class TestBoardMoveToLabware:
 
         assert gantry.move_to.call_count == 1
         call = gantry.move_to.call_args
-        # approach z is the absolute safe_approach_height plane.
-        assert call.args == (100.0, 50.0, 20.0)
-        assert call.kwargs == {"travel_z": 20.0}
+        # approach_z = labware.z - safe_approach_height = 30 - 20 = 10.
+        assert call.args == (100.0, 50.0, 10.0)
+        assert call.kwargs == {"travel_z": 10.0}
 
     def test_applies_instrument_xy_offsets_and_depth(self):
         """Instrument offsets shift gantry coords; depth shifts both
@@ -342,7 +342,7 @@ class TestBoardMoveToLabware:
         board.move_to_labware("probe", _mock_labware(x=100, y=50, z=30))
 
         call = gantry.move_to.call_args
-        # approach tip z = 15 absolute; gantry z = 15 + depth(2) = 17.
+        # approach_z = 30 - 15 = 15; gantry z = 15 + depth(2) = 17.
         # gantry x = 100 - 10 = 90; gantry y = 50 - (-5) = 55.
         assert call.args == (90.0, 55.0, 17.0)
         assert call.kwargs == {"travel_z": 17.0}
@@ -355,8 +355,9 @@ class TestBoardMoveToLabware:
 
         assert gantry.move_to.call_count == 1
         call = gantry.move_to.call_args
-        assert call.args == (50.0, 40.0, 2.0)
-        assert call.kwargs == {"travel_z": 2.0}
+        # approach_z = 10 - 2 = 8.
+        assert call.args == (50.0, 40.0, 8.0)
+        assert call.kwargs == {"travel_z": 8.0}
 
     def test_rejects_nan_position_z(self):
         """NaN in position z is caught (via Board.move's validation)."""
