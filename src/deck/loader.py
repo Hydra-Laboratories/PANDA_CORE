@@ -257,8 +257,8 @@ def _resolve_plate_orientation(entry: Any) -> _PlateOrientation:
     Returns a ``_PlateOrientation`` whose deltas are used to compute each
     well position relative to A1 in ``_derive_wells_from_calibration``.
 
-    Raises ``ValueError`` when the A2 calibration step does not match
-    the declared offset or the points are not axis-aligned.
+    Raises ``ValueError`` when the A2 calibration step magnitude does not
+    match the declared offset magnitude or the points are not axis-aligned.
     """
     a1 = entry.a1_point
     a2 = entry.calibration.a2
@@ -268,26 +268,28 @@ def _resolve_plate_orientation(entry: Any) -> _PlateOrientation:
 
     if same_y:
         col_step = a2.x - a1.x
-        if abs(col_step - entry.x_offset_mm) > 1e-9:
+        if abs(abs(col_step) - entry.x_offset_mm) > 1e-9:
             raise ValueError(
                 "Calibration A2 must match one adjacent column step from A1 "
-                "(delta x must equal x_offset_mm)."
+                "(delta x magnitude must equal x_offset_mm magnitude)."
             )
+        row_step = -entry.y_offset_mm if col_step > 0 else entry.y_offset_mm
         return _PlateOrientation(
             col_delta_x=col_step, col_delta_y=0.0,
-            row_delta_x=0.0, row_delta_y=entry.y_offset_mm,
+            row_delta_x=0.0, row_delta_y=row_step,
         )
 
     if same_x:
         col_step = a2.y - a1.y
-        if abs(col_step - entry.y_offset_mm) > 1e-9:
+        if abs(abs(col_step) - entry.y_offset_mm) > 1e-9:
             raise ValueError(
                 "Calibration A2 must match one adjacent column step from A1 "
-                "(delta y must equal y_offset_mm)."
+                "(delta y magnitude must equal y_offset_mm magnitude)."
             )
+        row_step = entry.x_offset_mm if col_step > 0 else -entry.x_offset_mm
         return _PlateOrientation(
             col_delta_x=0.0, col_delta_y=col_step,
-            row_delta_x=entry.x_offset_mm, row_delta_y=0.0,
+            row_delta_x=row_step, row_delta_y=0.0,
         )
 
     raise ValueError("Calibration must be axis-aligned (same x or same y).")

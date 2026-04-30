@@ -39,8 +39,8 @@ class WellPlateYamlEntry(BaseModel):
     # Backward compatibility: top-level A1 is accepted but deprecated.
     a1: Optional[_YamlPoint3D] = None
     calibration: _YamlCalibrationPoints
-    x_offset_mm: float
-    y_offset_mm: float
+    x_offset_mm: float = Field(..., gt=0)
+    y_offset_mm: float = Field(..., gt=0)
     # Volume — optional metadata.
     capacity_ul: Optional[float] = None
     working_volume_ul: Optional[float] = None
@@ -71,8 +71,6 @@ class WellPlateYamlEntry(BaseModel):
         if (self.capacity_ul is not None and self.working_volume_ul is not None
                 and self.working_volume_ul > self.capacity_ul):
             raise ValueError("working_volume_ul must be <= capacity_ul.")
-        if self.x_offset_mm == 0 or self.y_offset_mm == 0:
-            raise ValueError("x_offset_mm and y_offset_mm must be non-zero.")
         return self
 
 
@@ -137,8 +135,8 @@ class NestedWellPlateYamlEntry(BaseModel):
     width_mm: Optional[float] = None
     height_mm: Optional[float] = None
     calibration: _YamlCalibrationPoints
-    x_offset_mm: float
-    y_offset_mm: float
+    x_offset_mm: float = Field(..., gt=0)
+    y_offset_mm: float = Field(..., gt=0)
     capacity_ul: Optional[float] = None
     working_volume_ul: Optional[float] = None
 
@@ -163,8 +161,6 @@ class NestedWellPlateYamlEntry(BaseModel):
             raise ValueError(
                 "Calibration A2 must be axis-aligned with A1 (same x or same y); diagonal orientation is invalid."
             )
-        if self.x_offset_mm == 0 or self.y_offset_mm == 0:
-            raise ValueError("x_offset_mm and y_offset_mm must be non-zero.")
         if self.capacity_ul is not None and self.capacity_ul <= 0:
             raise ValueError("capacity_ul must be positive when specified.")
         if self.working_volume_ul is not None and self.working_volume_ul <= 0:
@@ -227,8 +223,8 @@ class TipRackYamlEntry(_BaseHolderYamlEntry):
     z_pickup: float = Field(..., gt=0)
     z_drop: Optional[float] = Field(default=None, gt=0)
     calibration: _YamlCalibrationPoints
-    x_offset_mm: float
-    y_offset_mm: float
+    x_offset_mm: float = Field(..., gt=0)
+    y_offset_mm: float = Field(..., gt=0)
     tip_present: Dict[str, bool] = Field(default_factory=dict)
     # Derived from the A1 tip if omitted.
     location: Optional[_YamlPoint3D] = None  # type: ignore[assignment]
@@ -253,8 +249,6 @@ class TipRackYamlEntry(_BaseHolderYamlEntry):
                 "Calibration A2 must be axis-aligned with A1 (same x or same y); "
                 "diagonal orientation is invalid."
             )
-        if self.x_offset_mm == 0 or self.y_offset_mm == 0:
-            raise ValueError("x_offset_mm and y_offset_mm must be non-zero.")
         return self
 
 
