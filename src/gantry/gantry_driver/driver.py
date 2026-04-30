@@ -12,6 +12,7 @@ of the mill.
 # pylint: disable=line-too-long
 
 # standard libraries
+import math
 import os
 import re
 import time
@@ -937,6 +938,9 @@ class Mill:
             if not coordinates
             else coordinates
         )
+        self._validate_target_coordinates(goto)
+        if travel_z is not None:
+            self._validate_finite_coordinate(travel_z, "travel Z")
         offsets = self.instrument_manager.get_offset(instrument)
         current_coordinates = self.current_coordinates()
 
@@ -1015,8 +1019,18 @@ class Mill:
         )
 
     def _validate_target_coordinates(self, target_coordinates: Coordinates):
-        # Validation disabled by request
-        pass
+        self._validate_finite_coordinate(target_coordinates.x, "target X")
+        self._validate_finite_coordinate(target_coordinates.y, "target Y")
+        self._validate_finite_coordinate(target_coordinates.z, "target Z")
+
+    @staticmethod
+    def _validate_finite_coordinate(value: float, label: str) -> None:
+        try:
+            numeric_value = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{label} must be finite; got {value!r}.") from exc
+        if not math.isfinite(numeric_value):
+            raise ValueError(f"{label} must be finite; got {value!r}.")
 
     def _generate_movement_commands(
         self,
@@ -1032,6 +1046,7 @@ class Mill:
         obstacles the caller didn't plan for.
         """
         f = f" F{DEFAULT_FEED_RATE}"
+        self._validate_target_coordinates(target_coordinates)
         commands = []
         if target_coordinates.x != current_coordinates.x:
             commands.append(f"G01 X{target_coordinates.x}{f}")
@@ -1056,6 +1071,8 @@ class Mill:
         separate G-codes — no diagonal.
         """
         f = f" F{DEFAULT_FEED_RATE}"
+        self._validate_target_coordinates(target_coordinates)
+        self._validate_finite_coordinate(travel_z, "travel Z")
         commands = []
         if current_coordinates.z != travel_z:
             commands.append(f"G01 Z{travel_z}{f}")

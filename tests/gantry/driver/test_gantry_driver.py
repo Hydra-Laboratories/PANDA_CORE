@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 import sys
 from pathlib import Path
+import math
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -182,6 +183,38 @@ class TestCNCDriverLogic(unittest.TestCase):
             "G01 Y-60.0 F2000",
             "G01 Z-90.0 F2000",
         ])
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_move_to_position_rejects_non_finite_motion_inputs(
+        self, mock_cmd_logger, mock_mill_logger, mock_serial,
+    ):
+        """The low-level driver must not format NaN/Inf into G-code."""
+        cases = [
+            {"x_coordinate": math.nan, "y_coordinate": 0.0, "z_coordinate": 0.0},
+            {"x_coordinate": 0.0, "y_coordinate": math.inf, "z_coordinate": 0.0},
+            {"x_coordinate": 0.0, "y_coordinate": 0.0, "z_coordinate": -math.inf},
+            {
+                "x_coordinate": 0.0,
+                "y_coordinate": 0.0,
+                "z_coordinate": 0.0,
+                "travel_z": math.nan,
+            },
+        ]
+
+        for kwargs in cases:
+            with self.subTest(kwargs=kwargs):
+                mill = Mill()
+                mill.current_coordinates = MagicMock(
+                    return_value=Coordinates(0.0, 0.0, 0.0),
+                )
+                mill.execute_command = MagicMock()
+
+                with self.assertRaisesRegex(ValueError, "finite"):
+                    mill.move_to_position(**kwargs)
+
+                mill.execute_command.assert_not_called()
 
     @patch('gantry.gantry_driver.driver.time.sleep')
     @patch('gantry.gantry_driver.driver.time.time', side_effect=[0.0, 2.0])
