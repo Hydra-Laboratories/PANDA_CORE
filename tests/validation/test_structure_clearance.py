@@ -97,3 +97,49 @@ def test_scan_entry_at_structure_clearance_passes():
         _deck(),
         _gantry(clearance_z=85.0),
     ) == []
+
+
+def _move_protocol(travel_z: float) -> Protocol:
+    return Protocol([
+        ProtocolStep(
+            index=0,
+            command_name="move",
+            handler=lambda *a, **k: None,
+            args={
+                "instrument": "asmi",
+                "position": [100.0, 150.0, 40.0],
+                "travel_z": travel_z,
+            },
+        )
+    ])
+
+
+def test_move_travel_z_below_structure_clearance_fails():
+    """travel_z=40 with structure_clearance_z=85 must be rejected."""
+    violations = validate_protocol_semantics(
+        _move_protocol(travel_z=40.0),
+        _board(),
+        _deck(),
+        _gantry(clearance_z=85.0),
+    )
+
+    assert len(violations) == 1
+    assert "structure_clearance_z" in violations[0].message
+
+
+def test_move_travel_z_at_structure_clearance_passes():
+    assert validate_protocol_semantics(
+        _move_protocol(travel_z=85.0),
+        _board(),
+        _deck(),
+        _gantry(clearance_z=85.0),
+    ) == []
+
+
+def test_move_travel_z_above_structure_clearance_passes():
+    assert validate_protocol_semantics(
+        _move_protocol(travel_z=90.0),
+        _board(),
+        _deck(),
+        _gantry(clearance_z=85.0),
+    ) == []
