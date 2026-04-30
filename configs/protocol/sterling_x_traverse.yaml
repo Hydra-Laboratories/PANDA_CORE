@@ -1,34 +1,47 @@
-# Sterling X-axis traverse for collision avoidance testing.
-# Moves the gantry from x_min to x_max at a safe Z clearance plane.
+# Sterling X-axis collision avoidance test.
+#
+# Scenario: gantry descends to z_min at x_mid, then moves to x_max at
+# z_max. Without travel_z on step 4, the gantry X-traverses at z_min
+# (its current Z from step 3) before lifting — this would collide with
+# any labware along the X path.
+#
+# The validator currently does NOT catch this because it checks each
+# step independently without tracking the gantry's Z from prior steps.
 
 positions:
-  park: [280.0, 280.0, 85.0]
-  x_min: [0.0, 150.0, 40.0]
-  x_max: [306.0, 150.0, 40.0]
+  park:  [280.0, 280.0, 85.0]
+  x_min_high: [0.0, 150.0, 85.0]
+  x_mid_low:  [153.0, 150.0, 30.0]
+  x_max_high: [306.0, 150.0, 85.0]
 
 protocol:
   - home:
 
+  # Step 1: park safely
   - move:
       instrument: asmi
       position: park
       travel_z: 85.0
 
+  # Step 2: move to x_min at safe height
   - move:
       instrument: asmi
-      position: x_min
-      travel_z: 40.0
+      position: x_min_high
+      travel_z: 85.0
 
+  # Step 3: descend to z=30 at x_mid (below labware)
   - move:
       instrument: asmi
-      position: x_max
-      travel_z: 40.0
+      position: x_mid_low
+      travel_z: 85.0
 
+  # Step 4: BUG — no travel_z, so gantry X-traverses at z=30 (from
+  # step 3) before lifting to z=85. Would collide with vials at z~57.
   - move:
       instrument: asmi
-      position: x_min
-      travel_z: 40.0
+      position: x_max_high
 
+  # Step 5: return to park
   - move:
       instrument: asmi
       position: park

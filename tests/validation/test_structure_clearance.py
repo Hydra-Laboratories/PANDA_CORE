@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from board.board import Board
 from deck.deck import Deck
 from deck.labware.labware import Coordinate3D
@@ -143,3 +145,52 @@ def test_move_travel_z_above_structure_clearance_passes():
         _deck(),
         _gantry(clearance_z=85.0),
     ) == []
+
+
+@pytest.mark.xfail(
+    reason="Validator does not track Z state between steps — "
+    "step 3 leaves gantry at z=30, step 4 X-traverses at z=30 "
+    "without travel_z, which would collide with labware at z=57.",
+    strict=True,
+)
+def test_move_without_travel_z_after_low_z_step_should_fail():
+    """Gantry descends to z=30, then moves X without travel_z.
+
+    The X traversal happens at z=30 (current Z from prior step), which
+    is below structure_clearance_z=85. Validation should catch this but
+    currently does not because it checks steps independently.
+    """
+    board, deck = _board(), _deck()
+    gantry = _gantry(clearance_z=85.0)
+    protocol = Protocol([
+        # Step 0: descend to z=30 at x=50
+        ProtocolStep(
+            index=0,
+            command_name="move",
+            handler=lambda *a, **k: None,
+            args={
+                "instrument": "asmi",
+                "position": [50.0, 100.0, 30.0],
+                "travel_z": 85.0,
+            },
+        ),
+        # Step 1: move to x=250 at z=85 — BUT no travel_z, so gantry
+        # X-traverses at z=30 (its current Z) before lifting.
+        ProtocolStep(
+            index=1,
+            command_name="move",
+            handler=lambda *a, **k: None,
+            args={
+                "instrument": "asmi",
+                "position": [250.0, 100.0, 85.0],
+            },
+        ),
+    ])
+
+    violations = validate_protocol_semantics(protocol, board, deck, gantry)
+
+    assert any("structure_clearance" in v.message or "travel" in v.message
+               for v in violations), (
+        "Validator should flag X traversal at z=30 (below clearance=85) "
+        f"but found no violations: {violations}"
+    )
