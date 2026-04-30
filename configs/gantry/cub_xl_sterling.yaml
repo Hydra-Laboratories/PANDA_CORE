@@ -27,7 +27,7 @@ grbl_settings:
   max_travel_x: 306.0
   max_travel_y: 300.0
   max_travel_z: 115.0
-  soft_limits: true
+  soft_limits: false
 
 instruments:
   asmi:
@@ -37,8 +37,8 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    measurement_height: 26.0
-    safe_approach_height: 35.0
+    measurement_height: 2.0
+    safe_approach_height: 5.0
     force_threshold: -50
     sensor_channels:
       - 1

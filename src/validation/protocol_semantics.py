@@ -267,7 +267,7 @@ def _validate_move_waypoints(
                 f"position {position!r} cannot be resolved on the deck: {exc}",
             ))
             return violations
-        approach_z = board.instruments[instrument].safe_approach_height
+        approach_z = coord.z - board.instruments[instrument].safe_approach_height
         target = (coord.x, coord.y, approach_z)
 
     if target is None:
