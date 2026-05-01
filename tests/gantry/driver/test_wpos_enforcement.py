@@ -31,6 +31,24 @@ class TestWposEnforcement(unittest.TestCase):
         self.assertEqual(coords.y, 20.0)
         self.assertEqual(coords.z, 5.0)
 
+    def test_current_coordinates_extracts_status_from_multiline_read(self):
+        mill = self._make_mill()
+        mill.ser_mill.write = MagicMock()
+        mill.read = MagicMock(
+            return_value="ok\n<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>\n"
+        )
+        coords = mill.current_coordinates()
+        self.assertEqual(coords.x, 10.0)
+        self.assertEqual(coords.y, 20.0)
+        self.assertEqual(coords.z, 5.0)
+        mill.ser_mill.write.assert_called_once_with(b"?")
+
+    def test_extract_status_line_ignores_serial_chatter(self):
+        status = Mill._extract_status_line(
+            "ok\n[MSG:Reset to continue]\n<Idle|WPos:1.000,2.000,3.000|FS:0,0>\n"
+        )
+        self.assertEqual(status, "<Idle|WPos:1.000,2.000,3.000|FS:0,0>")
+
     def test_current_coordinates_converts_mpos_to_wpos(self):
         mill = self._make_mill()
         mill.config["$10"] = "1"  # Force MPos mode

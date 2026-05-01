@@ -669,6 +669,17 @@ class Mill:
         msg = msg.decode(encoding="ascii")
         return msg
 
+    @staticmethod
+    def _extract_status_line(status: str) -> str:
+        """Return the first GRBL status line from a serial read chunk."""
+        if not status:
+            return ""
+        for line in status.splitlines():
+            line = line.strip()
+            if line.startswith("<"):
+                return line
+        return status.strip()
+
     def txrx(self, command: str) -> str:
         """Write a command to the mill and read the response."""
         self.write(command)
@@ -804,7 +815,7 @@ class Mill:
         """
         self.ser_mill.write(b"?")
         time.sleep(0.05)
-        status = self.read()
+        status = self._extract_status_line(self.read())
         attempts = 0
         while (not status or status[0] != "<") and attempts < 3:
             if "alarm" in status.lower() or "error" in status.lower():
@@ -813,7 +824,7 @@ class Mill:
                 raise StatusReturnError(f"Error in status: {status}")
             if "ok" in status.lower():
                 self.logger.debug("OK in status: %s", status)
-            status = self.read()
+            status = self._extract_status_line(self.read())
             attempts += 1
 
         self.last_status = status
@@ -875,10 +886,10 @@ class Mill:
                 time.sleep(0.2)
                 self.ser_mill.write(b"?")
                 time.sleep(0.2)
-                status = self.read()
+                status = self._extract_status_line(self.read())
                 retry_attempts = 0
                 while (not status or status[0] != "<") and retry_attempts < 3:
-                    status = self.read()
+                    status = self._extract_status_line(self.read())
                     retry_attempts += 1
 
         mill_center = Coordinates(x_coord, y_coord, z_coord)
