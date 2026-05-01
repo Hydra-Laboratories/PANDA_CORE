@@ -66,7 +66,8 @@ def test_measure_uses_absolute_measurement_height():
     measure(ctx, instrument="uvvis", position="plate_1.A1")
 
     board.move_to_labware.assert_called_once_with("uvvis", deck.resolve.return_value)
-    board.move.assert_called_once_with("uvvis", (10.0, 20.0, 3.0))
+    # action_z = well.z - measurement_height = 75 - 3 = 72.
+    board.move.assert_called_once_with("uvvis", (10.0, 20.0, 72.0))
 
 
 def test_scan_new_travel_names_are_absolute_deck_frame_planes():

@@ -52,6 +52,7 @@ def measure(
         )
 
     coord = context.deck.resolve(position)
+    action_z = coord.z - instr.measurement_height
     context.logger.info("measure: %s.%s(%s) at %s", instrument, method, method_kwargs, position)
-    approach_and_descend(context, instrument, coord)
+    approach_and_descend(context, instrument, coord, measurement_height=action_z)
     return getattr(instr, method)(**method_kwargs)

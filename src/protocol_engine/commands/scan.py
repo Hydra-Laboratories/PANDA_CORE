@@ -119,12 +119,17 @@ def scan(
             if i == 0 and normalized.entry_travel_z is not None
             else normalized.interwell_travel_z
         )
+        action_z = (
+            normalized.measurement_height
+            if normalized.measurement_height is not None
+            else well.z - instr.measurement_height
+        )
         approach_and_descend(
             context,
             instrument,
             well,
             safe_approach_height=approach_z,
-            measurement_height=normalized.measurement_height,
+            measurement_height=action_z,
         )
 
         # Inject gantry if the method accepts it (e.g. ASMI.indentation
@@ -168,7 +173,7 @@ def scan(
         final_approach_z = (
             normalized.interwell_travel_z
             if normalized.interwell_travel_z is not None
-            else instr.safe_approach_height
+            else last_well.z - instr.safe_approach_height
         )
         context.board.move(instrument, (last_well.x, last_well.y, final_approach_z))
 

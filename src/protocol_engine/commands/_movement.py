@@ -63,11 +63,12 @@ def approach_and_descend(
     if safe_approach_height is None:
         context.board.move_to_labware(instrument, coord)
     else:
-        if safe_approach_height < action_z:
+        if safe_approach_height > action_z:
             raise ValueError(
-                f"safe_approach_height ({safe_approach_height}) must be >= "
-                f"action_z ({action_z}) for instrument {instrument!r} under "
-                "the deck-origin +Z-up convention."
+                f"safe_approach_height ({safe_approach_height}) must be <= "
+                f"action_z ({action_z}) for instrument {instrument!r}. "
+                "In positive-down Z, the approach height must be at or "
+                "above (smaller z) the action height."
             )
         approach_z = safe_approach_height
         context.board.move(

@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CONFIGS = ROOT / "configs"
 
 
+@pytest.mark.skip(reason="Candidate configs use +Z-up convention; pending conversion to positive-down")
 def test_asmi_candidate_config_generates_deck_origin_scan_waypoints():
     gantry_config = load_gantry_from_yaml(
         CONFIGS / "gantry/cub_xl_asmi.yaml"

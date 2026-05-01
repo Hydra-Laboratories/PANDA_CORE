@@ -45,8 +45,8 @@ def test_measure_approaches_then_descends_then_acts():
 
     # Step 1: approach.
     ctx.board.move_to_labware.assert_called_once_with("uvvis", coord)
-    # Step 2: descend to the absolute deck-frame action Z.
-    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, 3.0))
+    # Step 2: descend to action_z = well.z - measurement_height = 30 - 3 = 27.
+    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, 27.0))
     # Step 3: act.
     instr.measure.assert_called_once()
     assert result == "spectrum"
@@ -61,7 +61,8 @@ def test_measure_contact_instrument_descends_below_reference():
 
     measure(ctx, instrument="uvvis", position="plate_1.A1")
 
-    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, -5.0))
+    # action_z = well.z - measurement_height = 30 - (-5) = 35.
+    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, 35.0))
 
 
 def test_measure_passes_method_kwargs():

@@ -83,11 +83,15 @@ class TestApproachAndDescend:
         ctx.board.move.assert_called_once_with("sensor", (5.0, 6.0, 2.0))
 
     def test_safe_approach_height_override_uses_protocol_value(self):
+        """Protocol-level absolute safe_approach_height overrides
+        move_to_labware. In positive-down Z, approach (smaller z)
+        must be above action (larger z)."""
         ctx, instr = _mock_ctx(measurement_height=3.0)
         coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
 
         approach_and_descend(
-            ctx, "sensor", coord, safe_approach_height=20.0,
+            ctx, "sensor", coord,
+            safe_approach_height=20.0, measurement_height=50.0,
         )
 
         ctx.board.move_to_labware.assert_not_called()
@@ -95,14 +99,17 @@ class TestApproachAndDescend:
         first_call, second_call = ctx.board.move.call_args_list
         assert first_call.args == ("sensor", (10.0, 20.0, 20.0))
         assert first_call.kwargs == {"travel_z": 20.0}
-        assert second_call.args == ("sensor", (10.0, 20.0, 3.0))
+        assert second_call.args == ("sensor", (10.0, 20.0, 50.0))
         assert second_call.kwargs == {}
 
     def test_safe_approach_height_override_must_not_sit_below_action_height(self):
+        """In positive-down Z, approach z must be <= action z. An approach
+        z larger than action z means travel below the action height."""
         ctx, instr = _mock_ctx(measurement_height=3.0)
         coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
 
         with pytest.raises(ValueError, match="safe_approach_height"):
             approach_and_descend(
-                ctx, "sensor", coord, safe_approach_height=2.0,
+                ctx, "sensor", coord,
+                safe_approach_height=60.0, measurement_height=50.0,
             )
