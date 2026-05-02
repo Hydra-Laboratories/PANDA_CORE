@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from gantry.gantry_driver.driver import Mill, wpos_pattern, mpos_pattern, wco_pattern
+from gantry.gantry_driver.exceptions import StatusReturnError
 from gantry.gantry_driver.instruments import Coordinates
 
 
@@ -48,6 +49,28 @@ class TestWposEnforcement(unittest.TestCase):
             "ok\n[MSG:Reset to continue]\n<Idle|WPos:1.000,2.000,3.000|FS:0,0>\n"
         )
         self.assertEqual(status, "<Idle|WPos:1.000,2.000,3.000|FS:0,0>")
+
+    def test_current_status_extracts_status_from_multiline_read(self):
+        mill = self._make_mill()
+        mill.read = MagicMock(
+            return_value="ok\n<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>\n"
+        )
+
+        status = mill.current_status()
+
+        self.assertEqual(status, "<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>")
+
+    def test_current_status_raises_when_chatter_contains_alarm(self):
+        mill = self._make_mill()
+        mill.read = MagicMock(
+            return_value=(
+                "ok\nALARM:2\n"
+                "<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>\n"
+            )
+        )
+
+        with self.assertRaisesRegex(StatusReturnError, "ALARM:2"):
+            mill.current_status()
 
     def test_current_coordinates_converts_mpos_to_wpos(self):
         mill = self._make_mill()

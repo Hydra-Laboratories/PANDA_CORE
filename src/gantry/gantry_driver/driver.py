@@ -626,11 +626,21 @@ class Mill:
         attempt_limit = 5
         status = self.read()
 
-        while status in ["", "ok"] and attempt_limit > 0:
+        while self._extract_status_line(status) in ["", "ok"] and attempt_limit > 0:
             self.ser_mill.write(b"?")
             time.sleep(0.05)
             status = self.read()
             attempt_limit -= 1
+
+        if re.search(r"\b(error|alarm)\b", status.lower()):
+            self.logger.error("Error in status: %s", status)
+            self.last_status = status
+            if self.interactive_mode:
+                print(f"Error in status: {status}")
+                return ""
+            raise StatusReturnError(f"Error in status: {status}")
+
+        status = self._extract_status_line(status)
 
         if not status:
             raw_lines = self.ser_mill.readlines()
@@ -641,8 +651,9 @@ class Mill:
                     print("Failed to get status from the mill")
                     return ""
                 raise StatusReturnError("Failed to get status from the mill")
-            # Find the first status line (<...>) or join all lines
-            status = next((l for l in lines if l.startswith("<")), "; ".join(lines))
+            status = self._extract_status_line("\n".join(lines))
+            if not status:
+                status = "; ".join(lines)
             if any(re.search(r"\b(error|alarm)\b", item.lower()) for item in lines):
                 self.logger.error("Error in status: %s", status)
                 self.last_status = status
