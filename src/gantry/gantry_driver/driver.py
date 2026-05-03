@@ -682,13 +682,18 @@ class Mill:
 
     @staticmethod
     def _extract_status_line(status: str) -> str:
-        """Return the first GRBL status line from a serial read chunk."""
+        """Return the first complete GRBL status line from a serial read chunk."""
         if not status:
             return ""
+        saw_status_fragment = False
         for line in status.splitlines():
             line = line.strip()
             if line.startswith("<"):
-                return line
+                saw_status_fragment = True
+                if line.endswith(">"):
+                    return line
+        if saw_status_fragment:
+            return ""
         return status.strip()
 
     def txrx(self, command: str) -> str:

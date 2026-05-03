@@ -50,6 +50,48 @@ class TestWposEnforcement(unittest.TestCase):
         )
         self.assertEqual(status, "<Idle|WPos:1.000,2.000,3.000|FS:0,0>")
 
+    def test_extract_status_line_ignores_incomplete_status_fragment(self):
+        status = Mill._extract_status_line("<Idle|WPos:1.000,2.000,3")
+        self.assertEqual(status, "")
+
+    def test_extract_status_line_skips_incomplete_fragment_before_complete_status(self):
+        status = Mill._extract_status_line(
+            "<Idle|WPos:1.000,2.000,3\n"
+            "<Idle|WPos:4.000,5.000,6.000|FS:0,0>\n"
+        )
+        self.assertEqual(status, "<Idle|WPos:4.000,5.000,6.000|FS:0,0>")
+
+    def test_current_status_retries_after_incomplete_status_fragment(self):
+        mill = self._make_mill()
+        mill.ser_mill.write = MagicMock()
+        mill.read = MagicMock(
+            side_effect=[
+                "<Idle|WPos:10.000,20.000,5",
+                "<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>",
+            ]
+        )
+
+        status = mill.current_status()
+
+        self.assertEqual(status, "<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>")
+        mill.ser_mill.write.assert_called_once_with(b"?")
+
+    def test_current_coordinates_retries_after_incomplete_status_fragment(self):
+        mill = self._make_mill()
+        mill.ser_mill.write = MagicMock()
+        mill.read = MagicMock(
+            side_effect=[
+                "<Idle|WPos:10.000,20.000,5",
+                "<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>",
+            ]
+        )
+
+        coords = mill.current_coordinates()
+
+        self.assertEqual(coords.x, 10.0)
+        self.assertEqual(coords.y, 20.0)
+        self.assertEqual(coords.z, 5.0)
+
     def test_current_status_extracts_status_from_multiline_read(self):
         mill = self._make_mill()
         mill.read = MagicMock(
