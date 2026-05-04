@@ -31,6 +31,32 @@ def _check_point(
     return violations
 
 
+def _reach_limit_value(reach_limits: object, key: str) -> float | None:
+    """Read one reach-limit value from a dict-like or typed object."""
+    if reach_limits is None:
+        return None
+    if isinstance(reach_limits, dict):
+        value = reach_limits.get(key)
+    else:
+        value = getattr(reach_limits, key, None)
+    return None if value is None else float(value)
+
+
+def _check_instrument_x_reach(
+    reach_limits: object,
+    gantry_x: float,
+) -> List[Tuple[str, str, float]]:
+    """Return X reach violations for a calibrated instrument, if configured."""
+    violations: List[Tuple[str, str, float]] = []
+    x_min = _reach_limit_value(reach_limits, "gantry_x_min")
+    x_max = _reach_limit_value(reach_limits, "gantry_x_max")
+    if x_min is not None and gantry_x < x_min:
+        violations.append(("x", "reach_limits.gantry_x_min", x_min))
+    if x_max is not None and gantry_x > x_max:
+        violations.append(("x", "reach_limits.gantry_x_max", x_max))
+    return violations
+
+
 def _get_all_positions(
     deck: Deck,
 ) -> List[Tuple[str, str, float, float, float]]:
@@ -88,6 +114,21 @@ def validate_gantry_positions(
             gy = y - instrument.offset_y
             gz = z + instrument.depth
             for axis, bound_name, bound_value in _check_point(volume, gx, gy, gz):
+                violations.append(BoundsViolation(
+                    labware_key=lw_key,
+                    position_id=pos_id,
+                    instrument_name=instr_name,
+                    coordinate_type="gantry",
+                    x=gx, y=gy, z=gz,
+                    axis=axis,
+                    bound_name=bound_name,
+                    bound_value=bound_value,
+                ))
+            reach_limits = getattr(instrument, "reach_limits", None)
+            for axis, bound_name, bound_value in _check_instrument_x_reach(
+                reach_limits,
+                gx,
+            ):
                 violations.append(BoundsViolation(
                     labware_key=lw_key,
                     position_id=pos_id,

@@ -60,6 +60,7 @@ class BaseInstrument(ABC):
         self.depth = depth
         self.measurement_height = measurement_height
         self.safe_approach_height = resolved_safe
+        self.reach_limits = None
         self._offline = offline
         self.logger = logging.getLogger(f"{__name__}.{self.name}")
 

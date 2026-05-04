@@ -98,12 +98,14 @@ def _make_instrument(
     offset_x: float = 0.0,
     offset_y: float = 0.0,
     depth: float = 0.0,
+    reach_limits: dict | None = None,
 ) -> BaseInstrument:
     instr = MagicMock(spec=BaseInstrument)
     instr.offset_x = offset_x
     instr.offset_y = offset_y
     instr.depth = depth
     instr.name = "mock_instrument"
+    instr.reach_limits = reach_limits
     return instr
 
 
@@ -337,3 +339,61 @@ class TestValidateGantryPositions:
         # At least one well should violate x_min.
         assert len(violations) > 0
         assert all(v.instrument_name == "big_offset" for v in violations)
+
+    def test_instrument_reach_limits_reject_gantry_x_below_tool_min(self):
+        gantry = _make_gantry(x_min=0.0, x_max=300.0)
+        deck = _make_deck(vial_1=_make_vial(x=20.0, y=40.0, z=20.0))
+        instr = _make_instrument(
+            offset_x=0.0,
+            reach_limits={
+                "gantry_x_min": 25.0,
+                "gantry_x_max": 280.0,
+                "tcp_z_min": 0.0,
+            },
+        )
+        board = _make_board(("probe", instr))
+
+        violations = validate_gantry_positions(gantry, deck, board)
+
+        assert len(violations) == 1
+        assert violations[0].axis == "x"
+        assert violations[0].bound_name == "reach_limits.gantry_x_min"
+        assert violations[0].bound_value == 25.0
+
+    def test_instrument_reach_limits_reject_gantry_x_above_tool_max(self):
+        gantry = _make_gantry(x_min=0.0, x_max=300.0)
+        deck = _make_deck(vial_1=_make_vial(x=290.0, y=40.0, z=20.0))
+        instr = _make_instrument(
+            offset_x=0.0,
+            reach_limits={
+                "gantry_x_min": 25.0,
+                "gantry_x_max": 280.0,
+                "tcp_z_min": 0.0,
+            },
+        )
+        board = _make_board(("probe", instr))
+
+        violations = validate_gantry_positions(gantry, deck, board)
+
+        assert len(violations) == 1
+        assert violations[0].axis == "x"
+        assert violations[0].bound_name == "reach_limits.gantry_x_max"
+        assert violations[0].bound_value == 280.0
+
+    def test_instrument_reach_limits_do_not_replace_global_volume(self):
+        gantry = _make_gantry(x_min=0.0, x_max=300.0)
+        deck = _make_deck(vial_1=_make_vial(x=310.0, y=40.0, z=20.0))
+        instr = _make_instrument(
+            offset_x=0.0,
+            reach_limits={
+                "gantry_x_min": 0.0,
+                "gantry_x_max": 400.0,
+                "tcp_z_min": 0.0,
+            },
+        )
+        board = _make_board(("probe", instr))
+
+        violations = validate_gantry_positions(gantry, deck, board)
+
+        assert len(violations) == 1
+        assert violations[0].bound_name == "x_max"

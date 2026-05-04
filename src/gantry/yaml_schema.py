@@ -35,6 +35,24 @@ class WorkingVolumeYaml(BaseModel):
         return self
 
 
+class HomingProfileYaml(BaseModel):
+    """Explicit GRBL settings for one homing profile."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    dir_invert_mask: int
+    homing_dir_mask: int
+
+
+class CalibrationHomingYaml(BaseModel):
+    """Calibration-only homing profiles for FLB/BRT switching."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    runtime_brt: HomingProfileYaml
+    origin_flb: HomingProfileYaml
+
+
 class CncYaml(BaseModel):
     """CNC gantry settings."""
 
@@ -44,6 +62,7 @@ class CncYaml(BaseModel):
     total_z_height: float
     y_axis_motion: Literal["head", "bed"] = "head"
     structure_clearance_z: Optional[float] = None
+    calibration_homing: Optional[CalibrationHomingYaml] = None
 
     @model_validator(mode="after")
     def _validate_total_z_height_positive(self) -> "CncYaml":
@@ -78,4 +97,35 @@ class GantryYamlSchema(BaseModel):
             raise ValueError(
                 "cnc.total_z_height must be >= working_volume.z_max."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_calibration_runtime_matches_grbl(self) -> "GantryYamlSchema":
+        calibration = self.cnc.calibration_homing
+        if calibration is None:
+            return self
+        if self.grbl_settings is None:
+            raise ValueError(
+                "cnc.calibration_homing requires grbl_settings.dir_invert_mask "
+                "and grbl_settings.homing_dir_mask so runtime_brt is anchored "
+                "to the normal runtime profile."
+            )
+
+        expected_pairs = (
+            ("dir_invert_mask", calibration.runtime_brt.dir_invert_mask),
+            ("homing_dir_mask", calibration.runtime_brt.homing_dir_mask),
+        )
+        for field_name, profile_value in expected_pairs:
+            grbl_value = getattr(self.grbl_settings, field_name)
+            if grbl_value is None:
+                raise ValueError(
+                    f"cnc.calibration_homing.runtime_brt.{field_name} "
+                    f"requires grbl_settings.{field_name}."
+                )
+            if int(grbl_value) != int(profile_value):
+                raise ValueError(
+                    f"cnc.calibration_homing.runtime_brt.{field_name} must "
+                    f"match grbl_settings.{field_name}; got {profile_value} "
+                    f"vs {grbl_value}."
+                )
         return self

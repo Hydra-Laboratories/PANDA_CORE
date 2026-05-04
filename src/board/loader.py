@@ -73,11 +73,14 @@ def _instantiate_instruments(
         kwargs = dict(entry)
         type_key = kwargs.pop("type")
         vendor = kwargs.pop("vendor")
+        reach_limits = kwargs.pop("reach_limits", None)
         validate_instrument(type_key, vendor)
         if mock_mode:
             kwargs["offline"] = True
         cls = get_instrument_class(type_key)
-        instruments[name] = cls(**kwargs)
+        instrument = cls(**kwargs)
+        instrument.reach_limits = dict(reach_limits) if reach_limits else None
+        instruments[name] = instrument
     return instruments
 
 

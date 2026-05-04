@@ -22,8 +22,9 @@ Gantry YAML defines:
 - Y-axis motion mode
 - working volume
 - optional structure-clearance Z
+- optional calibration-only FLB/BRT homing profiles
 - optional GRBL settings expectations
-- mounted instruments, offsets, reach depths, action heights, and driver-specific settings
+- mounted instruments, offsets, reach depths, action heights, optional reach limits, and driver-specific settings
 
 Representative example:
 
@@ -34,6 +35,13 @@ cnc:
   total_z_height: 87.0
   y_axis_motion: head
   structure_clearance_z: 85.0
+  calibration_homing:
+    runtime_brt:
+      dir_invert_mask: 1
+      homing_dir_mask: 0
+    origin_flb:
+      dir_invert_mask: 1
+      homing_dir_mask: 7
 
 working_volume:
   x_min: 0.0
@@ -52,6 +60,10 @@ instruments:
     depth: 0.0
     measurement_height: 26.0
     safe_approach_height: 35.0
+    reach_limits:
+      gantry_x_min: 0.0
+      gantry_x_max: 399.0
+      tcp_z_min: 0.0
 ```
 
 Use this file when:
@@ -71,6 +83,14 @@ is negative.
 Run [Calibrate Deck Origin](calibration.md) before trusting measured working
 volume values on real hardware. Use [Gantry Bring-Up](admin/gantry-bring-up.md)
 first if controller direction, homing, or WPos reporting is unknown.
+
+`setup/calibrate_deck_origin.py` requires explicit
+`cnc.calibration_homing.runtime_brt` and `origin_flb` profiles and refuses to
+infer `$3` or `$23`. Runtime protocol homing remains BRT; FLB homing is only for
+calibration/admin use. The script sets FLB as G54 WPos zero, then actively
+moves to an estimated BRT inspection pose from configured bounds minus 2 mm
+before programming `$130/$131/$132`; it restores the runtime BRT profile before
+disconnecting without running BRT `$H`.
 
 ## Deck Config
 

@@ -55,37 +55,34 @@ running protocols:
 
 ```bash
 PYTHONPATH=src python setup/calibrate_deck_origin.py \
-  --gantry configs/gantry/cub_xl_asmi.yaml \
-  --instrument asmi
+  --gantry configs/gantry/cub_xl_asmi.yaml
 ```
 
-The calibration script homes the gantry, clears transient `G92` offsets, prompts
-you to jog the active TCP to the front-left lower-reach origin, assigns X/Y, and
-then assigns Z by bottom contact or a ruler-measured gap.
-
-Use bottom mode when the TCP can safely touch true deck bottom:
+After the no-instrument FLB/BRT homing run is verified, calibrate the selected
+instrument TCP:
 
 ```bash
 PYTHONPATH=src python setup/calibrate_deck_origin.py \
   --gantry configs/gantry/cub_xl_asmi.yaml \
-  --z-reference-mode bottom \
   --instrument asmi
 ```
 
-Use ruler-gap mode when the TCP stops above deck bottom:
+The calibration script requires explicit `cnc.calibration_homing.runtime_brt`
+and `origin_flb` profiles. It snapshots rollback GRBL settings, unlocks an
+initial alarm if present, homes to FLB, sets G54 WPos `(0, 0, 0)`, actively
+moves to an estimated BRT inspection pose from configured bounds minus 2 mm,
+programs conservative soft limits, then restores the runtime BRT profile before
+disconnecting without running BRT `$H`. BRT WPos is not used to discover
+machine bounds.
 
-```bash
-PYTHONPATH=src python setup/calibrate_deck_origin.py \
-  --gantry configs/gantry/cub_filmetrics.yaml \
-  --z-reference-mode ruler-gap \
-  --tip-gap-mm 5 \
-  --instrument filmetrics
-```
+For XY offset calibration, the operator jogs the selected TCP onto the physical
+deck-center mark. The script asks interactively whether the TCP is touching
+true deck bottom or whether the operator measured a ruler gap.
 
-For one-instrument configs, use the measured lower-reach Z as
-`working_volume.z_min`. For example, a TCP that stops 5 mm above deck and homes
-to `Z=105` should use `z_min: 5.0`, `z_max: 105.0`. Multi-instrument configs
-need per-instrument lower-reach limits instead of one global Z minimum.
+Keep `working_volume.z_min: 0.0` under this flow. A TCP that stops above deck
+bottom records its lower reach under
+`instruments.<name>.reach_limits.tcp_z_min`; safe left/right X reach is recorded
+as `reach_limits.gantry_x_min/max` and enforced by setup validation.
 
 ## Interactive Jog Test
 

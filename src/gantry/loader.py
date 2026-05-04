@@ -9,7 +9,9 @@ from pydantic import ValidationError
 
 from .errors import GantryLoaderError
 from .gantry_config import (
+    CalibrationHomingProfiles,
     GantryConfig,
+    HomingProfile,
     HomingStrategy,
     WorkingVolume,
     YAxisMotion,
@@ -77,12 +79,33 @@ def load_gantry_from_yaml(path: str | Path) -> GantryConfig:
         name: entry.model_dump()
         for name, entry in schema.instruments.items()
     }
+    calibration_homing = None
+    if schema.cnc.calibration_homing is not None:
+        calibration_homing = CalibrationHomingProfiles(
+            runtime_brt=HomingProfile(
+                dir_invert_mask=(
+                    schema.cnc.calibration_homing.runtime_brt.dir_invert_mask
+                ),
+                homing_dir_mask=(
+                    schema.cnc.calibration_homing.runtime_brt.homing_dir_mask
+                ),
+            ),
+            origin_flb=HomingProfile(
+                dir_invert_mask=(
+                    schema.cnc.calibration_homing.origin_flb.dir_invert_mask
+                ),
+                homing_dir_mask=(
+                    schema.cnc.calibration_homing.origin_flb.homing_dir_mask
+                ),
+            ),
+        )
 
     return GantryConfig(
         serial_port=schema.serial_port,
         homing_strategy=HomingStrategy(schema.cnc.homing_strategy),
         total_z_height=schema.cnc.total_z_height,
         structure_clearance_z=schema.cnc.structure_clearance_z,
+        calibration_homing=calibration_homing,
         working_volume=WorkingVolume(
             x_min=schema.working_volume.x_min,
             x_max=schema.working_volume.x_max,

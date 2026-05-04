@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from gantry.gantry_config import GantryConfig, HomingStrategy, WorkingVolume
+from gantry.gantry_config import (
+    CalibrationHomingProfiles,
+    GantryConfig,
+    HomingProfile,
+    HomingStrategy,
+    WorkingVolume,
+)
 from gantry.origin import (
     DeckOriginCalibrationPlan,
     build_deck_origin_calibration_plan,
@@ -22,6 +28,7 @@ def _deck_origin_config(
     x_max: float = 300.0,
     y_max: float = 200.0,
     z_max: float = 80.0,
+    calibration_homing: bool = True,
 ) -> GantryConfig:
     return GantryConfig(
         serial_port="/dev/null",
@@ -34,6 +41,20 @@ def _deck_origin_config(
             y_max=y_max,
             z_min=z_min,
             z_max=z_max,
+        ),
+        calibration_homing=(
+            CalibrationHomingProfiles(
+                runtime_brt=HomingProfile(
+                    dir_invert_mask=1,
+                    homing_dir_mask=0,
+                ),
+                origin_flb=HomingProfile(
+                    dir_invert_mask=1,
+                    homing_dir_mask=7,
+                ),
+            )
+            if calibration_homing
+            else None
         ),
     )
 
@@ -120,22 +141,32 @@ class TestBuildDeckOriginCalibrationPlan:
         plan = build_deck_origin_calibration_plan(_deck_origin_config())
         assert isinstance(plan, DeckOriginCalibrationPlan)
 
-    def test_rejects_non_deck_origin_config(self):
-        with pytest.raises(ValueError):
-            build_deck_origin_calibration_plan(_deck_origin_config(x_min=10.0))
+    def test_rejects_missing_calibration_profiles(self):
+        with pytest.raises(ValueError, match="calibration_homing"):
+            build_deck_origin_calibration_plan(
+                _deck_origin_config(calibration_homing=False)
+            )
 
-    def test_command_sequence_starts_with_home_and_disables_soft_limits(self):
+    def test_command_sequence_starts_with_snapshot_and_flb_profile(self):
         plan = build_deck_origin_calibration_plan(_deck_origin_config())
-        assert plan.commands[0] == "$H"
-        assert "$10=0" in plan.commands
-        assert plan.commands.index("$10=0") < plan.commands.index("G54")
+        assert plan.commands[:4] == ("$$", "$3=1", "$23=7", "$22=1")
+        assert "$H  # FLB" in plan.commands
+        assert "$H  # BRT" not in plan.commands
 
     def test_command_sequence_pins_g92_clear_before_origin_assignment(self):
         plan = build_deck_origin_calibration_plan(_deck_origin_config())
         commands = list(plan.commands)
         assert "G92.1" in commands
-        assert "G10 L20 P1 X0 Y0" in commands
-        assert commands.index("G92.1") < commands.index("G10 L20 P1 X0 Y0")
+        assert "G10 L20 P1 X0 Y0 Z0" in commands
+        assert commands.index("G92.1") < commands.index("G10 L20 P1 X0 Y0 Z0")
+
+    def test_command_sequence_restores_brt_profile_without_homing(self):
+        plan = build_deck_origin_calibration_plan(_deck_origin_config())
+        commands = list(plan.commands)
+        idx_enable = commands.index("$20=1")
+        restore_idx = commands.index("$23=0", idx_enable)
+        assert commands.index("$3=1", idx_enable) < restore_idx
+        assert not any(command.startswith("$H") and "BRT" in command for command in commands)
 
     def test_command_sequence_disables_soft_limits_before_writing_max_travel(self):
         plan = build_deck_origin_calibration_plan(_deck_origin_config())
@@ -144,22 +175,16 @@ class TestBuildDeckOriginCalibrationPlan:
         idx_x = commands.index("$130=<x_span_mm>")
         idx_y = commands.index("$131=<y_span_mm>")
         idx_z = commands.index("$132=<z_span_mm>")
-        idx_homing = commands.index("$22=1")
+        idx_homing = commands.index("$22=1", idx_z)
         idx_enable = commands.index("$20=1")
         assert idx_disable < idx_x < idx_y < idx_z < idx_homing < idx_enable
 
-    def test_command_sequence_re_homes_after_soft_limit_reenable(self):
+    def test_command_sequence_does_not_re_home_after_soft_limit_reenable(self):
         plan = build_deck_origin_calibration_plan(_deck_origin_config())
         commands = list(plan.commands)
         idx_enable = commands.index("$20=1")
-        rehome_after = commands.index("$H", idx_enable)
-        assert rehome_after > idx_enable
-        assert commands[-1] == "?"
-
-    def test_command_sequence_assigns_max_corner_wpos_after_rehome(self):
-        plan = build_deck_origin_calibration_plan(_deck_origin_config())
-        commands = list(plan.commands)
-        max_corner = "G10 L20 P1 X<x_max_mm> Y<y_max_mm> Z<z_max_mm>"
-        assert max_corner in commands
-        idx_enable = commands.index("$20=1")
-        assert commands.index(max_corner) > idx_enable
+        restore_runtime = commands.index("$22=1  # restore runtime profile without BRT $H")
+        assert restore_runtime > idx_enable
+        assert not any(command.startswith("$H") and "BRT" in command for command in commands)
+        assert commands[-2] == "?"
+        assert commands[-1] == "<optional instrument TCP calibration>"

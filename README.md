@@ -27,6 +27,13 @@ cnc:
   homing_strategy: standard
   total_z_height: 87.0
   structure_clearance_z: 85.0
+  calibration_homing:
+    runtime_brt:
+      dir_invert_mask: 1
+      homing_dir_mask: 0
+    origin_flb:
+      dir_invert_mask: 1
+      homing_dir_mask: 7
 
 working_volume:
   x_min: 0.0
@@ -45,6 +52,10 @@ instruments:
     depth: 0.0
     measurement_height: 26.0
     safe_approach_height: 35.0
+    reach_limits:
+      gantry_x_min: 0.0
+      gantry_x_max: 399.0
+      tcp_z_min: 0.0
 ```
 
 Included examples:
@@ -151,9 +162,27 @@ Calibrate the deck-origin work frame before trusting real motion:
 
 ```bash
 PYTHONPATH=src python setup/calibrate_deck_origin.py \
+  --gantry configs/gantry/cub_xl_asmi.yaml
+```
+
+Then calibrate the selected TCP:
+
+```bash
+PYTHONPATH=src python setup/calibrate_deck_origin.py \
   --gantry configs/gantry/cub_xl_asmi.yaml \
   --instrument asmi
 ```
+
+`setup/calibrate_deck_origin.py` requires explicit
+`cnc.calibration_homing.runtime_brt` and `origin_flb` profiles. It will not
+infer `$3` or `$23`, because those settings define real homing direction and
+jog orientation.
+The script uses FLB homing to set G54 WPos `(0, 0, 0)`, moves to an estimated
+BRT inspection pose from the configured working-volume maxima minus 2 mm,
+programs conservative soft limits from that estimate, and restores the runtime
+BRT profile before disconnecting without running BRT `$H`.
+For TCP offset calibration, it moves near the measured deck center and asks the
+operator to jog the selected TCP onto the physical center mark.
 
 See the docs for the full operator tutorial:
 

@@ -71,39 +71,38 @@ def validate_deck_origin_minima(config: GantryConfig) -> None:
 def build_deck_origin_calibration_plan(
     config: GantryConfig,
 ) -> DeckOriginCalibrationPlan:
-    """Build the GRBL command skeleton for deck-origin calibration.
-
-    The physical travel values are intentionally not included here. They must
-    be measured by jogging to a front-left XY reference at the lowest safe
-    reachable Z, assigning only X/Y to zero, assigning Z either to true deck
-    bottom or to the ruler-measured deck-to-TCP gap, then re-homing and reading
-    WPos at the homed back-right-top corner.
-    """
-    validate_deck_origin_minima(config)
+    """Build the GRBL command skeleton for FLB deck-origin calibration."""
+    if config.calibration_homing is None:
+        raise ValueError(
+            "Deck-origin calibration requires cnc.calibration_homing with "
+            "runtime_brt and origin_flb profiles. The script must not infer "
+            "$3 or $23."
+        )
+    runtime = config.calibration_homing.runtime_brt
+    origin = config.calibration_homing.origin_flb
     return DeckOriginCalibrationPlan(
         origin_wpos=(0.0, 0.0, 0.0),
         commands=(
-            "$H",
-            "$10=0",
-            "G90",
+            "$$",
+            f"$3={format_gcode_number(origin.dir_invert_mask)}",
+            f"$23={format_gcode_number(origin.homing_dir_mask)}",
+            "$22=1",
+            "$H  # FLB",
             "G54",
             "G92.1",
-            "<interactive jog to front-left XY origin/lower reach point>",
-            "G10 L20 P1 X0 Y0",
-            "<confirm deck-bottom contact or enter ruler-measured TCP gap>",
-            "G10 L20 P1 Z<z_min_mm>",
-            "$H",
-            "?",
-            "<compute max travel spans from measured WPos>",
+            "G10 L20 P1 X0 Y0 Z0",
             "$20=0",
+            "<estimate working_volume maxima from configured bounds minus margin>",
+            "<blocking move to estimated BRT inspection pose>",
             "$130=<x_span_mm>",
             "$131=<y_span_mm>",
             "$132=<z_span_mm>",
             "$22=1",
             "$20=1",
-            "$H",
-            "G54",
-            "G10 L20 P1 X<x_max_mm> Y<y_max_mm> Z<z_max_mm>",
+            f"$3={format_gcode_number(runtime.dir_invert_mask)}",
+            f"$23={format_gcode_number(runtime.homing_dir_mask)}",
+            "$22=1  # restore runtime profile without BRT $H",
             "?",
+            "<optional instrument TCP calibration>",
         ),
     )

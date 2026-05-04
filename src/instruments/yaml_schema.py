@@ -7,6 +7,27 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, model_validator
 
 
+class InstrumentReachLimitsYaml(BaseModel):
+    """Optional calibrated reach limits for one mounted instrument."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    gantry_x_min: float
+    gantry_x_max: float
+    tcp_z_min: float
+
+    @model_validator(mode="after")
+    def _validate_ranges(self) -> "InstrumentReachLimitsYaml":
+        if self.gantry_x_min > self.gantry_x_max:
+            raise ValueError(
+                f"gantry_x_min ({self.gantry_x_min}) must be <= "
+                f"gantry_x_max ({self.gantry_x_max})."
+            )
+        if self.tcp_z_min < 0:
+            raise ValueError("tcp_z_min must be >= 0.")
+        return self
+
+
 class InstrumentYamlEntry(BaseModel):
     """Schema for one gantry-mounted instrument.
 
@@ -29,6 +50,7 @@ class InstrumentYamlEntry(BaseModel):
     depth: float = 0.0
     measurement_height: float = 0.0
     safe_approach_height: Optional[float] = None
+    reach_limits: Optional[InstrumentReachLimitsYaml] = None
 
     @model_validator(mode="after")
     def _validate_approach_height(self) -> "InstrumentYamlEntry":

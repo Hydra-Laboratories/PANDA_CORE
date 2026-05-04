@@ -1,10 +1,13 @@
 # Calibrate Deck Origin
 
-This tutorial establishes the CubOS deck-origin work frame for one active
-instrument/TCP. Use it after the gantry controller already homes and jogs in
-the expected direction. If `$3`, `$23`, `$10`, homing direction, or raw
-WPos/MPos behavior are still unknown, do the admin bring-up first:
-[Gantry Bring-Up](admin/gantry-bring-up.md).
+This tutorial establishes the CubOS deck-origin work frame using explicit
+front-left-bottom (FLB) and back-right-top (BRT) GRBL homing profiles from the
+gantry YAML. Runtime protocol `home` still uses the normal BRT `$H`; FLB homing
+is calibration/admin only.
+
+The calibration script will not infer `$3` or `$23`. If the YAML does not define
+both `cnc.calibration_homing.runtime_brt` and
+`cnc.calibration_homing.origin_flb`, the script refuses to move.
 
 ## Coordinate Target
 
@@ -32,7 +35,8 @@ Before touching hardware:
 
 - remove fixtures, samples, and loose cables from the motion path
 - keep a hand on the E-stop or controller reset
-- confirm the mounted TCP can be jogged safely near the front-left lower reach
+- confirm FLB homing switches are physically present and wired for GRBL homing
+- confirm the mounted TCP can be jogged safely at low step/feed after bounds are measured
 - run offline setup validation for the protocol you intend to use
 
 ```bash
@@ -44,16 +48,36 @@ PYTHONPATH=src python setup/validate_setup.py \
 
 ## Run Guided Calibration
 
-The guided command homes the gantry, clears transient `G92` offsets, prompts
-for interactive jogging to the physical front-left XY origin and lowest safe
-reachable Z, assigns only X/Y, assigns Z, then re-homes and reports the measured
-working volume.
+The guided command snapshots rollback GRBL settings, unlocks an initial alarm
+if the controller starts in `Alarm`, applies the explicit FLB profile, homes,
+and sets G54 WPos `(0, 0, 0)`. It then disables stale soft limits, moves to an
+estimated BRT inspection pose from the configured working-volume maxima minus
+2 mm, and programs `$130/$131/$132` from that conservative estimate.
+
+The script does not run BRT homing during calibration. It restores the runtime
+BRT profile before disconnecting, but BRT WPos and switch impacts are not used
+to discover or verify machine dimensions.
+
+For the first physical run, do not attach an instrument. Validate homing and
+bounds only:
+
+```bash
+PYTHONPATH=src python setup/calibrate_deck_origin.py \
+  --gantry configs/gantry/cub_xl_asmi.yaml
+```
+
+After FLB homing and the estimated bounds are verified, calibrate one instrument's
+TCP offset, depth, lower Z reach, and safe X reach:
 
 ```bash
 PYTHONPATH=src python setup/calibrate_deck_origin.py \
   --gantry configs/gantry/cub_xl_asmi.yaml \
   --instrument asmi
 ```
+
+The script moves near the measured deck center and asks the operator to jog the
+selected TCP onto the physical center mark before it computes `offset_x` and
+`offset_y`.
 
 During the jog step:
 
@@ -64,55 +88,38 @@ During the jog step:
 - Enter confirms the current calibration step
 - `Q` aborts
 
-The script assigns X/Y first with:
+The script sets the FLB home pose to G54 WPos zero with:
 
 ```text
-G10 L20 P1 X0 Y0
+G10 L20 P1 X0 Y0 Z0
 ```
 
-Then it assigns Z at the same physical pose.
+It then leaves the calibrated G54 frame in place and restores the runtime BRT
+`$3`/`$23` profile before disconnecting. It does not run BRT `$H`.
 
 ## Z Reference Modes
 
-Use bottom mode only when the active TCP is truly touching deck bottom at the
-front-left lower-reach pose:
+The script asks about Z grounding interactively after you jog the TCP to its
+lower safe reference. Use bottom mode only when the selected TCP is truly
+touching deck bottom at its lower safe reach. Use ruler-gap mode when the TCP
+cannot safely reach true deck bottom. Measure the vertical gap from the deck to
+the TCP and enter that gap as an absolute deck-frame Z.
 
 ```bash
 PYTHONPATH=src python setup/calibrate_deck_origin.py \
   --gantry configs/gantry/cub_xl_asmi.yaml \
-  --z-reference-mode bottom \
   --instrument asmi
 ```
 
-Bottom mode assigns:
-
-```text
-G10 L20 P1 Z0
-```
-
-Use ruler-gap mode when the TCP cannot safely reach true deck bottom. Measure
-the vertical gap from the deck to the TCP and enter that gap as an absolute
-deck-frame Z:
-
-```bash
-PYTHONPATH=src python setup/calibrate_deck_origin.py \
-  --gantry configs/gantry/cub_xl_asmi.yaml \
-  --z-reference-mode ruler-gap \
-  --tip-gap-mm 5 \
-  --instrument asmi
-```
-
-For a 5 mm measured gap, ruler-gap mode assigns:
-
-```text
-G10 L20 P1 Z5
-```
+For a 5 mm measured gap, ruler-gap mode records `tcp_z_min: 5.0` under the
+selected instrument's `reach_limits`.
 
 ## Update Gantry YAML
 
-After assigning the work origin, the script re-homes and reports the WPos at
-the homed back-right-top corner. Those measured values become the physical
-working-volume bounds for this setup.
+After assigning FLB WPos zero, the script moves to the conservative estimated
+BRT inspection pose. Those estimated values become the working-volume bounds
+for this setup. The runtime BRT profile is restored before disconnecting, but
+BRT homing is not part of the calibration flow.
 
 Map the result into gantry YAML as follows:
 
@@ -125,32 +132,43 @@ working_volume:
   x_max: <measured_x_max>
   y_min: 0.0
   y_max: <measured_y_max>
-  z_min: <z_reference_value>
+  z_min: 0.0
   z_max: <measured_z_max>
 ```
 
-For bottom contact, `z_min` is `0.0`. For ruler-gap mode, `z_min` is the
-measured gap. Example: if the TCP stops 5 mm above deck and the homed WPos
-reads `Z=105`, use `z_min: 5.0` and `z_max: 105.0`.
+The selected instrument receives calibrated fields:
 
-This one-instrument `z_min=<gap>` shortcut is not the final model for mixed
-tools. Multi-instrument setups need one shared WPos deck frame plus per-tool
-lower-reach limits and collision checks for inactive tools.
+```yaml
+instruments:
+  asmi:
+    offset_x: <center_x - gantry_x_at_center_mark>
+    offset_y: <center_y - gantry_y_at_center_mark>
+    depth: <gantry_z_at_lower_reach - tcp_z_min>
+    reach_limits:
+      gantry_x_min: <safe_left_gantry_x>
+      gantry_x_max: <safe_right_gantry_x>
+      tcp_z_min: <0 for deck touch, otherwise measured gap>
+```
+
+This keeps one shared FLB deck frame and models lower reach per instrument
+instead of encoding a one-tool lower reach as global `working_volume.z_min`.
 
 ## Hardware Validation
 
 Before trusting the calibrated setup:
 
-1. Record the controller setting snapshot and rollback notes from admin bring-up.
-2. Run the interactive jog test.
+1. First run FLB origin plus estimated BRT inspection with no instrument attached and no samples.
+2. Verify FLB `$H`, estimated X/Y/Z bounds, and WPos repeatability across at least three cycles.
+3. Run the one-instrument TCP calibration at low jog step/feed with E-stop ready.
+4. Run the interactive jog test.
 
    ```bash
    PYTHONPATH=src python setup/hello_world.py \
      --gantry configs/gantry/cub_xl_asmi.yaml
    ```
 
-3. Confirm `+X`, `+Y`, `+Z`, and `-Z` move in the CubOS deck frame.
-4. Run the minimal ASMI A1 move only after jog directions are correct.
+5. Confirm `+X`, `+Y`, `+Z`, and `-Z` move in the CubOS deck frame.
+6. Run the minimal ASMI A1 move only after jog directions are correct.
 
    ```bash
    PYTHONPATH=src python setup/run_protocol.py \
@@ -159,8 +177,8 @@ Before trusting the calibrated setup:
      configs/protocol/asmi_move_a1.yaml
    ```
 
-5. Run conservative ASMI indentation only after the minimal move is correct.
-6. Stop after any unexpected direction, alarm, timeout, coordinate mismatch, or
+7. Run conservative ASMI indentation only after the minimal move is correct.
+8. Stop after any unexpected direction, alarm, timeout, coordinate mismatch, or
    clearance concern.
 
 Offline validation and docs builds do not prove safe real motion.

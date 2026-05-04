@@ -133,6 +133,67 @@ class TestGantryYamlSchema:
         with pytest.raises(ValidationError, match="structure_clearance_z"):
             GantryYamlSchema.model_validate(data)
 
+    def test_calibration_homing_profiles_are_optional_and_parsed(self):
+        data = _valid_gantry_dict()
+        data["grbl_settings"] = {
+            "dir_invert_mask": 1,
+            "homing_dir_mask": 0,
+        }
+        data["cnc"]["calibration_homing"] = {
+            "runtime_brt": {
+                "dir_invert_mask": 1,
+                "homing_dir_mask": 0,
+            },
+            "origin_flb": {
+                "dir_invert_mask": 1,
+                "homing_dir_mask": 7,
+            },
+        }
+
+        schema = GantryYamlSchema.model_validate(data)
+
+        assert schema.cnc.calibration_homing is not None
+        assert schema.cnc.calibration_homing.runtime_brt.dir_invert_mask == 1
+        assert schema.cnc.calibration_homing.runtime_brt.homing_dir_mask == 0
+        assert schema.cnc.calibration_homing.origin_flb.homing_dir_mask == 7
+
+    def test_calibration_runtime_profile_must_match_grbl_settings(self):
+        data = _valid_gantry_dict()
+        data["grbl_settings"] = {
+            "dir_invert_mask": 1,
+            "homing_dir_mask": 0,
+        }
+        data["cnc"]["calibration_homing"] = {
+            "runtime_brt": {
+                "dir_invert_mask": 2,
+                "homing_dir_mask": 0,
+            },
+            "origin_flb": {
+                "dir_invert_mask": 1,
+                "homing_dir_mask": 7,
+            },
+        }
+
+        with pytest.raises(ValidationError, match="runtime_brt.dir_invert_mask"):
+            GantryYamlSchema.model_validate(data)
+
+    def test_calibration_runtime_profile_requires_grbl_settings_fields(self):
+        data = _valid_gantry_dict()
+        data["grbl_settings"] = {"dir_invert_mask": 1}
+        data["cnc"]["calibration_homing"] = {
+            "runtime_brt": {
+                "dir_invert_mask": 1,
+                "homing_dir_mask": 0,
+            },
+            "origin_flb": {
+                "dir_invert_mask": 1,
+                "homing_dir_mask": 7,
+            },
+        }
+
+        with pytest.raises(ValidationError, match="grbl_settings.homing_dir_mask"):
+            GantryYamlSchema.model_validate(data)
+
     def test_extra_top_level_key_rejected(self):
         data = _valid_gantry_dict()
         data["unknown_field"] = "value"
@@ -178,6 +239,47 @@ class TestGantryYamlSchema:
             }
         }
         with pytest.raises(ValidationError, match="safe_approach_height"):
+            GantryYamlSchema.model_validate(data)
+
+    def test_instrument_reach_limits_are_typed_when_present(self):
+        data = _valid_gantry_dict()
+        data["instruments"] = {
+            "asmi": {
+                "type": "asmi",
+                "vendor": "vernier",
+                "measurement_height": 26.0,
+                "safe_approach_height": 35.0,
+                "reach_limits": {
+                    "gantry_x_min": 12.5,
+                    "gantry_x_max": 280.0,
+                    "tcp_z_min": 0.0,
+                },
+            }
+        }
+
+        schema = GantryYamlSchema.model_validate(data)
+
+        limits = schema.instruments["asmi"].reach_limits
+        assert limits is not None
+        assert limits.gantry_x_min == 12.5
+        assert limits.gantry_x_max == 280.0
+        assert limits.tcp_z_min == 0.0
+
+    def test_instrument_reach_limits_reject_inverted_x_range(self):
+        data = _valid_gantry_dict()
+        data["instruments"] = {
+            "asmi": {
+                "type": "asmi",
+                "vendor": "vernier",
+                "reach_limits": {
+                    "gantry_x_min": 100.0,
+                    "gantry_x_max": 90.0,
+                    "tcp_z_min": 0.0,
+                },
+            }
+        }
+
+        with pytest.raises(ValidationError, match="gantry_x_min"):
             GantryYamlSchema.model_validate(data)
 
 

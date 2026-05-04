@@ -118,8 +118,8 @@ Repeat until both are true:
 
 ## Save Expected Settings
 
-Save the final controller expectations in the gantry or board config used by
-the machine. For example:
+Save the final controller expectations in the gantry config used by the
+machine. For example:
 
 ```yaml
 grbl_settings:
@@ -127,6 +127,14 @@ grbl_settings:
   status_report: 0
   homing_enable: true
   homing_dir_mask: 3
+cnc:
+  calibration_homing:
+    runtime_brt:
+      dir_invert_mask: 2
+      homing_dir_mask: 3
+    origin_flb:
+      dir_invert_mask: <measured_or_verified_flb_dir_invert_mask>
+      homing_dir_mask: <measured_or_verified_flb_homing_dir_mask>
 ```
 
 Use the exact values measured on the machine, not these example values.
@@ -156,6 +164,16 @@ Rollback: send $23=0, then re-home and re-check jog directions.
 
 Once homing, jog direction, and WPos reporting match the target behavior, run
 the operator calibration tutorial:
+
+```bash
+PYTHONPATH=src python setup/calibrate_deck_origin.py \
+  --gantry configs/gantry/cub_xl_asmi.yaml
+```
+
+This first run homes FLB, sets G54 zero, moves to an estimated BRT inspection
+pose from configured bounds minus 2 mm, programs conservative soft limits, and
+restores the runtime BRT profile before disconnecting without running BRT `$H`.
+After that no-instrument run is repeatable, run the TCP calibration:
 
 ```bash
 PYTHONPATH=src python setup/calibrate_deck_origin.py \

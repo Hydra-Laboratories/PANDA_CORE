@@ -3,10 +3,9 @@
 # It encodes the CubOS deck frame:
 # front-left-bottom origin, +X right, +Y back, +Z up, -Z down.
 #
-# Measured with the deck-origin calibration flow:
-# - XY origin set at the front-left lower-reach point.
-# - Z grounded at true bottom contact.
-# - Homed WPos measured as X=399.000, Y=280.000, Z=87.000.
+# Measured with a deck-origin calibration flow:
+# - FLB WPos assigned as X=0.000, Y=0.000, Z=0.000.
+# - BRT runtime homed WPos measured as X=399.000, Y=280.000, Z=87.000.
 
 serial_port: /dev/ttyUSB0
 
@@ -14,6 +13,13 @@ cnc:
   homing_strategy: standard
   total_z_height: 87.0
   y_axis_motion: head
+  calibration_homing:
+    runtime_brt:
+      dir_invert_mask: 1
+      homing_dir_mask: 0
+    origin_flb:
+      dir_invert_mask: 1
+      homing_dir_mask: 7
   # Absolute deck-frame Z clearance plane for home/park/edge-risk moves.
   structure_clearance_z: 85.0
 

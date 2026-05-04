@@ -42,6 +42,13 @@ cnc:
   total_z_height: 87.0
   y_axis_motion: head
   structure_clearance_z: 85.0
+  calibration_homing:
+    runtime_brt:
+      dir_invert_mask: 1
+      homing_dir_mask: 0
+    origin_flb:
+      dir_invert_mask: 1
+      homing_dir_mask: 7
 
 working_volume:
   x_min: 0.0
@@ -66,6 +73,10 @@ instruments:
     depth: 0.0
     measurement_height: 26.0
     safe_approach_height: 35.0
+    reach_limits:
+      gantry_x_min: 0.0
+      gantry_x_max: 399.0
+      tcp_z_min: 0.0
 ```
 
 Use this file when:
@@ -92,6 +103,12 @@ head moves along Y, and `bed` when the machine bed moves along Y.
 scan travel and explicit named/literal move `travel_z` values to meet or exceed
 that absolute Z plane before entering home/park/edge-risk regions.
 
+`calibration_homing` is optional for normal protocol execution and required by
+`setup/calibrate_deck_origin.py`. It contains explicit GRBL `$3` and `$23`
+profiles for calibration-only FLB homing and normal BRT runtime homing. When it
+is present, `runtime_brt` must match `grbl_settings.dir_invert_mask` and
+`grbl_settings.homing_dir_mask`. The script refuses to infer these values.
+
 ## Working Volume
 
 Working volume bounds are inclusive and use the CubOS deck frame.
@@ -103,16 +120,17 @@ Protocol setup requires:
 - non-negative `z_min`
 
 Use [Calibrate Deck Origin](calibration.md) to measure the physical working
-volume. The calibration script jogs to the front-left lower-reach origin, sets
-X/Y with `G10 L20 P1 X0 Y0`, assigns Z by bottom contact or ruler gap, then
-re-homes and reports the measured homed WPos as `(x_max, y_max, z_max)`.
+volume. The calibration script applies the explicit FLB homing profile, sets
+G54 WPos `(0, 0, 0)`, disables stale soft limits, moves to an estimated BRT
+inspection pose from configured bounds minus 2 mm, and programs conservative
+`$130/$131/$132` spans from that estimate. The script restores the runtime BRT
+profile before disconnecting without running BRT `$H`; BRT WPos is not used to
+discover machine dimensions.
 
-For one-instrument bottom contact, use `z_min: 0.0`. For ruler-gap calibration,
-use the measured gap as `z_min`. Example: if the TCP stops 5 mm above deck and
-the homed WPos reads `Z=105`, use `z_min: 5.0`, `z_max: 105.0`.
-
-Multi-instrument setups need per-instrument lower-reach limits and inactive-tool
-collision checks instead of one global lower reach for every tool.
+Under this flow `working_volume.z_min` remains `0.0`. A TCP that cannot reach
+deck bottom stores its lower reach as `instruments.<name>.reach_limits.tcp_z_min`.
+Optional `reach_limits.gantry_x_min/max` are enforced during setup validation
+against computed gantry X (`target_x - offset_x`).
 
 ## Instrument Fields
 
@@ -125,6 +143,10 @@ Mounted instruments live under the gantry YAML `instruments` key.
 - `measurement_height` is the default absolute deck-frame action Z.
 - `safe_approach_height` is the default absolute deck-frame XY-travel Z and
   must be at or above `measurement_height`.
+- `reach_limits.gantry_x_min/max`, when present, define the calibrated safe
+  gantry-X range for that instrument.
+- `reach_limits.tcp_z_min`, when present, records the lowest reachable TCP Z in
+  the shared deck frame.
 
 ## Protocol Height Fields
 

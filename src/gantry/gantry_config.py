@@ -54,6 +54,22 @@ class WorkingVolume:
 
 
 @dataclass(frozen=True)
+class HomingProfile:
+    """Explicit GRBL settings for one homing profile."""
+
+    dir_invert_mask: int
+    homing_dir_mask: int
+
+
+@dataclass(frozen=True)
+class CalibrationHomingProfiles:
+    """Calibration-only homing profiles for FLB/BRT switching."""
+
+    runtime_brt: HomingProfile
+    origin_flb: HomingProfile
+
+
+@dataclass(frozen=True)
 class GantryConfig:
     """Loaded gantry configuration."""
 
@@ -63,6 +79,7 @@ class GantryConfig:
     working_volume: WorkingVolume
     y_axis_motion: YAxisMotion = YAxisMotion.HEAD
     structure_clearance_z: Optional[float] = None
+    calibration_homing: Optional[CalibrationHomingProfiles] = None
     expected_grbl_settings: Optional[Dict[str, float]] = field(default=None)
     instruments: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 

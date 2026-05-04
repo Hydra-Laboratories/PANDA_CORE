@@ -1,27 +1,21 @@
-"""Interactively calibrate GRBL WPos for the CubOS deck-origin frame.
+"""Set FLB deck-origin WPos and move to conservative machine bounds.
 
-This is the Phase 2/3 one-instrument calibration path. It does not assume that
-the configured or manufacturer working-volume values are physically correct.
-Instead, it separates XY origining from Z assignment:
+This script is intentionally narrow:
 
-1. Jog one attached reference instrument/TCP as far as appropriate toward the
-   physical front-left XY origin and its lowest safe reachable Z, then assign
-   only X/Y to 0.
-2. If the TCP is touching true deck bottom, assign Z to 0. If it cannot reach
-   bottom, measure the deck-to-TCP gap with a ruler and assign Z to that gap.
-3. Re-home and read the measured WPos at the homed back-right-top corner.
+1. Load one gantry YAML from the constant below.
+2. Apply the explicit FLB calibration homing profile.
+3. Home FLB and set G54 WPos to X0 Y0 Z0.
+4. Move to the configured working-volume maxima minus a safety margin.
+5. Optionally write an updated gantry YAML to a new file.
 
-Usage:
-
-    python setup/calibrate_deck_origin.py --gantry configs/gantry/cub_xl_asmi.yaml
-    python setup/calibrate_deck_origin.py --gantry configs/gantry/cub_xl_asmi.yaml --dry-run
+It does not calibrate instruments, restore BRT settings, or run BRT homing.
 """
 
 from __future__ import annotations
 
-import argparse
 import copy
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -33,41 +27,33 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
 from gantry import Gantry, load_gantry_from_yaml  # noqa: E402
+from gantry.gantry_config import HomingProfile  # noqa: E402
 from gantry.gantry_driver.exceptions import (  # noqa: E402
     CommandExecutionError,
+    LocationNotFound,
     MillConnectionError,
     StatusReturnError,
 )
-from gantry.origin import (  # noqa: E402
-    DeckOriginCalibrationPlan,
-    build_deck_origin_calibration_plan,
-)
-from setup.keyboard_input import flush_stdin, read_keypress_batch  # noqa: E402
+
+
+GANTRY_PATH = project_root / "configs/gantry/cub_xl_sterling.yaml"
+BOUND_SAFETY_MARGIN_MM = 2.0
+TOLERANCE_MM = 0.25
+MOVE_TOLERANCE_MM = 5.0
+HOMING_SERIAL_TIMEOUT_S = 10.0
+MOVE_SERIAL_TIMEOUT_S = 1.0
+LIMIT_PULL_OFF_MM = 2.0
+RECOVERY_FEED_RATE = 200.0
+RECOVERY_STATUS_RETRIES = 8
+RECOVERY_STATUS_RETRY_DELAY_S = 0.25
+ROLLBACK_CODES = ("$3", "$20", "$21", "$22", "$23", "$27", "$130", "$131", "$132")
 
 
 @dataclass(frozen=True)
 class DeckOriginCalibrationResult:
-    """Result of one-instrument deck-origin calibration."""
-
     measured_working_volume: tuple[float, float, float]
-    xy_origin_verification: tuple[float, float, float]
-    z_reference_verification: tuple[float, float, float]
-    z_min_mm: float
-    z_reference_mode: str
-    reachable_z_min_mm: float | None
-    grbl_max_travel: tuple[float, float, float] | None
-    instrument_name: str | None
-    plan: DeckOriginCalibrationPlan
-
-    @property
-    def reference_verification(self) -> tuple[float, float, float]:
-        """Backward-compatible alias for the final Z-reference verification."""
-        return self.z_reference_verification
-
-    @property
-    def reference_surface_z_mm(self) -> float:
-        """Deprecated alias for the one-instrument lower Z assignment."""
-        return self.z_min_mm
+    flb_zero_verification: tuple[float, float, float]
+    grbl_max_travel: tuple[float, float, float]
 
 
 class _GantryLike(Protocol):
@@ -84,6 +70,13 @@ class _GantryLike(Protocol):
         z: float | None = None,
     ) -> None: ...
     def get_coordinates(self) -> dict[str, float]: ...
+    def move_to(
+        self,
+        x: float,
+        y: float,
+        z: float,
+        travel_z: float | None = None,
+    ) -> None: ...
     def jog(
         self,
         x: float = 0,
@@ -91,35 +84,12 @@ class _GantryLike(Protocol):
         z: float = 0,
         feed_rate: float = 2000,
     ) -> None: ...
-    def jog_cancel(self) -> None: ...
-    def stop(self) -> None: ...
     def unlock(self) -> None: ...
-    def configure_soft_limits_from_spans(
-        self,
-        *,
-        max_travel_x: float,
-        max_travel_y: float,
-        max_travel_z: float,
-        tolerance_mm: float = 0.001,
-    ) -> None: ...
+    def read_grbl_settings(self) -> dict[str, str]: ...
+    def set_grbl_setting(self, setting: str, value: float | int | bool) -> None: ...
 
 
-KeyReader = Callable[[], tuple[str, int]]
-
-
-CONTROLS_LEGEND = """
-Jog controls after homing:
-  RIGHT / LEFT       +X right / -X left
-  UP / DOWN          +Y back-away / -Y front-toward-operator
-  X / Z              +Z up / -Z down
-  1 / 2 / 3 / 4 / 5  Set jog step to 0.1 / 1 / 5 / 10 / 25 mm
-  SPACE              Cancel any active jog
-  ENTER              Confirm the current calibration step
-  Q                  Abort calibration
-"""
-
-
-def _load_raw_config(path: Path) -> dict:
+def _load_raw_config(path: Path) -> dict[str, Any]:
     with path.open(encoding="utf-8") as handle:
         config = yaml.safe_load(handle)
     if not isinstance(config, dict):
@@ -127,35 +97,57 @@ def _load_raw_config(path: Path) -> dict:
     return config
 
 
-def _coords_tuple(coords: dict[str, float]) -> tuple[float, float, float]:
-    return (float(coords["x"]), float(coords["y"]), float(coords["z"]))
-
-
 def _round_mm(value: float) -> float:
     return round(float(value), 3)
 
 
-def _calculate_grbl_max_travel(
-    measured_coords: dict[str, float],
-    *,
-    z_min_mm: float,
-    tolerance_mm: float,
-) -> dict[str, float]:
-    x_span = _round_mm(float(measured_coords["x"]))
-    y_span = _round_mm(float(measured_coords["y"]))
-    z_span = _round_mm(float(measured_coords["z"]) - float(z_min_mm))
-    spans = {
-        "max_travel_x": x_span,
-        "max_travel_y": y_span,
-        "max_travel_z": z_span,
-    }
-    invalid = [f"{key}={value}" for key, value in spans.items() if value <= tolerance_mm]
-    if invalid:
-        raise RuntimeError(
-            "Measured travel span is not positive enough for GRBL soft limits: "
-            + ", ".join(invalid)
+def _coords_tuple(coords: dict[str, float]) -> tuple[float, float, float]:
+    return (float(coords["x"]), float(coords["y"]), float(coords["z"]))
+
+
+def _parse_setting_float(settings: dict[str, str], code: str) -> float | None:
+    raw = settings.get(code)
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _require_profile(raw_config: dict[str, Any], name: str) -> HomingProfile:
+    calibration = raw_config.get("cnc", {}).get("calibration_homing")
+    if not isinstance(calibration, dict):
+        raise ValueError(
+            "Gantry YAML must define cnc.calibration_homing.runtime_brt and "
+            "cnc.calibration_homing.origin_flb. The script will not infer $3 or $23."
         )
-    return spans
+    raw_profile = calibration.get(name)
+    if not isinstance(raw_profile, dict):
+        raise ValueError(
+            f"Gantry YAML must define cnc.calibration_homing.{name}. "
+            "The script will not infer $3 or $23."
+        )
+    return HomingProfile(
+        dir_invert_mask=int(raw_profile["dir_invert_mask"]),
+        homing_dir_mask=int(raw_profile["homing_dir_mask"]),
+    )
+
+
+def _query_raw_status(gantry: _GantryLike) -> str:
+    query = getattr(gantry, "query_raw_status", None)
+    if callable(query):
+        return str(query())
+    getter = getattr(gantry, "get_status", None)
+    if callable(getter):
+        return str(getter())
+    return ""
+
+
+def _set_serial_timeout(gantry: _GantryLike, timeout_s: float) -> None:
+    setter = getattr(gantry, "set_serial_timeout", None)
+    if callable(setter):
+        setter(timeout_s)
 
 
 def _assert_near_xyz(
@@ -177,35 +169,303 @@ def _assert_near_xyz(
         )
 
 
-def _updated_gantry_yaml_text(
-    raw_config: dict[str, Any],
+def _looks_like_limit_alarm(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(
+        token in message
+        for token in ("alarm", "check limits", "hard limit", "limit", "pn:", "error:9")
+    )
+
+
+def _restore_setting(
+    gantry: _GantryLike,
+    live_settings: dict[str, str],
+    code: str,
+    output: Callable[[str], None],
+) -> None:
+    if code not in live_settings:
+        return
+    value = live_settings[code]
+    output(f"Restoring original setting {code}={value}.")
+    gantry.set_grbl_setting(code, float(value))
+
+
+def _unlock_startup_alarm_if_needed(
+    gantry: _GantryLike,
+    output: Callable[[str], None],
+) -> None:
+    raw_status = _query_raw_status(gantry)
+    if raw_status and "alarm" in raw_status.lower():
+        output(f"Startup GRBL alarm captured: {raw_status}")
+        output("Sending $X unlock before calibration homing.")
+        gantry.unlock()
+        final_status = _query_raw_status(gantry)
+        if final_status and "alarm" in final_status.lower():
+            raise MillConnectionError(
+                f"GRBL remained in alarm after unlock; status: {final_status}"
+            )
+
+
+def _read_rollback_settings(
+    gantry: _GantryLike,
+    output: Callable[[str], None],
+) -> dict[str, str]:
+    settings = gantry.read_grbl_settings()
+    output("Rollback GRBL settings from live controller:")
+    for code in ROLLBACK_CODES:
+        output(f"  {code}={settings.get(code, '<missing>')}")
+    return settings
+
+
+def _apply_homing_profile(
+    gantry: _GantryLike,
+    profile: HomingProfile,
     *,
-    measured_coords: dict[str, float],
-    z_min_mm: float,
-    max_travel: dict[str, float] | None = None,
-) -> str:
-    updated = copy.deepcopy(raw_config)
-    updated.setdefault("cnc", {})["total_z_height"] = _round_mm(measured_coords["z"])
-    updated["working_volume"] = {
-        "x_min": 0.0,
-        "x_max": _round_mm(measured_coords["x"]),
-        "y_min": 0.0,
-        "y_max": _round_mm(measured_coords["y"]),
-        "z_min": _round_mm(z_min_mm),
-        "z_max": _round_mm(measured_coords["z"]),
+    label: str,
+    output: Callable[[str], None],
+) -> None:
+    output(
+        f"Applying {label} homing profile: "
+        f"$3={profile.dir_invert_mask}, $23={profile.homing_dir_mask}, $22=1"
+    )
+    try:
+        gantry.set_grbl_setting("$3", profile.dir_invert_mask)
+        gantry.set_grbl_setting("$23", profile.homing_dir_mask)
+        gantry.set_grbl_setting("$22", 1)
+    except (CommandExecutionError, StatusReturnError, MillConnectionError) as exc:
+        raise CommandExecutionError(
+            f"Failed to apply {label} homing profile: {exc}"
+        ) from exc
+
+
+def _home_flb_and_zero_wpos(
+    gantry: _GantryLike,
+    flb_profile: HomingProfile,
+    output: Callable[[str], None],
+) -> dict[str, float]:
+    output("Disabling soft limits for origin setup ($20=0).")
+    gantry.set_grbl_setting("$20", 0)
+    _apply_homing_profile(gantry, flb_profile, label="origin_flb", output=output)
+
+    output("Homing to FLB...")
+    _set_serial_timeout(gantry, HOMING_SERIAL_TIMEOUT_S)
+    gantry.home()
+    _set_serial_timeout(gantry, MOVE_SERIAL_TIMEOUT_S)
+
+    output("Activating G54 and clearing transient G92 offsets...")
+    gantry.enforce_work_position_reporting()
+    gantry.activate_work_coordinate_system("G54")
+    gantry.clear_g92_offsets()
+
+    output("Setting FLB home pose to G54 WPos X=0 Y=0 Z=0...")
+    gantry.set_work_coordinates(x=0.0, y=0.0, z=0.0)
+    coords = dict(gantry.get_coordinates())
+    _assert_near_xyz(
+        coords,
+        expected={"x": 0.0, "y": 0.0, "z": 0.0},
+        tolerance_mm=TOLERANCE_MM,
+        label="FLB WPos zero",
+    )
+    output(f"FLB WPos zero verified: X={coords['x']:.3f} Y={coords['y']:.3f} Z={coords['z']:.3f}")
+    return coords
+
+
+def _configured_axis_max(raw_config: dict[str, Any], axis: str) -> float:
+    working_volume = raw_config.get("working_volume")
+    if not isinstance(working_volume, dict):
+        raise RuntimeError("Gantry YAML must define working_volume.")
+    raw = working_volume.get(f"{axis}_max")
+    if raw is None:
+        raise RuntimeError(f"working_volume.{axis}_max is missing from gantry YAML.")
+    return float(raw)
+
+
+def _estimate_bounds(
+    raw_config: dict[str, Any],
+    live_settings: dict[str, str],
+    output: Callable[[str], None],
+) -> dict[str, float]:
+    bounds: dict[str, float] = {}
+    for axis in ("x", "y", "z"):
+        configured = _configured_axis_max(raw_config, axis)
+        usable = configured - BOUND_SAFETY_MARGIN_MM
+        if usable <= TOLERANCE_MM:
+            raise RuntimeError(
+                f"Configured {axis.upper()} max is too small for a "
+                f"{BOUND_SAFETY_MARGIN_MM:g} mm safety margin: {configured:.3f}."
+            )
+        bounds[axis] = _round_mm(usable)
+        live_code = {"x": "$130", "y": "$131", "z": "$132"}[axis]
+        live = _parse_setting_float(live_settings, live_code)
+        if live is not None and abs(live - configured) > MOVE_TOLERANCE_MM:
+            output(
+                f"Note: live {live_code}={live:.3f} differs from YAML "
+                f"working_volume.{axis}_max={configured:.3f}; using YAML minus margin."
+            )
+    return bounds
+
+
+def _recover_limit_alarm(
+    gantry: _GantryLike,
+    delta: dict[str, float],
+    output: Callable[[str], None],
+) -> None:
+    pull_off = {"x": 0.0, "y": 0.0, "z": 0.0}
+    for axis, value in delta.items():
+        if value > 0:
+            pull_off[axis] = -LIMIT_PULL_OFF_MM
+        elif value < 0:
+            pull_off[axis] = LIMIT_PULL_OFF_MM
+
+    output(
+        "Limit alarm detected. Unlocking GRBL and pulling off the switch "
+        f"by {LIMIT_PULL_OFF_MM:g} mm."
+    )
+    hard_limits_disabled = False
+    try:
+        gantry.unlock()
+        output("Temporarily disabling hard limits for pull-off ($21=0).")
+        gantry.set_grbl_setting("$21", 0)
+        hard_limits_disabled = True
+        gantry.unlock()
+        gantry.jog(feed_rate=RECOVERY_FEED_RATE, **pull_off)
+    finally:
+        if hard_limits_disabled:
+            output("Re-enabling hard-limit alarms ($21=1).")
+            gantry.set_grbl_setting("$21", 1)
+
+    last_error: Exception | None = None
+    for attempt in range(1, RECOVERY_STATUS_RETRIES + 1):
+        raw_status = _query_raw_status(gantry)
+        if raw_status and "alarm" in raw_status.lower():
+            output(f"Controller still reports alarm after pull-off (attempt {attempt}): {raw_status}")
+            gantry.unlock()
+            time.sleep(RECOVERY_STATUS_RETRY_DELAY_S)
+            continue
+        try:
+            gantry.enforce_work_position_reporting()
+            coords = gantry.get_coordinates()
+            output(
+                "Recovered after limit alarm; current WPos "
+                f"X={coords['x']:.3f} Y={coords['y']:.3f} Z={coords['z']:.3f}"
+            )
+            return
+        except (
+            CommandExecutionError,
+            LocationNotFound,
+            StatusReturnError,
+            MillConnectionError,
+        ) as exc:
+            last_error = exc
+            output(f"WPos readback failed during limit recovery (attempt {attempt}): {exc}")
+            time.sleep(RECOVERY_STATUS_RETRY_DELAY_S)
+    raise RuntimeError("Could not recover a valid WPos readback after limit alarm.") from last_error
+
+
+def _move_and_verify(
+    gantry: _GantryLike,
+    target: dict[str, float],
+    *,
+    label: str,
+    output: Callable[[str], None],
+) -> None:
+    output(
+        f"Moving to {label}: "
+        f"X={target['x']:.3f} Y={target['y']:.3f} Z={target['z']:.3f}"
+    )
+    current = gantry.get_coordinates()
+    delta = {
+        axis: float(target[axis]) - float(current[axis])
+        for axis in ("x", "y", "z")
     }
-    if max_travel is not None:
-        updated["grbl_settings"] = _build_gantry_grbl_settings(
-            gantry_raw=raw_config,
-            max_travel=max_travel,
-        )
-    return yaml.safe_dump(updated, sort_keys=False)
+    try:
+        gantry.move_to(target["x"], target["y"], target["z"])
+    except (CommandExecutionError, StatusReturnError) as exc:
+        if _looks_like_limit_alarm(exc):
+            output(f"{label} hit a limit alarm. Recovering before abort.")
+            _recover_limit_alarm(gantry, delta, output)
+        raise
+
+    coords = gantry.get_coordinates()
+    overshoots = []
+    for axis in ("x", "y", "z"):
+        if float(coords[axis]) > float(target[axis]) + TOLERANCE_MM:
+            overshoots.append(
+                f"{axis.upper()} got {float(coords[axis]):.3f}, target {float(target[axis]):.3f}"
+            )
+    if overshoots:
+        raise RuntimeError(f"{label} overshot the requested target: " + "; ".join(overshoots))
+    _assert_near_xyz(
+        coords,
+        expected=target,
+        tolerance_mm=MOVE_TOLERANCE_MM,
+        label=label,
+    )
+
+
+def _move_to_bounds(
+    gantry: _GantryLike,
+    bounds: dict[str, float],
+    output: Callable[[str], None],
+) -> None:
+    output("")
+    output(
+        "Moving to estimated bounds from configured working_volume maxima "
+        f"minus {BOUND_SAFETY_MARGIN_MM:g} mm:"
+    )
+    output(f"  X={bounds['x']:.3f} Y={bounds['y']:.3f} Z={bounds['z']:.3f}")
+
+    current = gantry.get_coordinates()
+    _move_and_verify(
+        gantry,
+        {"x": float(current["x"]), "y": float(current["y"]), "z": bounds["z"]},
+        label="estimated +Z bound",
+        output=output,
+    )
+    _move_and_verify(
+        gantry,
+        {"x": bounds["x"], "y": float(current["y"]), "z": bounds["z"]},
+        label="estimated +X bound",
+        output=output,
+    )
+    _move_and_verify(
+        gantry,
+        {"x": bounds["x"], "y": bounds["y"], "z": bounds["z"]},
+        label="estimated bounds",
+        output=output,
+    )
+
+
+def _program_travel_spans(
+    gantry: _GantryLike,
+    max_travel: dict[str, float],
+    output: Callable[[str], None],
+) -> None:
+    output("")
+    output("Programming conservative travel spans and leaving soft limits disabled:")
+    output(f"  $130={max_travel['max_travel_x']:.3f}")
+    output(f"  $131={max_travel['max_travel_y']:.3f}")
+    output(f"  $132={max_travel['max_travel_z']:.3f}")
+    gantry.set_grbl_setting("$130", max_travel["max_travel_x"])
+    gantry.set_grbl_setting("$131", max_travel["max_travel_y"])
+    gantry.set_grbl_setting("$132", max_travel["max_travel_z"])
+    gantry.set_grbl_setting("$22", 1)
+    gantry.set_grbl_setting("$20", 0)
+
+
+def _max_travel_from_bounds(bounds: dict[str, float]) -> dict[str, float]:
+    return {
+        "max_travel_x": _round_mm(bounds["x"]),
+        "max_travel_y": _round_mm(bounds["y"]),
+        "max_travel_z": _round_mm(bounds["z"]),
+    }
 
 
 def _build_gantry_grbl_settings(
     *,
     gantry_raw: dict[str, Any],
     max_travel: dict[str, float],
+    runtime_profile: HomingProfile,
 ) -> dict[str, Any]:
     settings: dict[str, Any] = {}
     gantry_settings = gantry_raw.get("grbl_settings")
@@ -213,9 +473,12 @@ def _build_gantry_grbl_settings(
         settings.update(gantry_settings)
     settings.update(
         {
+            "dir_invert_mask": runtime_profile.dir_invert_mask,
             "status_report": 0,
-            "soft_limits": True,
+            "soft_limits": False,
+            "hard_limits": True,
             "homing_enable": True,
+            "homing_dir_mask": runtime_profile.homing_dir_mask,
             "max_travel_x": max_travel["max_travel_x"],
             "max_travel_y": max_travel["max_travel_y"],
             "max_travel_z": max_travel["max_travel_z"],
@@ -224,14 +487,34 @@ def _build_gantry_grbl_settings(
     return settings
 
 
-def _print_yaml_block(
+def _updated_gantry_yaml_text(
+    raw_config: dict[str, Any],
     *,
-    title: str,
-    yaml_text: str,
-    output: Callable[[str], None],
-) -> None:
+    measured_coords: dict[str, float],
+    max_travel: dict[str, float],
+    runtime_profile: HomingProfile,
+) -> str:
+    updated = copy.deepcopy(raw_config)
+    updated.setdefault("cnc", {})["total_z_height"] = _round_mm(measured_coords["z"])
+    updated["working_volume"] = {
+        "x_min": 0.0,
+        "x_max": _round_mm(measured_coords["x"]),
+        "y_min": 0.0,
+        "y_max": _round_mm(measured_coords["y"]),
+        "z_min": 0.0,
+        "z_max": _round_mm(measured_coords["z"]),
+    }
+    updated["grbl_settings"] = _build_gantry_grbl_settings(
+        gantry_raw=raw_config,
+        max_travel=max_travel,
+        runtime_profile=runtime_profile,
+    )
+    return yaml.safe_dump(updated, sort_keys=False)
+
+
+def _print_yaml_block(yaml_text: str, output: Callable[[str], None]) -> None:
     output("")
-    output(title)
+    output("Full gantry YAML to copy/paste:")
     output("```yaml")
     for line in yaml_text.rstrip().splitlines():
         output(line)
@@ -239,978 +522,146 @@ def _print_yaml_block(
 
 
 def _maybe_write_gantry_yaml(
-    *,
     yaml_text: str,
-    output_path: Path | None,
-    write_requested: bool,
+    *,
+    gantry_path: Path,
     input_reader: Callable[[str], str],
     output: Callable[[str], None],
 ) -> None:
-    if output_path is None and not write_requested:
-        return
-    if output_path is None:
-        raw = input_reader("Output gantry YAML filename: ").strip()
-        if not raw:
-            output("No gantry YAML filename supplied; skipping write.")
-            return
-        output_path = Path(raw)
-    confirm = input_reader(
-        f"Write updated gantry YAML to {output_path}? [y/N]: "
-    ).strip().lower()
-    if confirm not in ("y", "yes"):
+    response = input_reader("Write updated gantry YAML to a new file? [y/N]: ").strip().lower()
+    if response not in ("y", "yes"):
         output("Skipping gantry YAML write.")
+        return
+    raw_output_path = input_reader("New gantry YAML path: ").strip()
+    if not raw_output_path:
+        output("No output path supplied; skipping gantry YAML write.")
+        return
+    output_path = Path(raw_output_path).expanduser()
+    if not output_path.is_absolute():
+        output_path = gantry_path.parent / output_path
+    output_path = output_path.resolve()
+    if output_path == gantry_path:
+        output("Refusing to overwrite the input gantry YAML; skipping write.")
+        return
+    if output_path.exists():
+        output(f"Refusing to overwrite existing file {output_path}; skipping write.")
         return
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(yaml_text, encoding="utf-8")
     output(f"Wrote updated gantry YAML: {output_path}")
 
 
-def _assert_near_xy_origin(
-    coords: dict[str, float],
-    *,
-    tolerance_mm: float,
-) -> None:
-    expected = {
-        "x": 0.0,
-        "y": 0.0,
-    }
-    misses = [
-        f"{axis}: got {float(coords[axis]):.4f}, expected {expected[axis]:.4f}"
-        for axis in ("x", "y")
-        if abs(float(coords[axis]) - expected[axis]) > tolerance_mm
-    ]
-    if misses:
-        raise RuntimeError(
-            "Deck-origin XY reference did not verify within "
-            f"{tolerance_mm} mm: " + "; ".join(misses)
-        )
-
-
-def _assert_near_z_reference(
-    coords: dict[str, float],
-    *,
-    z_min_mm: float,
-    tolerance_mm: float,
-) -> None:
-    expected = {"z": z_min_mm}
-    misses = [
-        f"{axis}: got {float(coords[axis]):.4f}, expected {expected[axis]:.4f}"
-        for axis in ("z",)
-        if abs(float(coords[axis]) - expected[axis]) > tolerance_mm
-    ]
-    if misses:
-        raise RuntimeError(
-            "Deck-origin Z reference did not verify within "
-            f"{tolerance_mm} mm: " + "; ".join(misses)
-        )
-
-
-def _assert_positive_measured_volume(
-    coords: dict[str, float],
-    *,
-    tolerance_mm: float,
-) -> None:
-    misses = [
-        f"{axis}: got {float(coords[axis]):.4f}"
-        for axis in ("x", "y", "z")
-        if float(coords[axis]) <= tolerance_mm
-    ]
-    if misses:
-        raise RuntimeError(
-            "Measured homed WPos did not look like positive working-volume "
-            "maxima: " + "; ".join(misses)
-        )
-
-
-def _print_config_patch(
-    coords: dict[str, float],
-    *,
-    z_reference_coords: dict[str, float],
-    z_min_mm: float,
-    z_reference_mode: str,
-    instrument_name: str | None,
-    output: Callable[[str], None],
-) -> None:
-    x_max, y_max, z_max = _coords_tuple(coords)
-    output("")
-    output("Measured physical working volume from calibrated origin:")
-    output(f"  X: 0.000 to {x_max:.3f} mm")
-    output(f"  Y: 0.000 to {y_max:.3f} mm")
-    output(f"  Z: {z_min_mm:.3f} to {z_max:.3f} mm")
-    output("")
-    output("Update the gantry YAML working_volume to:")
-    output("  working_volume:")
-    output("    x_min: 0.0")
-    output(f"    x_max: {x_max:.3f}")
-    output("    y_min: 0.0")
-    output(f"    y_max: {y_max:.3f}")
-    output(f"    z_min: {z_min_mm:.3f}")
-    output(f"    z_max: {z_max:.3f}")
-    output("")
-    output("Also set cnc.total_z_height to:")
-    output(f"  total_z_height: {z_max:.3f}")
-    output("")
-    output("Z reference point after XY origining:")
-    output(
-        "  WPos "
-        f"X={z_reference_coords['x']:.3f} "
-        f"Y={z_reference_coords['y']:.3f} "
-        f"Z={z_reference_coords['z']:.3f}"
-    )
-    output(f"  mode: {z_reference_mode}")
-    if z_min_mm > 0:
-        reach_name = instrument_name or "reference_tcp"
-        output("")
-        output(
-            "This one-instrument config starts above physical deck bottom "
-            "because the TCP cannot reach Z=0."
-        )
-        output(f"  {reach_name}_reachable_z_min: {z_min_mm:.3f} mm")
-        output(
-            "For a future multi-instrument config, keep one shared deck frame "
-            "and encode this as a per-instrument lower-reach limit instead of "
-            "using one global z_min for every tool."
-        )
-
-
-def _print_dry_run(
+def _confirm_preflight(
     gantry_path: Path,
-    plan: DeckOriginCalibrationPlan,
-    *,
-    tip_gap_mm: float | None,
-    z_reference_mode: str,
-    instrument_name: str | None,
-    output: Callable[[str], None],
-) -> None:
-    output(f"Loaded deck-origin gantry config: {gantry_path}")
-    if instrument_name:
-        output(f"Instrument/TCP: {instrument_name}")
-    output(f"Z reference mode: {z_reference_mode}")
-    output("Dry run only. Physical calibration flow:")
-    commands = _commands_for_z_min(
-        plan,
-        tip_gap_mm,
-        z_reference_mode=z_reference_mode,
-    )
-    for command in commands:
-        output(f"  {command}")
-    output("")
-    output("No configured max travel values will be trusted as measured volume.")
-
-
-def _commands_for_z_min(
-    plan: DeckOriginCalibrationPlan,
-    tip_gap_mm: float | None,
-    *,
-    z_reference_mode: str = "ruler-gap",
-) -> tuple[str, ...]:
-    z_value = (
-        "0"
-        if z_reference_mode == "bottom"
-        else ("<tip_gap_mm>" if tip_gap_mm is None else f"{tip_gap_mm:g}")
-    )
-    confirmation = "<confirm true deck-bottom contact>"
-    if z_reference_mode in ("prompt", "ruler-gap", "known-height"):
-        confirmation = "<confirm bottom contact or enter ruler-measured TCP gap>"
-    return tuple(
-        command.replace("<z_min_mm>", z_value).replace(
-            "<confirm deck-bottom contact or enter ruler-measured TCP gap>",
-            confirmation,
-        )
-        for command in plan.commands
-    )
-
-
-def _prompt_tip_gap_mm(
-    *,
     input_reader: Callable[[str], str],
     output: Callable[[str], None],
-) -> float:
-    output("")
-    output(
-        "This TCP is not touching true deck bottom at its lower reach point."
-    )
-    output(
-        "Measure the vertical gap from the deck surface to the TCP with a "
-        "ruler, then enter that gap in millimeters."
-    )
-    while True:
-        raw = input_reader("Deck-to-TCP gap in mm: ").strip()
-        try:
-            value = float(raw)
-        except ValueError:
-            output("Enter a numeric gap in millimeters.")
-            continue
-        if value <= 0:
-            output("Deck-to-TCP gap must be > 0 mm. Use bottom mode for Z=0.")
-            continue
-        return value
-
-
-def _prompt_z_reference_mode(
-    *,
-    input_reader: Callable[[str], str],
-    output: Callable[[str], None],
-) -> str:
-    output("")
-    output("Z grounding mode:")
-    output("  y = this TCP is touching true deck bottom, so set Z=0 here")
-    output("  n = no/unsure; measure the deck-to-TCP gap with a ruler")
-    while True:
-        raw = input_reader(
-            "Is the TCP touching true deck bottom at the current pose? [y/N]: "
-        ).strip().lower()
-        if raw in ("", "n", "no", "u", "unsure"):
-            return "ruler-gap"
-        if raw in ("y", "yes"):
-            return "bottom"
-        output("Enter y for true-bottom contact, or n/Enter for ruler-gap mode.")
-
-
-def _set_serial_timeout_if_available(
-    gantry: _GantryLike,
-    timeout_s: float,
 ) -> None:
-    setter = getattr(gantry, "set_serial_timeout", None)
-    if callable(setter):
-        setter(timeout_s)
-
-
-def _looks_like_limit_alarm(exc: Exception) -> bool:
-    message = str(exc).lower()
-    return any(
-        token in message
-        for token in (
-            "alarm",
-            "check limits",
-            "hard limit",
-            "limit",
-            "pn:",
-            "error:9",
-        )
-    )
-
-
-def _looks_like_soft_limit_jog_rejection(exc: Exception) -> bool:
-    message = str(exc).lower()
-    return any(
-        token in message
-        for token in (
-            "error:15",
-            "travel exceeded",
-            "jog target exceeds machine travel",
-        )
-    )
-
-
-def _soft_limits_enabled_from_settings(settings: object) -> bool | None:
-    if not isinstance(settings, dict):
-        return None
-    value = settings.get("$20")
-    if value is None:
-        value = settings.get("20")
-    if value is None:
-        return None
-    try:
-        return float(value) != 0.0
-    except (TypeError, ValueError):
-        return None
-
-
-def _read_soft_limits_enabled_if_available(
-    gantry: _GantryLike,
-    *,
-    output: Callable[[str], None],
-) -> bool | None:
-    reader = getattr(gantry, "read_grbl_settings", None)
-    if not callable(reader):
-        return None
-    try:
-        return _soft_limits_enabled_from_settings(reader())
-    except MillConnectionError:
-        raise
-    except (CommandExecutionError, StatusReturnError, ValueError) as exc:
-        output(f"Could not read GRBL soft-limit state before jogging: {exc}")
-        output("Continuing; any GRBL error:15 jog rejection will be handled in-place.")
-        return None
-
-
-def _set_soft_limits_enabled_if_available(
-    gantry: _GantryLike,
-    enabled: bool,
-) -> bool:
-    setter = getattr(gantry, "set_grbl_setting", None)
-    if not callable(setter):
-        return False
-    setter("$20", 1 if enabled else 0)
-    return True
-
-
-def _temporarily_disable_soft_limits_for_origin_jog(
-    gantry: _GantryLike,
-    *,
-    output: Callable[[str], None],
-) -> bool:
-    enabled = _read_soft_limits_enabled_if_available(gantry, output=output)
-    if enabled is not True:
-        return False
-    output(
-        "Temporarily disabling GRBL soft limits ($20=0) for the interactive "
-        "origin jog so stale travel settings cannot block calibration."
-    )
-    output("Jog cautiously; this does not change the hard-limit setting.")
-    if not _set_soft_limits_enabled_if_available(gantry, False):
-        output("No GRBL setting writer is available; leaving soft limits unchanged.")
-        return False
-    return True
-
-
-def _restore_soft_limits_after_origin_jog(
-    gantry: _GantryLike,
-    *,
-    output: Callable[[str], None],
-) -> None:
-    output("Restoring GRBL soft limits ($20=1) after interactive origin jog.")
-    if not _set_soft_limits_enabled_if_available(gantry, True):
-        raise MillConnectionError(
-            "Cannot restore GRBL soft limits because this gantry object has no "
-            "setting writer."
-        )
-
-
-def _opposite_pull_off_delta(
-    delta: dict[str, float],
-    pull_off_mm: float,
-) -> dict[str, float]:
-    pull_off = {"x": 0.0, "y": 0.0, "z": 0.0}
-    for axis, value in delta.items():
-        if value > 0:
-            pull_off[axis] = -pull_off_mm
-        elif value < 0:
-            pull_off[axis] = pull_off_mm
-    return pull_off
-
-
-def _recover_from_limit_alarm(
-    gantry: _GantryLike,
-    delta: dict[str, float],
-    *,
-    pull_off_mm: float,
-    feed_rate: float,
-    output: Callable[[str], None],
-) -> dict[str, float] | None:
-    pull_off = _opposite_pull_off_delta(delta, pull_off_mm)
-    output(
-        "Limit alarm detected. Unlocking GRBL and pulling off the switch "
-        f"by {pull_off_mm:g} mm."
-    )
-    try:
-        gantry.jog_cancel()
-    except MillConnectionError:
-        raise
-    except (CommandExecutionError, StatusReturnError) as exc:
-        output(f"Jog cancel during recovery failed: {exc}")
-        output("Aborting calibration; use E-stop and rerun before continuing.")
-        raise
-
-    try:
-        gantry.unlock()
-    except MillConnectionError:
-        raise
-    except (CommandExecutionError, StatusReturnError) as exc:
-        output(f"Unlock during limit recovery failed: {exc}")
-        output("Use the controller/E-stop reset path before continuing.")
-        raise
-
-    try:
-        gantry.jog(feed_rate=feed_rate, **pull_off)
-    except MillConnectionError:
-        raise
-    except (CommandExecutionError, StatusReturnError) as exc:
-        output(f"Automatic pull-off jog failed: {exc}")
-        output("Aborting calibration; gantry position is unknown.")
-        raise
-
-    try:
-        return gantry.get_coordinates()
-    except MillConnectionError:
-        raise
-    except (CommandExecutionError, StatusReturnError) as exc:
-        output(f"WPos readback after pull-off failed: {exc}")
-        output("Aborting calibration; gantry position is unknown.")
-        raise
-
-
-def _interactive_jog_to_reference(
-    gantry: _GantryLike,
-    *,
-    target_description: str,
-    confirmation_description: str,
-    key_reader: KeyReader,
-    output: Callable[[str], None],
-    feed_rate: float,
-    initial_step_mm: float,
-    limit_pull_off_mm: float,
-) -> dict[str, float]:
-    step_mm = initial_step_mm
-    output(CONTROLS_LEGEND)
-    output(target_description)
-    output(confirmation_description)
-
-    while True:
-        key, count = key_reader()
-        key = key.upper()
-        count = max(1, int(count))
-        distance = step_mm * count
-
-        if key == "Q":
-            raise KeyboardInterrupt
-        if key in ("\r", "\n", "ENTER"):
-            coords = gantry.get_coordinates()
-            output(
-                "Confirming current reported WPos "
-                f"X={coords['x']:.3f} Y={coords['y']:.3f} Z={coords['z']:.3f}"
-            )
-            return coords
-        if key == " ":
-            gantry.jog_cancel()
-            output("Jog canceled.")
-            continue
-        if key == "1":
-            step_mm = 0.1
-            output("Jog step set to 0.1 mm.")
-            continue
-        if key == "2":
-            step_mm = 1.0
-            output("Jog step set to 1.0 mm.")
-            continue
-        if key == "3":
-            step_mm = 5.0
-            output("Jog step set to 5.0 mm.")
-            continue
-        if key == "4":
-            step_mm = 10.0
-            output("Jog step set to 10.0 mm.")
-            continue
-        if key == "5":
-            step_mm = 25.0
-            output("Jog step set to 25.0 mm.")
-            continue
-
-        delta = {"x": 0.0, "y": 0.0, "z": 0.0}
-        if key == "LEFT":
-            delta["x"] = -distance
-        elif key == "RIGHT":
-            delta["x"] = distance
-        elif key == "DOWN":
-            delta["y"] = -distance
-        elif key == "UP":
-            delta["y"] = distance
-        elif key == "Z":
-            delta["z"] = -distance
-        elif key == "X":
-            delta["z"] = distance
-        else:
-            continue
-
-        coords = None
-        try:
-            gantry.jog(feed_rate=feed_rate, **delta)
-            coords = gantry.get_coordinates()
-        except MillConnectionError:
-            raise
-        except (CommandExecutionError, StatusReturnError) as exc:
-            if _looks_like_soft_limit_jog_rejection(exc):
-                output(
-                    "GRBL rejected that jog because the target exceeds the "
-                    "current soft-limit travel. The jog was ignored; reduce "
-                    "the step, choose another direction, or press ENTER if "
-                    "this is the intended safe origin point."
-                )
-                try:
-                    coords = gantry.get_coordinates()
-                except MillConnectionError:
-                    raise
-                except (CommandExecutionError, StatusReturnError) as read_exc:
-                    output(f"WPos readback after rejected jog failed: {read_exc}")
-                    output("Aborting calibration; gantry position is unknown.")
-                    raise
-            elif not _looks_like_limit_alarm(exc):
-                output(f"Jog command rejected by controller: {exc}")
-                output("Aborting calibration; gantry position is unknown.")
-                raise
-            else:
-                coords = _recover_from_limit_alarm(
-                    gantry,
-                    delta,
-                    pull_off_mm=limit_pull_off_mm,
-                    feed_rate=feed_rate,
-                    output=output,
-                )
-        if coords is None:
-            continue
-        output(
-            "WPos "
-            f"X={coords['x']:.3f} Y={coords['y']:.3f} Z={coords['z']:.3f} "
-            f"(step {step_mm:g} mm)"
-        )
-
-
-def _interactive_jog_to_xy_origin(
-    gantry: _GantryLike,
-    *,
-    key_reader: KeyReader,
-    output: Callable[[str], None],
-    feed_rate: float,
-    initial_step_mm: float,
-    limit_pull_off_mm: float,
-) -> dict[str, float]:
-    return _interactive_jog_to_reference(
-        gantry,
-        target_description=(
-            "Step 1/1: jog the one reference TCP as far as appropriate toward "
-            "the physical front-left XY origin and its lowest safe reachable Z."
-        ),
-        confirmation_description=(
-            "Press ENTER only when the current X/Y should become WPos X=0, "
-            "Y=0. After confirmation, the script will set Z from either true "
-            "deck-bottom contact or a ruler-measured deck-to-TCP gap."
-        ),
-        key_reader=key_reader,
-        output=output,
-        feed_rate=feed_rate,
-        initial_step_mm=initial_step_mm,
-        limit_pull_off_mm=limit_pull_off_mm,
-    )
+    output(f"Loaded gantry config: {gantry_path}")
+    output("Preflight:")
+    output("  - FLB homing is calibration/admin only.")
+    output("  - The script writes configured $3/$23 profiles exactly as YAML.")
+    output("  - It unlocks an initial GRBL alarm before homing.")
+    output("  - It sets FLB G54 WPos to X0 Y0 Z0 and moves to estimated bounds.")
+    output("  - The controller is left in the FLB calibration profile after disconnect.")
+    output("  - No instrument should be attached.")
+    output("")
+    output("Required operator confirmation:")
+    output("  - FLB homing/limit switches are physically installed.")
+    output("  - The deck, rails, fixtures, cables, samples, and path are clear.")
+    output("  - E-stop/controller reset is within reach.")
+    response = input_reader("Proceed with FLB origin and estimated bound move? [y/N]: ").strip().lower()
+    if response not in ("y", "yes"):
+        raise RuntimeError("Operator did not confirm calibration preflight.")
 
 
 def run_calibration(
-    gantry_path: Path,
+    gantry_path: Path = GANTRY_PATH,
     *,
-    dry_run: bool = False,
-    tolerance_mm: float = 0.25,
-    jog_step_mm: float = 1.0,
-    jog_feed_rate: float = 2500.0,
-    limit_pull_off_mm: float = 2.0,
-    tip_gap_mm: float | None = None,
-    reference_surface_z_mm: float | None = None,
-    z_reference_mode: str = "bottom",
-    measure_reachable_z_min: bool | None = False,
-    instrument_name: str | None = None,
-    skip_soft_limit_config: bool = False,
-    write_gantry_yaml: bool = False,
-    output_gantry_path: Path | None = None,
-    homing_serial_timeout_s: float = 10.0,
-    jog_serial_timeout_s: float = 1.0,
     output: Callable[[str], None] = print,
     input_reader: Callable[[str], str] = input,
     gantry_factory: Callable[..., _GantryLike] = Gantry,
-    key_reader: KeyReader = read_keypress_batch,
-    stdin_flusher: Callable[[], None] = flush_stdin,
-) -> DeckOriginCalibrationResult | DeckOriginCalibrationPlan:
-    """Calibrate one reference TCP to the CubOS physical deck origin."""
+) -> DeckOriginCalibrationResult:
     gantry_path = gantry_path.resolve()
-    gantry_config = load_gantry_from_yaml(gantry_path)
+    load_gantry_from_yaml(gantry_path)
     raw_config = _load_raw_config(gantry_path)
-    if output_gantry_path is not None:
-        output_gantry_path = output_gantry_path.resolve()
-    plan = build_deck_origin_calibration_plan(gantry_config)
-    if reference_surface_z_mm is not None:
-        if tip_gap_mm is not None:
-            raise ValueError("Use only one of tip_gap_mm or reference_surface_z_mm.")
-        tip_gap_mm = reference_surface_z_mm
-    deprecated_known_height_mode = z_reference_mode == "known-height"
-    if deprecated_known_height_mode:
-        z_reference_mode = "ruler-gap"
-    if z_reference_mode not in ("prompt", "bottom", "ruler-gap"):
-        raise ValueError("z_reference_mode must be one of: prompt, bottom, ruler-gap")
-    if deprecated_known_height_mode:
-        output(
-            "Deprecated z_reference_mode=known-height received; treating "
-            "the supplied height as a ruler-measured deck-to-TCP gap."
-        )
+    runtime_profile = _require_profile(raw_config, "runtime_brt")
+    flb_profile = _require_profile(raw_config, "origin_flb")
+    _confirm_preflight(gantry_path, input_reader, output)
 
-    if dry_run:
-        _print_dry_run(
-            gantry_path,
-            plan,
-            tip_gap_mm=tip_gap_mm,
-            z_reference_mode=z_reference_mode,
-            instrument_name=instrument_name,
-            output=output,
-        )
-        return plan
+    runtime_config = copy.deepcopy(raw_config)
+    runtime_config.pop("grbl_settings", None)
+    gantry = gantry_factory(config=runtime_config)
+    connected = False
+    committed = False
+    live_settings: dict[str, str] = {}
 
-    output(f"Loaded deck-origin gantry config: {gantry_path}")
-    output("Preflight:")
-    output("  - GRBL orientation must already be normalized.")
-    output("  - $H must home to back-right-top.")
-    output("  - +X must jog right, +Y back/away, +Z up.")
-    output("  - Attach exactly one reference instrument/TCP for this calibration.")
-    output(
-        "  - Jog to the front-left XY origin and the lowest safe reachable Z "
-        "for that TCP."
-    )
-    output("  - This will set G54 WPos X=0, Y=0 at that pose.")
-    output(
-        "  - If the TCP touches deck bottom, Z will be set to 0; otherwise "
-        "enter the ruler-measured deck-to-TCP gap."
-    )
-    if measure_reachable_z_min is True:
-        output(
-            "  - --measure-reachable-z-min is deprecated; the lower reach is "
-            "now recorded from the origin/gap calibration point."
-        )
-    if instrument_name:
-        output(f"  - Instrument/TCP label for reach output: {instrument_name}")
-    output("")
-
-    gantry_runtime_config = copy.deepcopy(raw_config)
-    gantry_runtime_config.pop("grbl_settings", None)
-    gantry = gantry_factory(config=gantry_runtime_config)
-    restore_soft_limits_after_origin_jog = False
     try:
-        output("Connecting to gantry...")
+        output("Connecting to gantry without runtime GRBL validation...")
         gantry.connect()
+        connected = True
+        _unlock_startup_alarm_if_needed(gantry, output)
+        live_settings = _read_rollback_settings(gantry, output)
 
-        output("Homing to normalized back-right-top corner...")
-        _set_serial_timeout_if_available(gantry, homing_serial_timeout_s)
-        gantry.home()
-        _set_serial_timeout_if_available(gantry, jog_serial_timeout_s)
-        output("Forcing GRBL WPos status reporting ($10=0) and G90...")
-        gantry.enforce_work_position_reporting()
-        output("Activating G54 work coordinate system...")
-        gantry.activate_work_coordinate_system("G54")
-        output("Clearing transient G92 offsets before origin calibration...")
-        gantry.clear_g92_offsets()
-        stdin_flusher()
-
-        restore_soft_limits_after_origin_jog = (
-            _temporarily_disable_soft_limits_for_origin_jog(
-                gantry,
-                output=output,
-            )
-        )
-        try:
-            _interactive_jog_to_xy_origin(
-                gantry,
-                key_reader=key_reader,
-                output=output,
-                feed_rate=jog_feed_rate,
-                initial_step_mm=jog_step_mm,
-                limit_pull_off_mm=limit_pull_off_mm,
-            )
-        finally:
-            if restore_soft_limits_after_origin_jog:
-                restore_soft_limits_after_origin_jog = False
-                _restore_soft_limits_after_origin_jog(gantry, output=output)
-
-        output("Setting current physical pose to WPos X=0, Y=0...")
-        gantry.set_work_coordinates(x=0.0, y=0.0)
-        xy_origin_coords = dict(gantry.get_coordinates())
-        _assert_near_xy_origin(
-            xy_origin_coords,
-            tolerance_mm=tolerance_mm,
-        )
-        output(
-            "Verified XY origin WPos: "
-            f"X={xy_origin_coords['x']:.3f} "
-            f"Y={xy_origin_coords['y']:.3f} "
-            f"Z={xy_origin_coords['z']:.3f}"
-        )
-
-        if z_reference_mode == "prompt":
-            z_reference_mode = _prompt_z_reference_mode(
-                input_reader=input_reader,
-                output=output,
-            )
-        if z_reference_mode == "bottom":
-            if tip_gap_mm is not None and tip_gap_mm != 0:
-                raise ValueError("Bottom Z mode cannot use a non-zero tip gap.")
-            z_min_mm = 0.0
-        else:
-            if tip_gap_mm is None:
-                tip_gap_mm = _prompt_tip_gap_mm(
-                    input_reader=input_reader,
-                    output=output,
-                )
-            if tip_gap_mm <= 0:
-                raise ValueError("tip_gap_mm must be > 0 in ruler-gap mode.")
-            z_min_mm = float(tip_gap_mm)
-
-        output(f"Setting current physical pose to WPos Z={z_min_mm:g}...")
-        gantry.set_work_coordinates(z=z_min_mm)
-        z_reference_coords = dict(gantry.get_coordinates())
-        _assert_near_z_reference(
-            z_reference_coords,
-            z_min_mm=z_min_mm,
-            tolerance_mm=tolerance_mm,
-        )
-        output(
-            "Verified Z reference WPos: "
-            f"X={z_reference_coords['x']:.3f} "
-            f"Y={z_reference_coords['y']:.3f} "
-            f"Z={z_reference_coords['z']:.3f}"
-        )
-
-        reachable_z_min_mm = z_min_mm
-
-        output("Re-homing to measure physical working-volume maxima...")
-        _set_serial_timeout_if_available(gantry, homing_serial_timeout_s)
-        gantry.home()
-        _set_serial_timeout_if_available(gantry, jog_serial_timeout_s)
-        measured_coords = gantry.get_coordinates()
-        _assert_positive_measured_volume(
-            measured_coords,
-            tolerance_mm=tolerance_mm,
-        )
-        max_travel = _calculate_grbl_max_travel(
-            measured_coords,
-            z_min_mm=z_min_mm,
-            tolerance_mm=tolerance_mm,
-        )
+        flb_zero = _home_flb_and_zero_wpos(gantry, flb_profile, output)
         output("")
-        output("Measured GRBL max-travel spans for soft limits:")
-        output(f"  $130 X max travel: {max_travel['max_travel_x']:.3f} mm")
-        output(f"  $131 Y max travel: {max_travel['max_travel_y']:.3f} mm")
-        output(f"  $132 Z max travel: {max_travel['max_travel_z']:.3f} mm")
+        output("Estimating usable positive machine bounds from FLB WPos zero.")
+        output("Soft limits stay disabled so stale $130-$132 cannot truncate the move.")
+        gantry.set_grbl_setting("$20", 0)
+        output("Keeping hard-limit alarms enabled during the bound move ($21=1).")
+        gantry.set_grbl_setting("$21", 1)
 
-        if skip_soft_limit_config:
-            output("Skipping GRBL soft-limit programming by request.")
-        else:
-            output("Programming GRBL soft limits from measured travel spans...")
-            gantry.configure_soft_limits_from_spans(
-                max_travel_x=max_travel["max_travel_x"],
-                max_travel_y=max_travel["max_travel_y"],
-                max_travel_z=max_travel["max_travel_z"],
-                tolerance_mm=tolerance_mm,
-            )
-            output("Re-homing after updating GRBL travel settings...")
-            _set_serial_timeout_if_available(gantry, homing_serial_timeout_s)
-            gantry.home()
-            _set_serial_timeout_if_available(gantry, jog_serial_timeout_s)
-            output("Reassigning G54 at homed pose to measured WPos maxima...")
-            gantry.activate_work_coordinate_system("G54")
-            gantry.set_work_coordinates(
-                x=float(measured_coords["x"]),
-                y=float(measured_coords["y"]),
-                z=float(measured_coords["z"]),
-            )
-            final_homed_coords = dict(gantry.get_coordinates())
-            _assert_near_xyz(
-                final_homed_coords,
-                expected={
-                    "x": float(measured_coords["x"]),
-                    "y": float(measured_coords["y"]),
-                    "z": float(measured_coords["z"]),
-                },
-                tolerance_mm=tolerance_mm,
-                label="Final homed WPos after soft-limit setup",
-            )
-            output(
-                "Verified final homed WPos: "
-                f"X={final_homed_coords['x']:.3f} "
-                f"Y={final_homed_coords['y']:.3f} "
-                f"Z={final_homed_coords['z']:.3f}"
-            )
+        bounds = _estimate_bounds(raw_config, live_settings, output)
+        _move_to_bounds(gantry, bounds, output)
 
-        _print_config_patch(
-            measured_coords,
-            z_reference_coords=z_reference_coords,
-            z_min_mm=z_min_mm,
-            z_reference_mode=z_reference_mode,
-            instrument_name=instrument_name,
-            output=output,
-        )
-        gantry_yaml_text = _updated_gantry_yaml_text(
+        output("")
+        output("Conservative estimated machine bounds:")
+        output(f"  X: 0.000 to {bounds['x']:.3f} mm")
+        output(f"  Y: 0.000 to {bounds['y']:.3f} mm")
+        output(f"  Z: 0.000 to {bounds['z']:.3f} mm")
+
+        max_travel = _max_travel_from_bounds(bounds)
+        _program_travel_spans(gantry, max_travel, output)
+        committed = True
+
+        yaml_text = _updated_gantry_yaml_text(
             raw_config,
-            measured_coords=measured_coords,
-            z_min_mm=z_min_mm,
+            measured_coords=bounds,
             max_travel=max_travel,
+            runtime_profile=runtime_profile,
         )
-        _print_yaml_block(
-            title="Full gantry YAML to copy/paste:",
-            yaml_text=gantry_yaml_text,
-            output=output,
-        )
+        _print_yaml_block(yaml_text, output)
         _maybe_write_gantry_yaml(
-            yaml_text=gantry_yaml_text,
-            output_path=output_gantry_path,
-            write_requested=write_gantry_yaml,
+            yaml_text,
+            gantry_path=gantry_path,
             input_reader=input_reader,
             output=output,
         )
 
         return DeckOriginCalibrationResult(
-            measured_working_volume=_coords_tuple(measured_coords),
-            xy_origin_verification=_coords_tuple(xy_origin_coords),
-            z_reference_verification=_coords_tuple(z_reference_coords),
-            z_min_mm=z_min_mm,
-            z_reference_mode=z_reference_mode,
-            reachable_z_min_mm=reachable_z_min_mm,
+            measured_working_volume=_coords_tuple(bounds),
+            flb_zero_verification=_coords_tuple(flb_zero),
             grbl_max_travel=(
                 max_travel["max_travel_x"],
                 max_travel["max_travel_y"],
                 max_travel["max_travel_z"],
             ),
-            instrument_name=instrument_name,
-            plan=plan,
         )
     finally:
-        try:
-            if restore_soft_limits_after_origin_jog:
-                restore_soft_limits_after_origin_jog = False
-                _restore_soft_limits_after_origin_jog(gantry, output=output)
-        finally:
-            _set_serial_timeout_if_available(gantry, 0.05)
+        if connected:
+            if not committed:
+                _restore_setting(gantry, live_settings, "$20", output)
+                _restore_setting(gantry, live_settings, "$21", output)
+                _restore_setting(gantry, live_settings, "$130", output)
+                _restore_setting(gantry, live_settings, "$131", output)
+                _restore_setting(gantry, live_settings, "$132", output)
+            _set_serial_timeout(gantry, 0.05)
             output("Disconnecting...")
             gantry.disconnect()
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Interactively assign X/Y at the front-left origin/lower reach "
-            "point, assign Z from bottom contact or a ruler-measured TCP gap, "
-            "then measure homed WPos as the real work volume."
-        )
-    )
-    parser.add_argument(
-        "--gantry",
-        type=Path,
-        required=True,
-        help="Deck-origin machine gantry YAML from configs/gantry.",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print the physical calibration flow without connecting to hardware.",
-    )
-    parser.add_argument(
-        "--tip-gap-mm",
-        type=float,
-        default=None,
-        help=(
-            "Ruler-measured vertical gap from deck to TCP when the instrument "
-            "cannot reach true deck bottom. Used with --z-reference-mode "
-            "ruler-gap."
-        ),
-    )
-    parser.add_argument(
-        "--reference-z-mm",
-        type=float,
-        default=None,
-        help=(
-            "Deprecated alias for --tip-gap-mm from the old known-height flow."
-        ),
-    )
-    parser.add_argument(
-        "--z-reference-mode",
-        choices=("prompt", "bottom", "ruler-gap", "known-height"),
-        default="prompt",
-        help=(
-            "How to assign absolute Z. 'prompt' asks after jogging to lower "
-            "reach; 'bottom' sets Z=0 at true-bottom contact; 'ruler-gap' "
-            "uses --tip-gap-mm or prompts for the measured deck-to-TCP gap. "
-            "'known-height' is a deprecated alias for ruler-gap."
-        ),
-    )
-    parser.add_argument(
-        "--instrument",
-        dest="instrument_name",
-        default=None,
-        help="Optional instrument/TCP label used in reach-limit output, e.g. asmi.",
-    )
-    parser.add_argument(
-        "--skip-soft-limit-config",
-        action="store_true",
-        help="Do not program GRBL soft limits after measuring the working volume.",
-    )
-    parser.add_argument(
-        "--write-gantry-yaml",
-        action="store_true",
-        help="Prompt for a filename and write the updated gantry YAML after confirmation.",
-    )
-    parser.add_argument(
-        "--output-gantry",
-        type=Path,
-        default=None,
-        help="Write updated gantry YAML to this path after confirmation.",
-    )
-    reach_group = parser.add_mutually_exclusive_group()
-    reach_group.add_argument(
-        "--measure-reachable-z-min",
-        dest="measure_reachable_z_min",
-        action="store_true",
-        help=(
-            "Deprecated; lower reach is now recorded from the origin/gap "
-            "calibration point."
-        ),
-    )
-    reach_group.add_argument(
-        "--skip-reachable-z-min",
-        dest="measure_reachable_z_min",
-        action="store_false",
-        help="Deprecated no-op retained for compatibility.",
-    )
-    parser.set_defaults(measure_reachable_z_min=None)
-    parser.add_argument(
-        "--tolerance-mm",
-        type=float,
-        default=0.25,
-        help="Allowed WPos verification error after setting origin.",
-    )
-    parser.add_argument(
-        "--jog-step-mm",
-        type=float,
-        default=1.0,
-        help="Initial jog step size for interactive origin positioning.",
-    )
-    parser.add_argument(
-        "--jog-feed-rate",
-        type=float,
-        default=2500.0,
-        help="Feed rate used for interactive jog moves.",
-    )
-    parser.add_argument(
-        "--limit-pull-off-mm",
-        type=float,
-        default=2.0,
-        help="Distance to pull off in the opposite direction after a limit alarm.",
-    )
-    parser.add_argument(
-        "--homing-serial-timeout-s",
-        type=float,
-        default=10.0,
-        help="Serial read timeout while homing.",
-    )
-    parser.add_argument(
-        "--jog-serial-timeout-s",
-        type=float,
-        default=1.0,
-        help="Serial read timeout while interactively jogging.",
-    )
-    args = parser.parse_args()
-
     try:
-        run_calibration(
-            args.gantry,
-            dry_run=args.dry_run,
-            tolerance_mm=args.tolerance_mm,
-            jog_step_mm=args.jog_step_mm,
-            jog_feed_rate=args.jog_feed_rate,
-            limit_pull_off_mm=args.limit_pull_off_mm,
-            tip_gap_mm=args.tip_gap_mm,
-            reference_surface_z_mm=args.reference_z_mm,
-            z_reference_mode=args.z_reference_mode,
-            measure_reachable_z_min=args.measure_reachable_z_min,
-            instrument_name=args.instrument_name,
-            skip_soft_limit_config=args.skip_soft_limit_config,
-            write_gantry_yaml=args.write_gantry_yaml,
-            output_gantry_path=args.output_gantry,
-            homing_serial_timeout_s=args.homing_serial_timeout_s,
-            jog_serial_timeout_s=args.jog_serial_timeout_s,
-        )
+        run_calibration()
     except KeyboardInterrupt:
         print("\nAborted.")
         sys.exit(130)
