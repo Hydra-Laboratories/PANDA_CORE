@@ -25,6 +25,67 @@ When opening or updating a PR, include a hardware impact section that lists:
 - Offline validation performed.
 - Required hardware validation still pending for the user.
 
+## Architecture Hardlines for Agents
+
+CubOS exists so lab users can describe experiments in terms of lab intent:
+deck labware, wells/vials, instruments, measurements, transfers, and protocol
+steps. Users and most feature agents should not need to think in raw gantry
+coordinates, G-code, serial commands, or GRBL controller details.
+
+Use this boundary stack and do not skip layers:
+
+1. Protocol YAML / protocol commands express experiment intent.
+2. `Deck` resolves labware targets like `plate.A1` into deck-frame positions.
+3. `Board` applies instrument offsets, depths, and board-mounted instrument state.
+4. `Gantry` owns the high-level safe motion API.
+5. `gantry_driver` / `Mill` owns serial, GRBL, and G-code.
+
+Hard stops and exception rules:
+
+- Do not emit, parse, or construct raw G-code outside `src/gantry/gantry_driver/`
+  and narrowly approved hardware methods in `src/gantry/gantry.py`.
+- Default rule: protocol commands, deck code, board code, setup validation,
+  clients, and most instruments must not call `Mill`, `execute_command`,
+  `safe_move`, or `gantry_driver` directly. Use `Board.move()` or a higher-level
+  protocol/setup API instead.
+- Exceptions are allowed for closed-loop hardware behavior where the instrument
+  genuinely must coordinate motion and sensing at low level. Example: ASMI
+  indentation can receive/use the gantry for Z-stepping while reading force.
+  Any such exception must be explicit, documented near the call site, covered by
+  focused tests/mocks, and must not require end users or protocols to write
+  G-code or know GRBL details.
+- Do not touch `src/gantry/gantry.py` for ordinary protocol, deck, instrument,
+  validation, or app work. If a task appears to require editing it, stop and
+  explain why the existing public API is insufficient before proceeding. If the
+  task is an approved closed-loop hardware exception, state that explicitly in
+  the plan/PR.
+- Do not make business features depend on raw XYZ coordinates when a deck target
+  can express the intent.
+- Do not duplicate instrument offset/depth math outside `Board.move()` and its
+  focused tests.
+- Do not duplicate labware geometry or target-string parsing outside
+  `Deck.resolve()` / labware models and their focused tests.
+- Do not add hardware-specific conditionals to protocol commands. Hardware
+  differences belong in configs, board/instrument loaders, or driver
+  implementations.
+- Do not let Zoo, a UI, or another frontend duplicate CubOS validation,
+  movement, protocol execution, or hardware logic. Frontends should call CubOS
+  public APIs and keep CubOS as the source of truth.
+- Do not run hardware-facing protocol execution without first running setup
+  validation against the exact gantry/deck/board/protocol config set.
+- Do not treat `safe_z`, `measurement_height`, instrument `depth`, and labware
+  `z` as interchangeable. They are distinct physical concepts.
+- Do not make config schemas permissive for convenience. Unknown fields should
+  fail loudly unless there is an explicit migration path.
+- Do not add new protocol commands without schema validation, focused tests,
+  docs, and a real example YAML if user-facing.
+- Do not silently fall back from real hardware to mock/offline mode in execution
+  paths. Offline/mock mode must be explicit.
+- Do not persist measurement or labware state ad hoc when `DataStore` already
+  owns that concept.
+- Do not introduce cloud/network dependencies into core experiment execution
+  unless the user explicitly asks.
+
 ## Large-Refactor Checkpoint Rule
 
 For large refactors, hardware-facing motion changes, or any task likely to outlive one agent context window, create and maintain an explicit checkpoint file under `progress/` before making broad edits. Use a descriptive name such as `progress/issue-87-phase-2-3-checkpoint.md`.
