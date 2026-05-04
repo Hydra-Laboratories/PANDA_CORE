@@ -840,6 +840,8 @@ class Mill:
                 raise StatusReturnError(f"Error in status: {status}")
             if "ok" in status.lower():
                 self.logger.debug("OK in status: %s", status)
+            self.ser_mill.write(b"?")
+            time.sleep(0.05)
             status = self._extract_status_line(self.read())
             attempts += 1
 
@@ -905,6 +907,8 @@ class Mill:
                 status = self._extract_status_line(self.read())
                 retry_attempts = 0
                 while (not status or status[0] != "<") and retry_attempts < 3:
+                    self.ser_mill.write(b"?")
+                    time.sleep(0.05)
                     status = self._extract_status_line(self.read())
                     retry_attempts += 1
 

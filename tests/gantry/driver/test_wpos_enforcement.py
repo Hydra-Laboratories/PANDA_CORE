@@ -76,7 +76,7 @@ class TestWposEnforcement(unittest.TestCase):
         self.assertEqual(status, "<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>")
         mill.ser_mill.write.assert_called_once_with(b"?")
 
-    def test_current_coordinates_retries_after_incomplete_status_fragment(self):
+    def test_current_coordinates_requeries_after_incomplete_status_fragment(self):
         mill = self._make_mill()
         mill.ser_mill.write = MagicMock()
         mill.read = MagicMock(
@@ -91,6 +91,8 @@ class TestWposEnforcement(unittest.TestCase):
         self.assertEqual(coords.x, 10.0)
         self.assertEqual(coords.y, 20.0)
         self.assertEqual(coords.z, 5.0)
+        self.assertEqual(mill.ser_mill.write.call_count, 2)
+        mill.ser_mill.write.assert_called_with(b"?")
 
     def test_current_status_extracts_status_from_multiline_read(self):
         mill = self._make_mill()
