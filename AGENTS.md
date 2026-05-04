@@ -40,16 +40,25 @@ Use this boundary stack and do not skip layers:
 4. `Gantry` owns the high-level safe motion API.
 5. `gantry_driver` / `Mill` owns serial, GRBL, and G-code.
 
-Hard stops:
+Hard stops and exception rules:
 
 - Do not emit, parse, or construct raw G-code outside `src/gantry/gantry_driver/`
   and narrowly approved hardware methods in `src/gantry/gantry.py`.
-- Do not call `Mill`, `execute_command`, `safe_move`, or `gantry_driver` from
-  protocol commands, instruments, deck code, board code, setup validation, or
-  clients. Use `Board.move()` or a higher-level protocol/setup API instead.
+- Default rule: protocol commands, deck code, board code, setup validation,
+  clients, and most instruments must not call `Mill`, `execute_command`,
+  `safe_move`, or `gantry_driver` directly. Use `Board.move()` or a higher-level
+  protocol/setup API instead.
+- Exceptions are allowed for closed-loop hardware behavior where the instrument
+  genuinely must coordinate motion and sensing at low level. Example: ASMI
+  indentation can receive/use the gantry for Z-stepping while reading force.
+  Any such exception must be explicit, documented near the call site, covered by
+  focused tests/mocks, and must not require end users or protocols to write
+  G-code or know GRBL details.
 - Do not touch `src/gantry/gantry.py` for ordinary protocol, deck, instrument,
   validation, or app work. If a task appears to require editing it, stop and
-  explain why the existing public API is insufficient before proceeding.
+  explain why the existing public API is insufficient before proceeding. If the
+  task is an approved closed-loop hardware exception, state that explicitly in
+  the plan/PR.
 - Do not make business features depend on raw XYZ coordinates when a deck target
   can express the intent.
 - Do not duplicate instrument offset/depth math outside `Board.move()` and its
