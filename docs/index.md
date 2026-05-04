@@ -27,7 +27,7 @@ pip install -e .[docs,dev]
 Run a safe offline validation first:
 
 ```bash
-python setup/validate_setup.py \
+PYTHONPATH=src python setup/validate_setup.py \
   configs/gantry/cub_xl_asmi.yaml \
   configs/deck/asmi_deck.yaml \
   configs/protocol/asmi_move_a1.yaml
@@ -37,6 +37,9 @@ python setup/validate_setup.py \
 
 - [Getting Started](getting-started.md) for installation and first commands
 - [Configuration](configuration.md) for the three YAML surfaces
+- [Calibrate Deck Origin](calibration.md) for the operator calibration flow
 - [Protocol](protocol.md) for how protocol execution is assembled and validated
 - [Data](data.md) for persistence and analysis helpers
+- [Gantry Bring-Up](admin/gantry-bring-up.md) for controller direction,
+  homing, and WPos admin work
 - [API Reference](reference/index.md) for generated module docs

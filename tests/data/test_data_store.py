@@ -102,7 +102,7 @@ class TestCampaignCRUD:
         cid = store.create_campaign(
             description="test",
             deck_config="configs/deck.yaml",
-            board_config="configs/board.yaml",
+            board_config="legacy-board.yaml",
             gantry_config="configs/gantry.yaml",
             protocol_config="configs/protocol.yaml",
         )
@@ -111,7 +111,7 @@ class TestCampaignCRUD:
             "FROM campaigns WHERE id = ?",
             (cid,),
         ).fetchone()
-        assert row == ("configs/deck.yaml", "configs/board.yaml",
+        assert row == ("configs/deck.yaml", "legacy-board.yaml",
                        "configs/gantry.yaml", "configs/protocol.yaml")
         store.close()
 

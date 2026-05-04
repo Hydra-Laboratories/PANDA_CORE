@@ -11,8 +11,8 @@ class NormalizedScanArguments:
     """Runtime scan arguments after resolving compatibility aliases."""
 
     measurement_height: float | None
-    entry_travel_z: float | None
-    interwell_travel_z: float | None
+    entry_travel_height: float | None
+    interwell_travel_height: float | None
     method_kwargs: dict[str, Any]
 
 
@@ -26,7 +26,7 @@ def normalize_scan_arguments(
 ) -> NormalizedScanArguments:
     """Normalize the supported scan naming surface.
 
-    The normalized ``entry_travel_z`` and ``interwell_travel_z`` values are
+    The normalized ``entry_travel_height`` and ``interwell_travel_height`` values are
     absolute deck-frame Z coordinates consumed by the scan implementation.
     """
     kwargs = dict(method_kwargs or {})
@@ -72,7 +72,7 @@ def normalize_scan_arguments(
 
     return NormalizedScanArguments(
         measurement_height=measurement_height,
-        entry_travel_z=resolved_entry,
-        interwell_travel_z=resolved_interwell,
+        entry_travel_height=resolved_entry,
+        interwell_travel_height=resolved_interwell,
         method_kwargs=kwargs,
     )

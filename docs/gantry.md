@@ -1,6 +1,24 @@
 # Gantry
 
-The gantry is the CNC motion platform that moves instruments over the deck. CubOS communicates with GRBL-based controllers over serial.
+The gantry is the CNC motion platform that moves instruments over the deck.
+CubOS communicates with GRBL-based controllers over serial.
+
+## Coordinate Convention
+
+The high-level gantry boundary uses the CubOS deck frame:
+
+- origin `(0, 0, 0)` is the front-left-bottom reachable work volume
+- `+X` moves right from the operator perspective
+- `+Y` moves away from the operator, toward the back of the deck
+- `+Z` moves up, away from the deck
+- `-Z` moves down, toward the deck
+
+The low-level controller may physically home at the opposite back-right-top
+corner. That machine-frame detail stays at the controller/GRBL boundary. CubOS
+does not apply a hidden Z sign flip in the high-level `Gantry` wrapper.
+
+Protocol `home` runs GRBL `$H` and preserves the calibrated G54 WPos frame. It
+does not apply `G92` or redefine work coordinates after homing.
 
 ## Config
 
@@ -13,7 +31,7 @@ Gantry YAML defines:
 - working volume
 - optional `structure_clearance_z`
 - optional GRBL settings expectations
-- mounted instruments and their offsets/settings
+- mounted instruments, offsets, reach depths, action heights, and driver settings
 
 Representative example:
 
@@ -21,31 +39,23 @@ Representative example:
 serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
-  total_z_height: 90.0
+  total_z_height: 87.0
   y_axis_motion: head
-  structure_clearance_z: 75.0
+  structure_clearance_z: 85.0
 
 working_volume:
   x_min: 0.0
-  x_max: 300.0
+  x_max: 399.0
   y_min: 0.0
-  y_max: 200.0
+  y_max: 280.0
   z_min: 0.0
-  z_max: 80.0
+  z_max: 87.0
 
 grbl_settings:
-  dir_invert_mask: 2
+  dir_invert_mask: 1
   status_report: 0
-  hard_limits: true
   homing_enable: true
-  homing_dir_mask: 3
-  homing_pull_off: 2.0
-  steps_per_mm_x: 800.0
-  steps_per_mm_y: 800.0
-  steps_per_mm_z: 800.0
-  max_travel_x: 300.0
-  max_travel_y: 200.0
-  max_travel_z: 80.0
+  homing_dir_mask: 0
 
 instruments:
   asmi:
@@ -63,190 +73,94 @@ Use this file when:
 - switching to a different gantry
 - changing travel limits
 - updating homing behavior
-- validating expected controller settings
+- recording expected controller settings
 - changing mounted instruments, offsets, reach depths, or driver-specific connection settings
 
 ## CNC Fields
 
 `homing_strategy` must be `standard`, which runs GRBL `$H`.
 
-`total_z_height` is required and must be greater than zero. It describes the configured vertical envelope. Deck labware can use a `height` field instead of explicit Z coordinates; under the deck-origin convention that `height` is used directly as the deck-frame Z value.
+`total_z_height` is required and must be greater than zero. It describes the
+configured vertical envelope. Deck labware can use a `height` field instead of
+explicit Z coordinates; under the deck-origin convention that `height` is used
+directly as the deck-frame Z value.
 
-`y_axis_motion` is optional and defaults to `head`. Use `head` when the gantry head moves along Y, and `bed` when the machine bed moves along Y.
+`y_axis_motion` is optional and defaults to `head`. Use `head` when the gantry
+head moves along Y, and `bed` when the machine bed moves along Y.
 
-`structure_clearance_z` is optional. When set, validation requires first-entry scan travel and explicit named/literal move `travel_z` values to meet or exceed that absolute Z plane before entering home/park/edge-risk regions.
+`structure_clearance_z` is optional. When set, validation requires first-entry
+scan travel and explicit named/literal move `travel_z` values to meet or exceed
+that absolute Z plane before entering home/park/edge-risk regions.
 
-Working volume bounds are inclusive and use the CubOS deck frame:
+## Working Volume
 
-- CubOS `(0, 0, 0)` is the front-left-bottom reachable work volume. Because
-  normalized machines home at the opposite top-back-right corner, run the
-  deck-origin calibration script to jog to the front-left XY origin and lowest
-  safe reachable Z for the active TCP, assign only `X=0`, `Y=0`, then assign
-  Z from either bottom contact (`Z=0`) or a ruler-measured deck-to-TCP gap.
-  If the TCP cannot reach bottom, the one-instrument config should use that
-  gap as `working_volume.z_min`. Protocol setup requires X/Y minima at `0.0`
-  and a non-negative Z minimum. The homed pose after assignment is measured as
-  `(x_max, y_max, z_max)`.
-- `+X` moves right from the operator perspective.
-- `+Y` moves away from the operator, toward the back of the deck.
-- `+Z` moves up, away from the deck.
-- `-Z` moves down, toward the deck.
-- GRBL may still physically home at top-back-right. That machine-frame detail
-  should remain isolated inside the gantry/GRBL boundary.
+Working volume bounds are inclusive and use the CubOS deck frame.
+
+Protocol setup requires:
+
+- `x_min: 0.0`
+- `y_min: 0.0`
+- non-negative `z_min`
+
+Use [Calibrate Deck Origin](calibration.md) to measure the physical working
+volume. The calibration script jogs to the front-left lower-reach origin, sets
+X/Y with `G10 L20 P1 X0 Y0`, assigns Z by bottom contact or ruler gap, then
+re-homes and reports the measured homed WPos as `(x_max, y_max, z_max)`.
+
+For one-instrument bottom contact, use `z_min: 0.0`. For ruler-gap calibration,
+use the measured gap as `z_min`. Example: if the TCP stops 5 mm above deck and
+the homed WPos reads `Z=105`, use `z_min: 5.0`, `z_max: 105.0`.
+
+Multi-instrument setups need per-instrument lower-reach limits and inactive-tool
+collision checks instead of one global lower reach for every tool.
+
+## Instrument Fields
+
+Mounted instruments live under the gantry YAML `instruments` key.
+
+- `offset_x` and `offset_y` describe XY offsets from the gantry/router
+  reference point.
+- `depth` is positive tool depth below the gantry reference point; in the +Z-up
+  deck frame, gantry Z is computed as target/tool Z plus `depth`.
+- `measurement_height` is the default absolute deck-frame action Z.
+- `safe_approach_height` is the default absolute deck-frame XY-travel Z and
+  must be at or above `measurement_height`.
+
+## Protocol Height Fields
 
 Protocol movement names describe absolute deck-frame Z planes:
 
 - `measurement_height` is where an instrument performs its action. For ASMI,
   this is the indentation start height.
-- `interwell_travel_height` is the scan travel height between wells and should
-  default to `measurement_height` when omitted.
+- `interwell_travel_height` is the scan travel height between wells and
+  defaults to `measurement_height` when omitted.
 - `entry_travel_height` is the first scan transit height.
 - `park_position` is an explicit rest pose.
 - ASMI `indentation_limit` is the lower/deeper stopping Z, so a downward
   indentation has `indentation_limit < measurement_height`.
 
-## GRBL Axis And Homing Normalization
+Legacy names `entry_travel_z`, scan-level `safe_approach_height`, and ASMI
+`z_limit` are rejected before motion.
 
-Use this procedure when bringing up a new machine or normalizing multiple GRBL
-controllers to the same physical convention.
+## Controller Bring-Up
 
-Target behavior:
+Axis and homing normalization is controller administration, not routine
+operator calibration. Use [Gantry Bring-Up](admin/gantry-bring-up.md) when a
+machine is new or controller direction/WPos behavior is unknown.
 
-- home is back-right-top
-- `+X` moves right
-- `+Y` moves back, away from the user
-- `+Z` moves up
+That admin procedure covers:
 
-In CubOS gantry config, these GRBL fields map to the live controller settings:
-
-- `grbl_settings.dir_invert_mask` -> `$3`
-- `grbl_settings.homing_dir_mask` -> `$23`
-
-Inspect the current controller state first:
-
-```text
-$$
-```
-
-Record `$3` and `$23` before changing anything.
-
-### Safety
-
-- ensure the tool is clear of fixtures, stock, and cables
-- keep a hand on the E-stop or controller reset
-- use low jog speeds while validating motion
-
-### Procedure
-
-1. Start with a known homing direction, for example:
-
-   ```text
-   $23=0
-   ```
-
-2. Run homing:
-
-   ```text
-   $H
-   ```
-
-3. Check which corner the machine reaches. The goal is back-right-top.
-4. If homing is wrong, adjust `$23` and home again. GRBL uses this bitmask:
-   - `X=1`
-   - `Y=2`
-   - `Z=4`
-
-   Example:
-
-   ```text
-   $23=3
-   ```
-
-   This flips the X and Y homing directions.
-
-5. After homing is correct, jog each axis and verify:
-   - `+X` moves right
-   - `+Y` moves back
-   - `+Z` moves up
-
-6. If jogging is wrong, adjust `$3` using the same bitmask:
-
-   ```text
-   $3=2
-   ```
-
-   This inverts Y motion.
-
-7. Run `$H` again after changing `$3`. `$3` and `$23` are coupled, so a motion
-   change can also affect homing behavior.
-8. Repeat the `$23` and `$3` adjustments until both of these are true:
-   - `$H` always goes to back-right-top
-   - positive jog directions are right, back, and up
-9. Save the final `$3` and `$23` values in the gantry config so the expected
-   controller settings are documented with the machine:
-
-   ```yaml
-   grbl_settings:
-     dir_invert_mask: 2
-     homing_dir_mask: 3
-   ```
-
-10. Calibrate the CubOS work origin using the deck-origin script:
-
-   ```bash
-   python setup/calibrate_deck_origin.py --gantry configs/gantry/cub_xl_asmi.yaml --instrument asmi
-   ```
-
-   The script sends `$H`, clears transient `G92` offsets, prompts the operator
-   to jog one reference TCP to the front-left XY origin and lowest safe
-   reachable Z, then sets only `G10 L20 P1 X0 Y0`. It then asks whether the
-   TCP is touching true deck bottom. If yes, it sets `G10 L20 P1 Z0`. If no,
-   measure the vertical gap from deck to TCP with a ruler and enter that gap;
-   the script sets `G10 L20 P1 Z<gap_mm>`. It then re-homes and reads WPos at
-   the homed back-right-top corner. That measured WPos is the physical working
-   volume for the setup. Do not treat nominal or configured max-travel values
-   as physical truth until this measurement is done.
-
-   In guided mode, the script asks whether the TCP can safely touch true deck
-   bottom at the current lower-reach pose. If no or unsure, enter the measured
-   deck-to-TCP gap explicitly:
-
-   ```bash
-   python setup/calibrate_deck_origin.py --gantry configs/gantry/cub_filmetrics.yaml --z-reference-mode ruler-gap --tip-gap-mm 5 --instrument filmetrics
-   ```
-
-   For instruments that can touch true deck bottom:
-
-   ```bash
-   python setup/calibrate_deck_origin.py --gantry configs/gantry/cub_xl_asmi.yaml --z-reference-mode bottom
-   ```
-
-   For one-instrument configs, use the measured lower-reach Z as
-   `working_volume.z_min`. For example, if the TCP stops 5 mm above deck and
-   the homed WPos reads `Z=105`, use `z_min: 5.0`, `z_max: 105.0`. A future
-   multi-instrument config should move this into per-instrument lower-reach
-   limits rather than one global `z_min` for every tool.
-
-### Acceptance Criteria
-
-- `$H` always goes to back-right-top
-- `+X`, `+Y`, and `+Z` always move right, back, and up
-- after `setup/calibrate_deck_origin.py`, homed WPos reports the measured
-  physical working-volume maxima
-- the same `$3` / `$23` pair is documented and reused for identical machines
-
-### Quick Reference
-
-- `$3` bitmask: `X=1`, `Y=2`, `Z=4`
-- `$23` bitmask: `X=1`, `Y=2`, `Z=4`
-- `$3` controls motion direction
-- `$23` controls homing direction
-- validate them together, not independently
+- controller setting snapshots and rollback notes
+- `$3` jog direction invert mask
+- `$10` WPos status reporting
+- `$23` homing direction invert mask
+- WPos/MPos/WCO checks
 
 ## Supported Gantries
 
-| Config | System | Working Volume |
+| Config | System | Current status |
 |--------|--------|----------------|
-| `configs/gantry/cub_xl_asmi.yaml` | CubOS-XL / Genmitsu 3018 PRO + ASMI | 399 x 280 x 87 mm |
-| `configs/gantry/cub_xl_sterling.yaml` | Sterling ASMI | 306 x 306 x 113 mm usable Z span |
-| `configs/gantry/cub_filmetrics.yaml` | CubOS / Genmitsu 3018 PROVer V2 + Filmetrics | 280 x 175 x 90 mm |
+| `configs/gantry/cub_xl_asmi.yaml` | CubOS-XL + ASMI | Measured deck-origin ASMI config from 2026-04-24; still requires staged hardware checks before broad reuse |
+| `configs/gantry/cub_xl_sterling.yaml` | Sterling ASMI | Sterling ASMI setup; validate on hardware before real protocols |
+| `configs/gantry/cub_filmetrics.yaml` | Cub + Filmetrics | Converted deck-origin starting point; recalibrate and hardware-validate before real Filmetrics runs |
+| `configs/gantry/cub_xl_panda.yaml` | CubOS-XL + PANDA-style board | Estimated layout/config surface; placeholders require follow-up before real multi-instrument use |
