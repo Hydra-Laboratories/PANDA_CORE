@@ -3,15 +3,13 @@
 # It encodes the CubOS deck frame:
 # front-left-bottom origin, +X right, +Y back, +Z up, -Z down.
 #
-# Measured with a deck-origin calibration flow:
-# - FLB WPos assigned as X=0.000, Y=0.000, Z=0.000.
-# - BRT runtime homed WPos measured as X=399.000, Y=280.000, Z=87.000.
+# Working bounds are aligned with the Sterling Cub XL gantry config.
 
 serial_port: /dev/ttyUSB0
 
 cnc:
   homing_strategy: standard
-  total_z_height: 87.0
+  total_z_height: 139.0
   y_axis_motion: head
   calibration_homing:
     runtime_brt:
@@ -25,11 +23,11 @@ cnc:
 
 working_volume:
   x_min: 0.0
-  x_max: 399.0
+  x_max: 395.0
   y_min: 0.0
-  y_max: 280.0
+  y_max: 295.0
   z_min: 0.0
-  z_max: 87.0
+  z_max: 110.0
 
 grbl_settings:
   # Controller settings for the Cub XL ASMI deck-origin workcell. Re-verify

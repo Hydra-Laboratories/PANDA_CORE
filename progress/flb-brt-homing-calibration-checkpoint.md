@@ -72,6 +72,9 @@
 - `PYTHONPATH=src pytest -q` -> 1024 passed, 4 subtests passed after removing final BRT homing.
 - Simplified `setup/calibrate_deck_origin.py` to deck-origin only: hardcoded gantry path, no argparse, no instrument/TCP calibration, no BRT restore, FLB home + G54 zero + estimated-bound move + optional write to a new YAML file. Added `setup/instrument_calibration.py` placeholder with TODOs for the removed TCP offset/depth/reach workflow.
 - `python -m py_compile setup/calibrate_deck_origin.py setup/instrument_calibration.py` -> passed. Tests were not updated for this quick hardware-iteration cleanup.
+- Updated `configs/gantry/cub_xl_asmi.yaml` to use the same working bounds as `configs/gantry/cub_xl_sterling.yaml`: X[0,395], Y[0,295], Z[0,110], with `cnc.total_z_height: 139.0` so schema validation still passes.
+- `PYTHONPATH=src python setup/validate_setup.py configs/gantry/cub_xl_asmi.yaml configs/deck/asmi_deck.yaml configs/protocol/asmi_move_a1.yaml` -> PASS.
+- `PYTHONPATH=src python setup/validate_setup.py configs/gantry/cub_xl_asmi.yaml configs/deck/asmi_deck.yaml configs/protocol/asmi_indentation.yaml` -> PASS.
 
 ## Open Risks
 
