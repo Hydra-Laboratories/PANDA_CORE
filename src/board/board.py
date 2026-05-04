@@ -86,8 +86,8 @@ class Board:
     ) -> None:
         """Travel *instrument* to the approach height above a labware target.
 
-        Emits a single ``move`` with ``travel_z = safe_approach_height``.
-        The gantry lifts/lowers to that absolute deck-frame Z plane at
+        Emits a single ``move`` with ``travel_z = labware.z -
+        safe_approach_height``. The gantry lifts/lowers to approach Z at
         the current XY, travels XY at approach Z, and ends above the
         target — not engaged with it. Higher-level commands
         (``measure``, ``aspirate``, ``scan``, ...) follow up with a raw
@@ -103,7 +103,7 @@ class Board:
         instr = self._resolve_instrument(instrument)
         x, y, z = self._resolve_position(labware)
         self._validate_finite_xyz(x, y, z, instr.name)
-        approach_z = instr.safe_approach_height
+        approach_z = z - instr.safe_approach_height
         self.move(instr, (x, y, approach_z), travel_z=approach_z)
 
     def _validate_finite_xyz(self, x: float, y: float, z: float, instr_name: str) -> None:

@@ -268,6 +268,36 @@ def test_move_to_unknown_named_position_emits_violation():
     assert any("cannot be resolved" in v.message for v in violations), violations
 
 
+def test_move_deck_target_uses_coord_z_minus_safe_approach():
+    """Deck-target moves compute approach_z = coord.z - safe_approach_height.
+
+    Regression: the validator previously used safe_approach_height raw as
+    the z coordinate, which produced false violations for valid targets.
+    """
+    instr = _instrument("asmi")
+    instr.safe_approach_height = 5.0
+    board, deck = _board_and_deck(instr)
+    # plate A1 is at z=73.0, approach_z = 73 - 5 = 68 → within [0, 100].
+    gantry = _gantry_config(z_max=100.0)
+    protocol = _move_step(position="plate.A1")
+
+    assert validate_protocol_semantics(protocol, board, deck, gantry) == []
+
+
+def test_move_deck_target_approach_z_violation():
+    """When coord.z - safe_approach_height falls outside bounds, flag it."""
+    instr = _instrument("asmi")
+    instr.safe_approach_height = 5.0
+    board, deck = _board_and_deck(instr)
+    # plate A1 at z=73.0, approach_z = 73 - 5 = 68 → violates z_max=60.
+    gantry = _gantry_config(z_max=60.0)
+    protocol = _move_step(position="plate.A1")
+
+    violations = validate_protocol_semantics(protocol, board, deck, gantry)
+
+    assert any("z" in v.message for v in violations), violations
+
+
 def test_move_without_gantry_config_skips_bound_check():
     """Default-None gantry preserves backward compatibility with older callers."""
     board, deck = _board_and_deck()
