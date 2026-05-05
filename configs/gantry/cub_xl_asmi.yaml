@@ -1,7 +1,6 @@
-# ASMI gantry configuration measured on 2026-04-24 for the deck-origin refactor.
+# ASMI gantry configuration measured on 2026-04-24 for the deck-origin frame.
 #
-# This is NOT a drop-in replacement for configs/gantry/cub_xl_asmi.yaml until
-# staged hardware validation passes. It encodes the CubOS deck frame:
+# It encodes the CubOS deck frame:
 # front-left-bottom origin, +X right, +Y back, +Z up, -Z down.
 #
 # Measured with the deck-origin calibration flow:

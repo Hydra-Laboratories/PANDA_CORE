@@ -2,8 +2,8 @@
 
 Mounted instruments now live in the gantry machine YAML under the top-level
 `instruments` key. The runtime `Board` object still represents the mounted
-tools plus the gantry for motion planning, but there is no separate
-`configs/board/*.yaml` file in the active config set.
+tools plus the gantry for motion planning, but there is no separate board
+YAML file in the active config set.
 
 ## Config
 

@@ -78,9 +78,12 @@ def _validate_scan_travel_heights(
         return violations
 
     instr = board.instruments[instrument]
-    travel_fields = [("interwell_travel_height", normalized.interwell_travel_z)]
-    if normalized.entry_travel_z != normalized.interwell_travel_z:
-        travel_fields.append(("entry_travel_height", normalized.entry_travel_z))
+    travel_fields = [(
+        "interwell_travel_height",
+        normalized.interwell_travel_height,
+    )]
+    if normalized.entry_travel_height != normalized.interwell_travel_height:
+        travel_fields.append(("entry_travel_height", normalized.entry_travel_height))
     for field_name, travel_z in travel_fields:
         if travel_z is None:
             continue
@@ -174,9 +177,12 @@ def _validate_scan_waypoints(
         return violations
 
     instr = board.instruments[instrument]
-    travel_fields = [("interwell_travel_height", normalized.interwell_travel_z)]
-    if normalized.entry_travel_z != normalized.interwell_travel_z:
-        travel_fields.append(("entry_travel_height", normalized.entry_travel_z))
+    travel_fields = [(
+        "interwell_travel_height",
+        normalized.interwell_travel_height,
+    )]
+    if normalized.entry_travel_height != normalized.interwell_travel_height:
+        travel_fields.append(("entry_travel_height", normalized.entry_travel_height))
 
     for well_id, well in plate_obj.wells.items():
         action_z = (
@@ -395,7 +401,7 @@ def validate_protocol_semantics(
             step_index=step.index,
             command_name="scan",
             label="entry_travel_height",
-            z=normalized.entry_travel_z,
+            z=normalized.entry_travel_height,
             gantry=gantry,
         ))
         violations.extend(_validate_asmi_indentation(

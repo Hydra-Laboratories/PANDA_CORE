@@ -1,4 +1,4 @@
-"""Movement-plan checks for issue #87 deck-origin candidate configs."""
+"""Movement-plan checks for issue #87 deck-origin configs."""
 
 from __future__ import annotations
 
@@ -22,8 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CONFIGS = ROOT / "configs"
 
 
-@pytest.mark.skip(reason="Candidate configs use +Z-up convention; pending conversion to positive-down")
-def test_asmi_candidate_config_generates_deck_origin_scan_waypoints():
+def test_asmi_config_generates_deck_origin_scan_waypoints():
     gantry_config = load_gantry_from_yaml(
         CONFIGS / "gantry/cub_xl_asmi.yaml"
     )
@@ -66,7 +65,7 @@ def test_asmi_candidate_config_generates_deck_origin_scan_waypoints():
         deck=deck,
         positions=protocol.positions,
         gantry=gantry_config,
-        logger=logging.getLogger("test_asmi_candidate_config"),
+        logger=logging.getLogger("test_asmi_config"),
     )
     scan(ctx, **scan_step.args)
 
@@ -101,7 +100,7 @@ def test_asmi_candidate_config_generates_deck_origin_scan_waypoints():
     assert indentation_calls[0]["gantry"] is mock_gantry
 
 
-def test_panda_candidate_deck_origin_layout_and_placeholders_parse():
+def test_panda_deck_origin_layout_and_placeholders_parse():
     gantry_config = load_gantry_from_yaml(
         CONFIGS / "gantry/cub_xl_panda.yaml"
     )
@@ -126,7 +125,7 @@ def test_panda_candidate_deck_origin_layout_and_placeholders_parse():
     }
 
 
-def test_filmetrics_candidate_translates_legacy_deck_and_validates_setup():
+def test_filmetrics_deck_origin_config_validates_setup():
     gantry_path = CONFIGS / "gantry/cub_filmetrics.yaml"
     deck_path = CONFIGS / "deck/filmetrics_deck.yaml"
     protocol_path = CONFIGS / "protocol/filmetrics_scan.yaml"

@@ -1,4 +1,4 @@
-# Candidate PANDA deck layout for the issue #87 deck-origin refactor.
+# PANDA deck layout for the CubOS deck-origin frame.
 #
 # Estimated from panda-deck.jpg. Frame:
 #   origin = front-left-bottom reachable work volume
@@ -6,21 +6,20 @@
 #   +Y = away from operator / toward rear rail
 #   +Z = up, away from deck
 #
-# This file is intended as a Phase 2/3 fixture, not as a hardware-ready
-# calibration. Measure A1/A2, tip pickup, disposal, and vial coordinates before
-# using it on a physical setup.
+# Measure A1/A2, tip pickup, disposal, and vial coordinates before using it on
+# a physical setup.
 
 labware:
   well_plate_holder:
     load_name: ursa_wellplate_holder
-    name: panda_well_plate_holder_deck_origin_candidate
+    name: panda_well_plate_holder_deck_origin
     location:
       x: 72.0
       y: 34.0
       z: 5.0
     well_plate:
       name: plate
-      model_name: panda_96_wellplate_deck_origin_candidate
+      model_name: panda_96_wellplate_deck_origin
       rows: 8
       columns: 12
       length_mm: 127.8
@@ -36,7 +35,7 @@ labware:
 
   tip_rack_left:
     load_name: ursa_tip_rack
-    name: panda_tip_rack_left_deck_origin_candidate
+    name: panda_tip_rack_left_deck_origin
     rows: 2
     columns: 15
     z_pickup: 43.0
@@ -49,7 +48,7 @@ labware:
 
   tip_rack_right:
     load_name: ursa_tip_rack
-    name: panda_tip_rack_right_deck_origin_candidate
+    name: panda_tip_rack_right_deck_origin
     rows: 2
     columns: 15
     z_pickup: 43.0
@@ -62,8 +61,8 @@ labware:
 
   tip_disposal:
     type: tip_disposal
-    name: panda_tip_disposal_deck_origin_candidate
-    model_name: panda_black_tip_disposal_candidate
+    name: panda_tip_disposal_deck_origin
+    model_name: panda_black_tip_disposal
     length_mm: 58.0
     width_mm: 150.0
     height_mm: 38.0
@@ -82,7 +81,7 @@ labware:
 
   vial_holder:
     load_name: ursa_vial_holder
-    name: panda_vial_holder_deck_origin_candidate
+    name: panda_vial_holder_deck_origin
     location:
       x: 366.0
       y: 154.0

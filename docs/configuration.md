@@ -1,6 +1,7 @@
 # Configuration
 
-CubOS uses three YAML inputs to define a runnable experiment. Together they describe the machine, the deck layout, and the step sequence.
+CubOS uses three YAML inputs to define a runnable experiment. Together they
+describe the machine, the deck layout, and the step sequence.
 
 ## Directory Layout
 
@@ -22,7 +23,7 @@ Gantry YAML defines:
 - working volume
 - optional structure-clearance Z
 - optional GRBL settings expectations
-- mounted instruments, offsets, and driver-specific settings
+- mounted instruments, offsets, reach depths, action heights, and driver-specific settings
 
 Representative example:
 
@@ -30,29 +31,27 @@ Representative example:
 serial_port: /dev/cu.usbserial-140
 cnc:
   homing_strategy: standard
-  total_z_height: 90.0
+  total_z_height: 87.0
   y_axis_motion: head
-  structure_clearance_z: 75.0
+  structure_clearance_z: 85.0
 
 working_volume:
   x_min: 0.0
-  x_max: 300.0
+  x_max: 399.0
   y_min: 0.0
-  y_max: 200.0
+  y_max: 280.0
   z_min: 0.0
-  z_max: 80.0
+  z_max: 87.0
 
 instruments:
-  uvvis:
-    type: uvvis_ccs
-    vendor: thorlabs
-    serial_number: "M00801544"
-    dll_path: "TLCCS_64.dll"
-    default_integration_time_s: 0.24
+  asmi:
+    type: asmi
+    vendor: vernier
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    measurement_height: 3.0
+    measurement_height: 26.0
+    safe_approach_height: 35.0
 ```
 
 Use this file when:
@@ -60,7 +59,7 @@ Use this file when:
 - switching to a different gantry
 - changing travel limits
 - updating homing behavior
-- validating expected controller settings
+- recording expected controller settings
 - changing mounted instruments, offsets, reach depths, or instrument-specific connection settings
 
 CubOS is cut over to the deck-origin frame. Protocol `home` runs GRBL homing
@@ -69,34 +68,37 @@ and preserves the persistent G54 work-coordinate frame established by
 setup rejects gantry configs whose X/Y minima are not `0.0` or whose Z minimum
 is negative.
 
+Run [Calibrate Deck Origin](calibration.md) before trusting measured working
+volume values on real hardware. Use [Gantry Bring-Up](admin/gantry-bring-up.md)
+first if controller direction, homing, or WPos reporting is unknown.
+
 ## Deck Config
 
-Deck YAML defines labware positions. Well plates use calibration anchors, while single-location labware such as vials store a direct position.
-All deck Z values use the CubOS deck-origin frame: `+Z` is up, and a labware `height` field is a direct absolute deck-frame Z value.
+Deck YAML defines labware positions. Well plates use calibration anchors, while
+single-location labware such as vials store a direct position.
+
+All deck Z values use the CubOS deck-origin frame: `+Z` is up, and a labware
+`height` field is a direct absolute deck-frame Z value.
 
 Representative well plate example:
 
 ```yaml
 labware:
-  plate_1:
-    type: well_plate
-    name: corning_96_well_360ul
-    model_name: corning_3590_96well
-    rows: 8
-    columns: 12
+  plate:
+    load_name: sbs_96_wellplate
+    name: asmi_96_well
+    model_name: asmi_96_well
     calibration:
       a1:
-        x: 100.0
-        y: 60.0
-        z: 20.0
+        x: 347.0
+        y: 42.0
+        z: 30.0
       a2:
-        x: 109.0
-        y: 60.0
-        z: 20.0
-    x_offset_mm: 9.0
-    y_offset_mm: -9.0
-    capacity_ul: 360.0
-    working_volume_ul: 200.0
+        x: 338.0
+        y: 42.0
+        z: 30.0
+    x_offset_mm: -9.0
+    y_offset_mm: 9.0
 ```
 
 Use this file when:
@@ -109,7 +111,10 @@ Use this file when:
 
 Mounted instruments are defined inside the gantry YAML under `instruments`.
 Offsets are relative to the gantry/router reference point.
-`measurement_height` and `safe_approach_height` are absolute deck-frame Z planes, not labware-relative offsets.
+
+`measurement_height` and `safe_approach_height` are absolute deck-frame Z
+planes, not labware-relative offsets. `safe_approach_height` must be greater
+than or equal to `measurement_height` in the +Z-up deck frame.
 
 Representative example:
 
@@ -125,11 +130,13 @@ instruments:
     offset_y: 0.0
     depth: 0.0
     measurement_height: 3.0
+    safe_approach_height: 20.0
 ```
 
 ## Protocol Config
 
-Protocol YAML defines the experiment step sequence. It should be the file you change most often during routine experiment work.
+Protocol YAML defines the experiment step sequence. It should be the file you
+change most often during routine experiment work.
 
 Representative example:
 
@@ -137,10 +144,10 @@ Representative example:
 protocol:
   - move:
       instrument: uvvis
-      position: plate_1.A1
+      position: plate.A1
   - measure:
       instrument: uvvis
-      position: plate_1.A1
+      position: plate.A1
 ```
 
 Use this file when:
@@ -149,6 +156,12 @@ Use this file when:
 - adding measurement or liquid-handling steps
 - adjusting step parameters without changing the machine layout
 
+Protocol scan heights use the current names `measurement_height`,
+`entry_travel_height`, and `interwell_travel_height`. Legacy scan names
+`entry_travel_z`, scan-level `safe_approach_height`, and ASMI `z_limit` are
+rejected before motion.
+
 ## Recommended Editing Rule
 
-If the physical machine setup has not changed, edit the protocol file and leave the gantry and deck files alone.
+If the physical machine setup has not changed, edit the protocol file and leave
+the gantry and deck files alone.
