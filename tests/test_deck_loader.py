@@ -1239,3 +1239,92 @@ labware:
                 load_deck_from_yaml(path)
         finally:
             Path(path).unlink(missing_ok=True)
+
+
+# ----- well_depth_mm tests -----
+
+WELL_DEPTH_DECK_YAML = """
+labware:
+  plate_1:
+    type: well_plate
+    name: deep_well_test
+    rows: 8
+    columns: 12
+    height_mm: 14.35
+    well_depth_mm: 10.67
+    calibration:
+      a1: { x: 10.0, y: 10.0, z: 25.9 }
+      a2: { x: 19.0, y: 10.0, z: 25.9 }
+    x_offset_mm: 9.0
+    y_offset_mm: 9.0
+"""
+
+
+def test_well_plate_carries_well_depth_mm_to_plate_object():
+    """The plate definition's inside-floor depth must reach the WellPlate
+    object so analysis pipelines can compute sample thickness from a1.z
+    rather than dragging a manual `well_bottom_z` knob in user configs.
+    """
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(WELL_DEPTH_DECK_YAML)
+        path = f.name
+    try:
+        deck = load_deck_from_yaml(path)
+        plate = deck["plate_1"]
+        assert plate.well_depth_mm == pytest.approx(10.67)
+        # well floor (where the sample sits) is a1.z minus inside depth.
+        rim_z = plate.get_well_center("A1").z
+        assert rim_z - plate.well_depth_mm == pytest.approx(15.23)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_well_plate_well_depth_mm_is_optional_default_none():
+    """Existing deck YAMLs that don't declare `well_depth_mm` keep loading."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(VALID_DECK_ONE_PLATE_ONE_VIAL)
+        path = f.name
+    try:
+        deck = load_deck_from_yaml(path)
+        plate = deck["plate_1"]
+        assert plate.well_depth_mm is None
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_well_plate_well_depth_mm_must_be_positive():
+    """Negative or zero inside depth is nonsensical and should fail validation."""
+    bad_yaml = WELL_DEPTH_DECK_YAML.replace("well_depth_mm: 10.67", "well_depth_mm: -1.0")
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(bad_yaml)
+        path = f.name
+    try:
+        with pytest.raises(Exception, match="well_depth_mm"):
+            load_deck_from_yaml(path)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_load_name_sbs_96_wellplate_carries_default_well_depth_mm():
+    """The shipped SBS96 definition supplies a sane default inside depth so
+    `load_name: sbs_96_wellplate` users get it without per-deck overrides.
+    """
+    yaml_str = """
+labware:
+  plate:
+    load_name: sbs_96_wellplate
+    calibration:
+      a1: { x: 10.0, y: 10.0, z: 25.9 }
+      a2: { x: 19.0, y: 10.0, z: 25.9 }
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(yaml_str)
+        path = f.name
+    try:
+        deck = load_deck_from_yaml(path)
+        plate = deck["plate"]
+        assert plate.well_depth_mm is not None
+        # Standard flat-bottom shallow SBS96 inside depth.
+        assert 9.0 < plate.well_depth_mm < 12.0
+    finally:
+        Path(path).unlink(missing_ok=True)

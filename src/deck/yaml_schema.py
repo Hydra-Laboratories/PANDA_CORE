@@ -35,6 +35,12 @@ class WellPlateYamlEntry(BaseModel):
     length_mm: Optional[float] = None
     width_mm: Optional[float] = None
     height_mm: Optional[float] = None
+    # Inside well depth from rim (calibration anchor) to inside floor where the
+    # sample sits. Lets analysis pipelines compute sample thickness as
+    # `a1.z - well_depth_mm` rather than carrying a manual `well_bottom_z`.
+    # Distinct from `height_mm` (outer plate height) — for typical SBS96 the
+    # outer is ~14.35 mm but inside depth is ~10.67 mm.
+    well_depth_mm: Optional[float] = Field(default=None, gt=0)
     height: Optional[float] = Field(default=None, gt=0)
     # Backward compatibility: top-level A1 is accepted but deprecated.
     a1: Optional[_YamlPoint3D] = None
@@ -134,6 +140,7 @@ class NestedWellPlateYamlEntry(BaseModel):
     length_mm: Optional[float] = None
     width_mm: Optional[float] = None
     height_mm: Optional[float] = None
+    well_depth_mm: Optional[float] = Field(default=None, gt=0)
     calibration: _YamlCalibrationPoints
     x_offset_mm: float = Field(..., gt=0)
     y_offset_mm: float = Field(..., gt=0)

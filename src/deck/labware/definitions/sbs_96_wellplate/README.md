@@ -18,7 +18,8 @@ Maps to `cubos.src.deck.labware.well_plate.WellPlate`.
 | Attribute | Value | Notes |
 | --- | --- | --- |
 | Outer footprint | 127.76 × 85.47 mm | ANSI SLAS 1-2004 |
-| Plate height | 14.35 mm | Typical shallow-well plate; override for deep wells |
+| Plate height (outer) | 14.35 mm | Rim → underside of plate; override for deep wells |
+| Well depth (inside) | 10.67 mm | Rim → inside floor; flat-bottom shallow SBS96 |
 | Well grid | 8 × 12 (A1 – H12) | Letters are rows, numbers are columns |
 | Well pitch | 9.0 mm in both x and y | ANSI SLAS 4-2004 |
 | A1 offset from plate corner | (14.38, 11.24) mm | Template placeholder in `calibration.a1` |
@@ -43,7 +44,11 @@ labware:
 
 Vendor-specific variants (e.g. Corning 360 µL round-bottom, deep-well
 2 mL, skirt height differences) should override the relevant fields
-(`height_mm`, `capacity_ul`, `working_volume_ul`) in the deck YAML.
+(`height_mm`, `well_depth_mm`, `capacity_ul`, `working_volume_ul`) in
+the deck YAML. The pair `(height_mm, well_depth_mm)` is intentionally
+separate: `height_mm` is the outer dimension (rim → underside),
+`well_depth_mm` is the inside (rim → sample floor). Analysis pipelines
+use `a1.z - well_depth_mm` to compute sample thickness.
 
 ## Compatibility
 

@@ -22,6 +22,17 @@ class WellPlate(Labware):
     length_mm: Optional[float] = Field(None, description="Overall plate length in millimeters.")
     width_mm: Optional[float] = Field(None, description="Overall plate width in millimeters.")
     height_mm: Optional[float] = Field(None, description="Z position of the plate surface (absolute WPos).")
+    well_depth_mm: Optional[float] = Field(
+        None,
+        gt=0,
+        description=(
+            "Inside well depth in millimeters from the calibration rim down "
+            "to the inside floor where the sample sits. Distinct from "
+            "`height_mm` (outer plate height); for SBS96 the outer is "
+            "~14.35 mm but inside depth is ~10.67 mm. Analysis pipelines "
+            "compute sample thickness as `a1.z - well_depth_mm`."
+        ),
+    )
     rows: int = Field(
         ...,
         gt=0,
@@ -54,7 +65,7 @@ class WellPlate(Labware):
             raise ValueError("working_volume_ul must be <= capacity_ul.")
         return self
 
-    @field_validator("length_mm", "width_mm")
+    @field_validator("length_mm", "width_mm", "well_depth_mm")
     def _validate_positive_dimension(cls, value: Optional[float], info):  # type: ignore[override]
         if value is not None and value <= 0:
             raise ValueError(f"{info.field_name} must be positive.")
