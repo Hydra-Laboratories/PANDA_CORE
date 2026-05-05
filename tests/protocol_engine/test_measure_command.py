@@ -158,3 +158,64 @@ def test_measure_does_not_inject_gantry_when_method_does_not_declare_it():
     # Should not raise — measure has no gantry param.
     result = measure(ctx, instrument="indenter", position="plate_1.A1", method="measure")
     assert result == "no-gantry"
+
+
+def test_measure_uses_protocol_measurement_height_for_descent():
+    """Protocol-level measurement_height overrides instr.measurement_height
+    for the action descent. Mirrors scan's per-step override."""
+    instr = _mock_instr(measurement_height=0.0, safe_approach_height=20.0)
+    coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
+    ctx = _ctx(instr, well_coord=coord)
+
+    measure(
+        ctx, instrument="uvvis", position="plate_1.A1",
+        measurement_height=27.0,
+    )
+
+    # Descend went to 27.0 (protocol override), not 0.0 (instrument default).
+    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, 27.0))
+
+
+class _MethodWithMeasurementHeight(BaseInstrument):
+    """Fake whose action method has a `measurement_height` parameter so the
+    inject_runtime_args measurement_height path can be exercised."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="indenter",
+            offset_x=0.0, offset_y=0.0, depth=0.0,
+            measurement_height=0.0, safe_approach_height=10.0,
+        )
+        self.last_call: dict = {}
+
+    def connect(self) -> None: ...
+    def disconnect(self) -> None: ...
+    def health_check(self) -> bool: return True
+
+    def indentation(self, gantry, measurement_height: float = 0.0) -> dict:
+        self.last_call = {"gantry": gantry, "measurement_height": measurement_height}
+        return {"ok": True}
+
+
+def test_measure_forwards_measurement_height_into_method_when_method_declares_it():
+    """When the method declares a `measurement_height` parameter and the
+    protocol provides one, inject_runtime_args forwards it so closed-loop
+    methods (e.g. ASMI.indentation) start from the same Z the gantry was
+    descended to."""
+    instr = _MethodWithMeasurementHeight()
+    coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
+    sentinel_gantry = object()
+    board = MagicMock()
+    board.instruments = {"indenter": instr}
+    board.gantry = sentinel_gantry
+    deck = MagicMock()
+    deck.resolve = MagicMock(return_value=coord)
+    ctx = ProtocolContext(board=board, deck=deck)
+
+    measure(
+        ctx, instrument="indenter", position="plate_1.A1",
+        method="indentation", measurement_height=27.0,
+    )
+
+    assert instr.last_call["gantry"] is sentinel_gantry
+    assert instr.last_call["measurement_height"] == 27.0

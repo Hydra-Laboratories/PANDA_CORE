@@ -19,14 +19,16 @@ def measure(
     instrument: str,
     position: str,
     method: str = "measure",
+    measurement_height: float | None = None,
     method_kwargs: Dict[str, Any] = {},
 ) -> Any:
     """Measure at a deck position using *instrument*.
 
     Three phases:
       1. **Approach.** ``Board.move_to_labware`` retracts (if below
-         ``safe_approach_height``) and travels XY to above the target.
-      2. **Descend.** Lower straight down to the current action Z.
+         the instrument's ``safe_approach_height``) and travels XY to
+         above the target.
+      2. **Descend.** Lower straight down to the action Z.
       3. **Act.** Call the instrument method.
 
     Args:
@@ -34,6 +36,16 @@ def measure(
         instrument:    Name of the instrument registered on the board.
         position:      Deck target string (e.g. "plate_1.A1").
         method:        Name of the callable on the instrument (default "measure").
+        measurement_height:
+                       Optional protocol-level action Z override. When
+                       provided, the gantry descends to this absolute
+                       deck-frame Z (instead of the instrument's
+                       configured ``measurement_height``), and the same
+                       value is forwarded into the bound method's
+                       ``measurement_height`` parameter if it declares
+                       one. Closed-loop callees (e.g. ASMI.indentation)
+                       use it as the start-of-action Z so they don't
+                       re-descend to a different position.
         method_kwargs: Keyword arguments passed to the instrument method
                        (e.g. {"intensity": 50, "exposure_time": 10.0}).
 
@@ -54,8 +66,13 @@ def measure(
 
     coord = context.deck.resolve(position)
     context.logger.info("measure: %s.%s(%s) at %s", instrument, method, method_kwargs, position)
-    approach_and_descend(context, instrument, coord)
+    approach_and_descend(
+        context, instrument, coord, measurement_height=measurement_height,
+    )
 
     callable_method = getattr(instr, method)
-    kwargs = inject_runtime_args(callable_method, method_kwargs, context)
+    kwargs = inject_runtime_args(
+        callable_method, method_kwargs, context,
+        measurement_height=measurement_height,
+    )
     return callable_method(**kwargs)

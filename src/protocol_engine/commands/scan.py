@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 import json
 import logging
 import sqlite3
@@ -108,7 +107,6 @@ def scan(
 
     results: Dict[str, Any] = {}
     sorted_wells = sorted(plate_obj.wells, key=_row_major_key)
-    sig = inspect.signature(callable_method)
     for i, well_id in enumerate(sorted_wells):
         if i > 0 and delay_s > 0:
             context.logger.info("Pausing %.1fs between wells", delay_s)
@@ -128,12 +126,10 @@ def scan(
             measurement_height=normalized.measurement_height,
         )
 
-        kwargs = inject_runtime_args(callable_method, normalized.method_kwargs, context)
-        if (
-            normalized.measurement_height is not None
-            and "measurement_height" in sig.parameters
-        ):
-            kwargs["measurement_height"] = normalized.measurement_height
+        kwargs = inject_runtime_args(
+            callable_method, normalized.method_kwargs, context,
+            measurement_height=normalized.measurement_height,
+        )
         result = callable_method(**kwargs)
         results[well_id] = result
 

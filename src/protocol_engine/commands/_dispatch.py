@@ -25,12 +25,19 @@ def inject_runtime_args(
     callable_method: Callable[..., Any],
     method_kwargs: Dict[str, Any],
     context: "ProtocolContext",
+    *,
+    measurement_height: float | None = None,
 ) -> Dict[str, Any]:
     """Return a fresh kwargs dict with runtime-injected args added.
 
     Currently injects:
       * ``gantry`` — set to ``context.board.gantry`` when the method
         declares a ``gantry`` parameter (e.g. ASMI.indentation).
+      * ``measurement_height`` — when ``measurement_height`` is supplied
+        and the method declares the parameter, the same protocol-level
+        value used for the approach descent is also passed through to
+        the method so closed-loop callees (e.g. ASMI.indentation) start
+        from the Z the gantry was descended to.
 
     Caller-provided ``method_kwargs`` always win; injection only fills
     in parameters the caller didn't already supply.
@@ -39,4 +46,10 @@ def inject_runtime_args(
     sig = inspect.signature(callable_method)
     if "gantry" in sig.parameters and "gantry" not in kwargs:
         kwargs["gantry"] = context.board.gantry
+    if (
+        measurement_height is not None
+        and "measurement_height" in sig.parameters
+        and "measurement_height" not in kwargs
+    ):
+        kwargs["measurement_height"] = measurement_height
     return kwargs
