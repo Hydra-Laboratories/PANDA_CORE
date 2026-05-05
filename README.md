@@ -147,12 +147,25 @@ Optional per-instrument extras pull in vendor SDKs only when you need them:
 pip install -e ".[potentiostat]"
 ```
 
-Calibrate the deck-origin work frame before trusting real motion:
+Calibrate the deck-origin work frame before trusting real motion. For a
+single-instrument setup:
 
 ```bash
 PYTHONPATH=src python setup/calibrate_deck_origin.py \
   --gantry configs/gantry/cub_xl_asmi.yaml \
   --instrument asmi
+```
+
+For a multi-instrument gantry config, use the guided board calibration. It
+prompts for the left-most reference instrument, the lowest instrument, and the
+known artifact/block point. It starts from the homed BRT pose and does not make
+an automatic center move. It sets G54 WPos X/Y first, then sets WPos Z=0 from
+the lowest instrument, then records each instrument's `offset_x`, `offset_y`,
+and `depth` from the artifact point:
+
+```bash
+PYTHONPATH=src python setup/calibrate_multi_instrument_board.py \
+  --gantry configs/gantry/cub_xl_multi.yaml
 ```
 
 See the docs for the full operator tutorial:
