@@ -38,6 +38,7 @@
 - Updated `AGENTS.md` and `README.md` with multi-instrument calibration usage and safety notes.
 - Simplified CLI after user feedback: only `--gantry` is required; reference instrument, lowest instrument, and artifact XYZ are prompted. Pre-fill flags remain available but hidden from normal `--help` for scripted runs/tests.
 - Removed automatic move-to-center after hardware run hit a switch/status failure. The calibration now starts each guided jog from a known homed BRT pose and explicitly tells the operator that no automatic center move will be made.
+- Updated `CLAUDE.md` and `AGENTS.md` with requested hardware-facing validation order: focused offline tests first, then hardware test handoff before cleanup/broad tests.
 
 ## Validation
 

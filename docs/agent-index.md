@@ -4,9 +4,10 @@ Use this as the first retrieval map for coding agents. Prefer repo source/docs o
 
 ## Start here
 
-- Always read `AGENTS.md` and `CLAUDE.md` before coding.
+- Read `AGENTS.md` and `CLAUDE.md` before coding, then retrieve only the source/docs relevant to the subsystem below.
 - For hardware-facing changes, include hardware impact, offline validation, and required physical validation in the PR.
-- For long or risky work, maintain a temporary checkpoint under `progress/` and delete it or promote durable notes before handoff.
+- Hardware-facing validation order: focused offline/unit tests first, then give the user exact hardware tests before cleanup or broad test sweeps.
+- For long, risky, or handoff-prone work, maintain a temporary checkpoint under `progress/`; small localized edits do not need one.
 
 ## Coordinate and motion semantics
 
@@ -64,7 +65,7 @@ Hardware rule: if a change can touch a physical instrument, say what hardware va
 
 - If validation semantics change, search real configs/docs/examples for now-invalid patterns.
 - If adding a fundamental feature, CLI argument, workflow, or semantic contract, update `AGENTS.md`, `README.md`, and relevant docs.
-- Keep progress notes under `progress/` for each coding task per `CLAUDE.md`.
+- Keep progress notes under `progress/` only for large, risky, hardware-facing, or handoff-prone tasks.
 
 ## Common verification gates
 
