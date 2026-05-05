@@ -624,6 +624,8 @@ class Mill:
     def current_status(self) -> str:
         """Get the current status of the mill."""
         attempt_limit = 5
+        self.ser_mill.write(b"?")
+        time.sleep(0.05)
         status = self.read()
 
         while self._extract_status_line(status) in ["", "ok"] and attempt_limit > 0:
