@@ -169,12 +169,7 @@ class TestGantry(unittest.TestCase):
         gantry.prepare_for_protocol_run()
 
         mock_mill.soft_reset_and_unlock.assert_called_once()
-        mock_mill.read_mill_config.assert_called_once()
-        mock_mill.read_working_volume.assert_called_once()
-        mock_mill.clear_buffers.assert_called_once()
-        mock_mill._enforce_wpos_mode.assert_called_once()
-        mock_mill.set_feed_rate.assert_called_once()
-        mock_mill._seed_wco.assert_called_once()
+        mock_mill.restore_controller_state.assert_called_once()
 
     @patch("gantry.gantry.Mill")
     def test_prepare_for_protocol_run_noops_when_not_in_alarm(
@@ -194,7 +189,6 @@ class TestGantry(unittest.TestCase):
         mock_mill = mock_mill_cls.return_value
         mock_mill.query_raw_status.side_effect = [
             "<Alarm|WPos:0,0,0|FS:0,0>",
-            "<Idle|WPos:0,0,0|FS:0,0>",
             "<Alarm|WPos:0,0,0|FS:0,0>",
         ]
         mock_mill.grbl_settings.return_value = {}
@@ -308,7 +302,7 @@ class TestGantry(unittest.TestCase):
         mock_mill = mock_mill_cls.return_value
         gantry = Gantry(config=self.config)
         gantry.enforce_work_position_reporting()
-        mock_mill._enforce_wpos_mode.assert_called_once_with()
+        mock_mill.enforce_work_position_reporting.assert_called_once_with()
 
     @patch("gantry.gantry.Mill")
     def test_activate_work_coordinate_system_sends_g54(self, mock_mill_cls):
@@ -368,6 +362,58 @@ class TestGantry(unittest.TestCase):
                 unittest.mock.call("20", "1"),
             ],
         )
+
+    @patch("gantry.gantry.Mill")
+    def test_temporary_grbl_setting_restores_original_value(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        mock_mill.grbl_settings.return_value = {"$20": "1"}
+        gantry = Gantry(config=self.config)
+
+        with gantry.temporary_grbl_setting("$20", 0):
+            pass
+
+        self.assertEqual(
+            mock_mill.set_grbl_setting.call_args_list,
+            [
+                unittest.mock.call("20", "0"),
+                unittest.mock.call("20", "1"),
+            ],
+        )
+
+    @patch("gantry.gantry.Mill")
+    def test_temporary_grbl_setting_raises_if_restore_fails(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        mock_mill.grbl_settings.return_value = {"$20": "1"}
+        mock_mill.set_grbl_setting.side_effect = [None, CommandExecutionError("boom")]
+        gantry = Gantry(config=self.config)
+
+        with self.assertRaises(MillConnectionError):
+            with gantry.temporary_grbl_setting("$20", 0):
+                pass
+
+    @patch("gantry.gantry.Mill")
+    def test_recover_from_limit_alarm_pulls_off_opposite_delta(self, mock_mill_cls):
+        mock_mill = mock_mill_cls.return_value
+        gantry = Gantry(config=self.config)
+        gantry.get_coordinates = unittest.mock.MagicMock(
+            return_value={"x": 1.0, "y": 2.0, "z": 3.0}
+        )
+
+        coords = gantry.recover_from_limit_alarm(
+            {"x": 5.0, "y": -2.0, "z": 0.0},
+            pull_off_mm=2.0,
+            feed_rate=2500.0,
+        )
+
+        mock_mill.jog_cancel.assert_called_once_with()
+        mock_mill.reset.assert_called_once_with()
+        mock_mill.jog.assert_called_once_with(
+            feed_rate=2500.0,
+            x=-2.0,
+            y=2.0,
+            z=0.0,
+        )
+        self.assertEqual(coords, {"x": 1.0, "y": 2.0, "z": 3.0})
 
     @patch("gantry.gantry.Mill")
     def test_configure_soft_limits_reenables_soft_limits_on_write_failure(

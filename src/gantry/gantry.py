@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Dict, Optional
+from contextlib import contextmanager
+from typing import Any, Dict, Iterator, Optional
 
 from .coordinate_translator import (
     to_machine_coordinates,
@@ -10,7 +11,7 @@ from .coordinate_translator import (
     translate_status_string,
 )
 from .grbl_settings import format_setting_value, normalize_expected_grbl_settings
-from .gantry_driver.driver import DEFAULT_FEED_RATE, Mill
+from .gantry_driver.driver import Mill
 from .gantry_driver.exceptions import (
     CommandExecutionError,
     LocationNotFound,
@@ -153,15 +154,7 @@ class Gantry:
             return
         assert self._mill is not None
 
-        self._mill.read_mill_config()
-        self._mill.read_working_volume()
-        self._mill.clear_buffers()
-        status = self._mill.query_raw_status()
-        if status:
-            self._mill._enforce_wpos_mode()
-        self._mill.set_feed_rate(DEFAULT_FEED_RATE)
-        if status:
-            self._mill._seed_wco()
+        self._mill.restore_controller_state()
         self._validate_grbl_settings()
 
     def move_to(
@@ -354,7 +347,7 @@ class Gantry:
             return
         assert self._mill is not None
         try:
-            self._mill._enforce_wpos_mode()
+            self._mill.enforce_work_position_reporting()
         except CommandExecutionError as exc:
             self.logger.error("Error enforcing WPos status reporting: %s", exc)
             raise
@@ -468,6 +461,80 @@ class Gantry:
         assert self._mill is not None
         code = setting[1:] if setting.startswith("$") else setting
         self._mill.set_grbl_setting(code, format_setting_value(value))
+
+    @contextmanager
+    def temporary_grbl_setting(
+        self,
+        setting: str,
+        value: float | int | bool,
+    ) -> Iterator[None]:
+        """Temporarily set one GRBL setting and restore it in ``finally``.
+
+        This is intended for setup/calibration workflows where a controller
+        guardrail must be changed briefly, such as disabling stale soft limits
+        during an origin jog. If restoration fails, raise loudly because the
+        controller may be left in a less-safe state.
+        """
+        if self._offline:
+            yield
+            return
+
+        normalized = setting if setting.startswith("$") else f"${setting}"
+        live_settings = self.read_grbl_settings()
+        if normalized not in live_settings:
+            raise MillConnectionError(
+                f"Cannot temporarily change {normalized}: setting not found."
+            )
+        original = live_settings[normalized]
+        self.set_grbl_setting(normalized, value)
+        try:
+            yield
+        finally:
+            try:
+                self.set_grbl_setting(normalized, float(original))
+            except Exception as restore_exc:
+                raise MillConnectionError(
+                    f"Failed to restore GRBL setting {normalized} to {original}. "
+                    "Controller may be left in an unsafe calibration state."
+                ) from restore_exc
+
+    def recover_from_limit_alarm(
+        self,
+        delta: dict[str, float],
+        *,
+        pull_off_mm: float,
+        feed_rate: float,
+    ) -> dict[str, float]:
+        """Recover from a limit-switch alarm by unlocking and pulling away.
+
+        ``delta`` is the jog vector that caused the alarm. The pull-off jog is
+        in the opposite direction for every non-zero axis. This method is for
+        interactive setup/calibration only; protocol execution should abort on
+        limit alarms instead of attempting recovery.
+        """
+        pull_off = {"x": 0.0, "y": 0.0, "z": 0.0}
+        for axis, distance in delta.items():
+            if distance > 0:
+                pull_off[axis] = -pull_off_mm
+            elif distance < 0:
+                pull_off[axis] = pull_off_mm
+
+        self.jog_cancel()
+        self.unlock()
+        self.jog(feed_rate=feed_rate, **pull_off)
+        return self.get_coordinates()
+
+    def safe_home(self) -> None:
+        """Home with operator-facing error context for setup workflows."""
+        try:
+            self.home()
+        except (MillConnectionError, StatusReturnError, CommandExecutionError) as exc:
+            raise MillConnectionError(
+                "Could not safely home the gantry. Make sure the work area is "
+                "clear, the controller is powered, and the machine can move "
+                "toward its homing switches. Original controller error: "
+                f"{exc}"
+            ) from exc
 
     def configure_soft_limits_from_spans(
         self,

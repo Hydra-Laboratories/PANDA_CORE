@@ -327,14 +327,14 @@ class Mill:
 
         self.clear_buffers()
         if initial_status:
-            self._enforce_wpos_mode()
+            self.enforce_work_position_reporting()
         else:
             self.logger.warning(
                 "No initial GRBL status response; skipping WPos enforcement during connect"
             )
         self.set_feed_rate(DEFAULT_FEED_RATE)
         if initial_status:
-            self._seed_wco()
+            self.seed_work_coordinate_offset()
         return self.ser_mill
 
     def check_for_alarm_state(self):
@@ -709,7 +709,7 @@ class Mill:
         command = f"${setting}={value}"
         return self.execute_command(command)
 
-    def _enforce_wpos_mode(self):
+    def enforce_work_position_reporting(self):
         """Ensure GRBL reports WPos in status reports ($10=0) and uses absolute positioning (G90)."""
         current = self.config.get("$10", "1")
         if current != "0":
@@ -724,7 +724,7 @@ class Mill:
             )
         self.logger.info("WPos mode and absolute positioning enforced")
 
-    def _seed_wco(self):
+    def seed_work_coordinate_offset(self):
         """Poll GRBL status until WCO is reported, then cache it.
 
         GRBL includes WCO periodically in status reports. We query
@@ -746,6 +746,24 @@ class Mill:
                 return
         self.logger.warning("Could not obtain WCO from GRBL status reports")
 
+    def restore_controller_state(self):
+        """Restore the controller state CubOS expects after alarm recovery.
+
+        This is the public low-level hook for reconnect/alarm-recovery paths:
+        refresh GRBL settings and travel spans, clear serial buffers, force
+        WPos/G90 mode, set CubOS' default feed rate, and cache WCO for any
+        later MPos-to-WPos conversion.
+        """
+        self.read_mill_config()
+        self.read_working_volume()
+        self.clear_buffers()
+        status = self.query_raw_status()
+        if status:
+            self.enforce_work_position_reporting()
+        self.set_feed_rate(DEFAULT_FEED_RATE)
+        if status:
+            self.seed_work_coordinate_offset()
+
     def _query_work_coordinate_offset(self) -> Coordinates:
         """Return the cached Work Coordinate Offset (WCO).
 
@@ -753,7 +771,7 @@ class Mill:
             MPos = WPos + WCO
         """
         if self._wco is None:
-            self._seed_wco()
+            self.seed_work_coordinate_offset()
         if self._wco is None:
             self.logger.warning("WCO unavailable, returning zero offset")
             return Coordinates(0, 0, 0)
@@ -844,7 +862,7 @@ class Mill:
                 z_coord = round(float(match.group(3)), 3)
                 if coord_type == "MPos":
                     if self._wco is None:
-                        self._seed_wco()
+                        self.seed_work_coordinate_offset()
                     if self._wco is not None:
                         x_coord = round(x_coord - self._wco.x, 3)
                         y_coord = round(y_coord - self._wco.y, 3)

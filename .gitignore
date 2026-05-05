@@ -181,3 +181,4 @@ PANDA-BEAR/
 .codex/skills/.system/**
 !.codex/prompts/
 !.codex/prompts/**
+.pi/
