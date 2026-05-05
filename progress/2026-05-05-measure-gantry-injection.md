@@ -92,6 +92,36 @@ After both commits, the working YAML for a single-well indent looks like:
       force_limit: 10.0
 ```
 
+## Update — third commit on this branch
+
+Hardware bring-up exposed a packaging bug: a `pip install`'d copy of cubos
+crashed with `[Errno 2] No such file or directory: '<site-packages>/deck/labware/definitions/registry.yaml'`
+the moment a deck YAML used `load_name: sbs_96_wellplate`. The
+`deck.labware.definitions/` subtree contains a registry plus per-definition
+config YAMLs (and CAD models), all of which live alongside Python modules but
+weren't listed in `tool.setuptools.package-data` — so they were dropped on
+the way into the wheel.
+
+Fix: extend `tool.setuptools.package-data` for `deck.labware.definitions`:
+
+```toml
+"deck.labware.definitions" = [
+    "registry.yaml",
+    "*/*.yaml",
+    "*/*.glb",
+    "*/*.stl",
+    "*/*.step",
+]
+```
+
+New test `tests/deck/test_definition_packaging.py` mirrors the existing
+`tests/instruments/test_registry_packaging.py`: builds an actual wheel + sdist
+via `setuptools.build_meta` and asserts the registry plus a canary
+`SBS96WellPlate.yaml` are present in both artifacts.
+
+Wheel contents after the fix include `registry.yaml` plus every per-definition
+config YAML, GLB, STL, and STEP file under `deck/labware/definitions/`.
+
 ## Open follow-ups
 
 - Long-term: scan could call `measure` for each well rather than reimplementing
