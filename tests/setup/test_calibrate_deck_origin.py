@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,18 @@ from setup.calibrate_deck_origin import (
     DeckOriginCalibrationResult,
     run_calibration,
 )
+
+
+def test_calibration_script_does_not_call_low_level_grbl_escape_hatches():
+    script = Path("setup/calibrate_deck_origin.py").read_text(encoding="utf-8")
+    forbidden = [
+        ".unlock(",
+        ".set_grbl_setting(",
+        "execute_command",
+        "._mill",
+    ]
+    for pattern in forbidden:
+        assert pattern not in script
 
 
 def _write_gantry(path: Path, *, x_min: float = 0.0) -> Path:
@@ -59,6 +72,9 @@ class _FakeGantry:
         self.home_count += 1
         if self.home_count == 2:
             self.coords = {"x": 398.5, "y": 299.25, "z": 96.75}
+
+    def safe_home(self) -> None:
+        self.home()
 
     def clear_g92_offsets(self) -> None:
         self.calls.append(("clear_g92_offsets",))
@@ -109,6 +125,33 @@ class _FakeGantry:
 
     def unlock(self) -> None:
         self.calls.append(("unlock",))
+
+    @contextmanager
+    def temporary_grbl_setting(self, setting: str, value: float | int | bool):
+        self.calls.append(("temporary_grbl_setting_enter", setting, value))
+        try:
+            yield
+        finally:
+            self.calls.append(("temporary_grbl_setting_exit", setting))
+
+    def recover_from_limit_alarm(
+        self,
+        delta: dict[str, float],
+        *,
+        pull_off_mm: float,
+        feed_rate: float,
+    ) -> dict[str, float]:
+        self.calls.append(("recover_from_limit_alarm", delta, pull_off_mm, feed_rate))
+        self.jog_cancel()
+        self.unlock()
+        pull_off = {"x": 0.0, "y": 0.0, "z": 0.0}
+        for axis, distance in delta.items():
+            if distance > 0:
+                pull_off[axis] = -pull_off_mm
+            elif distance < 0:
+                pull_off[axis] = pull_off_mm
+        self.jog(feed_rate=feed_rate, **pull_off)
+        return self.get_coordinates()
 
     def set_serial_timeout(self, timeout: float) -> None:
         self.calls.append(("set_serial_timeout", timeout))
@@ -185,6 +228,15 @@ class _SoftLimitAwareFakeGantry(_FakeGantry):
     def set_grbl_setting(self, setting: str, value: float | int | bool) -> None:
         self.calls.append(("set_grbl_setting", setting, value))
         self.grbl_settings[setting] = str(value)
+
+    @contextmanager
+    def temporary_grbl_setting(self, setting: str, value: float | int | bool):
+        original = self.read_grbl_settings()[setting]
+        self.set_grbl_setting(setting, value)
+        try:
+            yield
+        finally:
+            self.set_grbl_setting(setting, int(float(original)))
 
 
 class _SoftLimitRejectingFakeGantry(_FakeGantry):

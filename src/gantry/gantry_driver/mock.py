@@ -98,9 +98,22 @@ class MockMill(RealMill):
         """Simulate clearing buffers"""
         self.logger.info("Clearing buffers")
 
-    def _enforce_wpos_mode(self):
+    def enforce_work_position_reporting(self):
         """Mock: WPos mode is always active."""
         self.config["$10"] = "0"
+
+    def seed_work_coordinate_offset(self):
+        """Mock: WCO is deterministic and already embedded in status strings."""
+        return None
+
+    def restore_controller_state(self):
+        """Mock controller restore path used after alarm recovery."""
+        self.read_mill_config()
+        self.read_working_volume()
+        self.clear_buffers()
+        self.enforce_work_position_reporting()
+        self.set_feed_rate(2000)
+        self.seed_work_coordinate_offset()
 
     def grbl_settings(self):
         """Simulate getting the GRBL settings"""

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from typing import Iterator
+
 
 class OfflineGantry:
     """Stub gantry for offline validation and testing.
@@ -27,6 +30,9 @@ class OfflineGantry:
     def home(self) -> None:
         pass
 
+    def safe_home(self) -> None:
+        self.home()
+
     def unlock(self) -> None:
         pass
 
@@ -38,6 +44,23 @@ class OfflineGantry:
 
     def get_status(self) -> str:
         return "Idle"
+
+    @contextmanager
+    def temporary_grbl_setting(
+        self,
+        setting: str,
+        value: float | int | bool,
+    ) -> Iterator[None]:
+        yield
+
+    def recover_from_limit_alarm(
+        self,
+        delta: dict[str, float],
+        *,
+        pull_off_mm: float,
+        feed_rate: float,
+    ) -> dict[str, float]:
+        return self.get_coordinates()
 
     def stop(self) -> None:
         pass

@@ -285,13 +285,38 @@ class TestCNCDriverLogic(unittest.TestCase):
             mill.read_working_volume = MagicMock()
             mill.check_for_alarm_state = MagicMock()
             mill.clear_buffers = MagicMock()
-            mill._enforce_wpos_mode = MagicMock()
+            mill.enforce_work_position_reporting = MagicMock()
             mill.set_feed_rate = MagicMock()
-            mill._seed_wco = MagicMock()
+            mill.seed_work_coordinate_offset = MagicMock()
             mill.connect_to_mill(port='/dev/test')
             
             self.assertTrue(mill.active_connection)
             self.assertEqual(mill.ser_mill, mock_serial_instance)
+
+    @patch('gantry.gantry_driver.driver.serial.Serial')
+    @patch('gantry.gantry_driver.driver.set_up_mill_logger')
+    @patch('gantry.gantry_driver.driver.set_up_command_logger')
+    def test_restore_controller_state_uses_public_recovery_steps(
+        self, mock_cmd_logger, mock_mill_logger, mock_serial,
+    ):
+        """Controller restore is a public low-level hook for alarm recovery."""
+        mill = Mill()
+        mill.read_mill_config = MagicMock()
+        mill.read_working_volume = MagicMock()
+        mill.clear_buffers = MagicMock()
+        mill.query_raw_status = MagicMock(return_value="<Idle|WPos:0,0,0|FS:0,0>")
+        mill.enforce_work_position_reporting = MagicMock()
+        mill.set_feed_rate = MagicMock()
+        mill.seed_work_coordinate_offset = MagicMock()
+
+        mill.restore_controller_state()
+
+        mill.read_mill_config.assert_called_once_with()
+        mill.read_working_volume.assert_called_once_with()
+        mill.clear_buffers.assert_called_once_with()
+        mill.enforce_work_position_reporting.assert_called_once_with()
+        mill.set_feed_rate.assert_called_once_with(2000)
+        mill.seed_work_coordinate_offset.assert_called_once_with()
 
     @patch('gantry.gantry_driver.driver.serial.Serial')
     @patch('gantry.gantry_driver.driver.set_up_mill_logger')
@@ -328,8 +353,8 @@ class TestCNCDriverLogic(unittest.TestCase):
     @patch('gantry.gantry_driver.driver.serial.Serial')
     @patch('gantry.gantry_driver.driver.set_up_mill_logger')
     @patch('gantry.gantry_driver.driver.set_up_command_logger')
-    def test_enforce_wpos_mode_sets_ten_to_zero(self, mock_cmd_logger, mock_mill_logger, mock_serial):
-        """Test that _enforce_wpos_mode sends $10=0 when not already set."""
+    def test_enforce_work_position_reporting_sets_ten_to_zero(self, mock_cmd_logger, mock_mill_logger, mock_serial):
+        """Test that enforce_work_position_reporting sends $10=0 when not already set."""
         mill = Mill()
         mock_ser = MagicMock()
         mill.ser_mill = mock_ser
@@ -337,7 +362,7 @@ class TestCNCDriverLogic(unittest.TestCase):
 
         # Mock execute_command to track calls
         mill.execute_command = MagicMock()
-        mill._enforce_wpos_mode()
+        mill.enforce_work_position_reporting()
 
         mill.execute_command.assert_any_call("$10=0")
         mill.execute_command.assert_any_call("G90")
@@ -346,13 +371,13 @@ class TestCNCDriverLogic(unittest.TestCase):
     @patch('gantry.gantry_driver.driver.serial.Serial')
     @patch('gantry.gantry_driver.driver.set_up_mill_logger')
     @patch('gantry.gantry_driver.driver.set_up_command_logger')
-    def test_enforce_wpos_mode_skips_when_already_zero(self, mock_cmd_logger, mock_mill_logger, mock_serial):
-        """Test that _enforce_wpos_mode does not re-send $10=0 if already set."""
+    def test_enforce_work_position_reporting_skips_when_already_zero(self, mock_cmd_logger, mock_mill_logger, mock_serial):
+        """Test that enforce_work_position_reporting does not re-send $10=0 if already set."""
         mill = Mill()
         mill.config["$10"] = "0"
         mill.execute_command = MagicMock()
 
-        mill._enforce_wpos_mode()
+        mill.enforce_work_position_reporting()
 
         calls = [str(c) for c in mill.execute_command.call_args_list]
         self.assertNotIn("call('$10=0')", calls)
