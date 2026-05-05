@@ -73,13 +73,23 @@ def test_measure_command_value_overrides_unset_instrument():
     ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, HEIGHT_MM + 2.5))
 
 
-def test_measure_xor_violation_when_both_set():
+def test_measure_conflict_when_both_set_with_different_values():
     instr = _mock_instr(measurement_height=1.0)
     ctx = _ctx(instr)
 
-    with pytest.raises(ProtocolExecutionError, match="set both"):
+    with pytest.raises(ProtocolExecutionError, match="conflicting values"):
         measure(ctx, instrument="uvvis", position="plate_1.A1",
                 measurement_height=2.0)
+
+
+def test_measure_accepts_matching_values_on_both_sources():
+    instr = _mock_instr(measurement_height=1.5)
+    ctx = _ctx(instr)
+
+    measure(ctx, instrument="uvvis", position="plate_1.A1",
+            measurement_height=1.5)
+
+    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, HEIGHT_MM + 1.5))
 
 
 def test_measure_xor_violation_when_neither_set():

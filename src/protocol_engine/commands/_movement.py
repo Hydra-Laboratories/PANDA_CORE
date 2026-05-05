@@ -40,6 +40,47 @@ def resolve_labware_height(labware: Any, position: str) -> float:
     return height_mm
 
 
+def resolve_height_field(
+    *,
+    field_name: str,
+    instrument_value: float | None,
+    command_value: float | None,
+    instrument_name: str,
+    command_label: str,
+) -> float:
+    """Resolve a labware-relative height field from two possible sources.
+
+    The field may be set on the instrument config, on the protocol command,
+    or both. At least one source must define it. If both are set, they must
+    agree; conflicting values raise.
+
+    Args:
+        field_name: Name of the field for error messages (e.g.
+            ``"measurement_height"``, ``"safe_approach_height"``).
+        instrument_value: Value from the instrument config (or ``None``).
+        command_value: Value from the protocol command (or ``None``).
+        instrument_name: Instrument name for error messages.
+        command_label: Command name for error messages
+            (e.g. ``"measure"``, ``"scan"``).
+    """
+    if instrument_value is not None and command_value is not None:
+        if instrument_value != command_value:
+            raise ValueError(
+                f"{command_label}: `{field_name}` is set on instrument "
+                f"'{instrument_name}' ({instrument_value}) and on the "
+                f"command ({command_value}) with conflicting values. "
+                "When both sources are set they must match."
+            )
+        return instrument_value
+    if instrument_value is None and command_value is None:
+        raise ValueError(
+            f"{command_label}: `{field_name}` is not set. Provide it on "
+            f"the command or on instrument '{instrument_name}'."
+        )
+    return instrument_value if instrument_value is not None else command_value
+
+
+# Backwards-compatible wrapper for the common ``measurement_height`` case.
 def resolve_measurement_height(
     *,
     instrument_value: float | None,
@@ -47,23 +88,13 @@ def resolve_measurement_height(
     instrument_name: str,
     command_label: str,
 ) -> float:
-    """Return the resolved relative ``measurement_height`` per the XOR rule.
-
-    Exactly one of the instrument-config and protocol-command values must
-    be set. Both → conflict; neither → missing.
-    """
-    if instrument_value is not None and command_value is not None:
-        raise ValueError(
-            f"{command_label}: `measurement_height` is set both on "
-            f"instrument '{instrument_name}' ({instrument_value}) and on "
-            f"the command ({command_value}). Set it in exactly one place."
-        )
-    if instrument_value is None and command_value is None:
-        raise ValueError(
-            f"{command_label}: `measurement_height` is not set. Provide it "
-            f"on the command or on instrument '{instrument_name}'."
-        )
-    return instrument_value if instrument_value is not None else command_value
+    return resolve_height_field(
+        field_name="measurement_height",
+        instrument_value=instrument_value,
+        command_value=command_value,
+        instrument_name=instrument_name,
+        command_label=command_label,
+    )
 
 
 def engage_at_labware(

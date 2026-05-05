@@ -270,15 +270,26 @@ class TestScanCommand:
         # 4 wells worth of action descents.
         assert len(action_zs) == 4
 
-    def test_xor_violation_when_both_measurement_heights_set(self):
+    def test_conflict_when_both_measurement_heights_set_differently(self):
         from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()
         sensor = _make_sensor(measurement_height=1.0)
         ctx = _mock_context(plate=plate, sensor=sensor)
 
-        with pytest.raises(ProtocolExecutionError, match="set both"):
+        with pytest.raises(ProtocolExecutionError, match="conflicting values"):
             scan(ctx, **_scan_args(measurement_height=2.0))
+
+    def test_accepts_matching_values_on_both_sources(self):
+        """Both instrument and command set to the same value is allowed."""
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x2_plate()
+        sensor = _make_sensor(measurement_height=MEASUREMENT)
+        ctx = _mock_context(plate=plate, sensor=sensor)
+
+        # No exception, motion proceeds normally.
+        scan(ctx, **_scan_args(measurement_height=MEASUREMENT))
 
     def test_xor_violation_when_neither_set(self):
         from protocol_engine.commands.scan import scan

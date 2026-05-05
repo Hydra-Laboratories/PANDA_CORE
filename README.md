@@ -84,11 +84,13 @@ labware:
 
 Instrument Z semantics live in the gantry YAML:
 
-- `measurement_height` is a *labware-relative* offset (mm above
-  `labware.height_mm`; negative = below). Optional here — the protocol
-  command may supply it instead. Exactly one source must define it (XOR rule).
+- `measurement_height` and `safe_approach_height` are *labware-relative*
+  offsets (mm above `labware.height_mm`; negative = below). Each may be
+  set on the instrument here, on the protocol command, or both — at
+  least one source must define each, and conflicting values across
+  sources are rejected. `safe_approach_height` is consumed only by `scan`.
 - Inter-labware travel uses the gantry-level `safe_z`, not any instrument
-  field. Instrument-level `safe_approach_height` no longer exists.
+  field.
 
 ### 3. Protocol (`configs/protocol/*.yaml`)
 
@@ -117,14 +119,15 @@ Protocol motion notes:
   a retract-first transit: move Z to `travel_z`, travel in XY at that Z, then
   finish at the target position.
 - Scan heights are *labware-relative* offsets above `labware.height_mm`:
-  `measurement_height` (action plane, XOR with the instrument config) and
-  `safe_approach_height` (between-wells XY-travel plane, required on every
-  scan, must be at or above `measurement_height`).
+  `measurement_height` (action plane) and `safe_approach_height`
+  (between-wells XY-travel plane; must be at or above `measurement_height`).
+  Each may be set on the instrument config, the protocol command, or
+  both — at least one source must define each; conflicting values across
+  sources are rejected.
 - The first well of a scan and inter-labware travel use the gantry's
   absolute `cnc.safe_z` (default `working_volume.z_max`).
 - Legacy names `entry_travel_z`, `entry_travel_height`,
-  `interwell_travel_height`, instrument-level `safe_approach_height`, and
-  ASMI `z_limit` are rejected before motion.
+  `interwell_travel_height`, and ASMI `z_limit` are rejected before motion.
 
 ASMI-specific note:
 

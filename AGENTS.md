@@ -53,12 +53,13 @@ Two kinds of Z fields coexist:
   labware's `height_mm` surface; negative = below. Resolved at command
   time as `labware.height_mm + relative_offset`.
 
-`measurement_height` follows an XOR rule: exactly one of
-`gantry.instruments.<name>.measurement_height` and the protocol
-`measure`/`scan` command must define it. `safe_approach_height` is
-required only on `scan` (instrument-level field is removed). ASMI
-`indentation_limit` is a sign-agnostic magnitude (descent distance below
-the action plane).
+`measurement_height` and `safe_approach_height` may each be set on the
+instrument config (`gantry.instruments.<name>`), the protocol command,
+or both. At least one source must define each (the validator rejects
+neither-set). If both sources are set they must agree; conflicting
+values are rejected. `safe_approach_height` is consumed only by `scan`;
+`measure` ignores it. ASMI `indentation_limit` is a sign-agnostic
+magnitude (descent distance below the action plane).
 
 ## Where to Look
 

@@ -57,6 +57,7 @@ def _board() -> Board:
     instrument.offset_y = 0.0
     instrument.depth = 0.0
     instrument.measurement_height = None
+    instrument.safe_approach_height = None
     return Board(gantry=MagicMock(), instruments={"asmi": instrument})
 
 

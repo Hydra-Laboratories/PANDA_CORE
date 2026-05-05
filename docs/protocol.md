@@ -88,17 +88,20 @@ The `measure` command requires `instrument` and `position`. It travels XY
 at the gantry's absolute `safe_z`, descends to
 `labware.height_mm + measurement_height`, and calls the selected method.
 The default method is `measure`. `measurement_height` may be set on the
-command or on the instrument config — exactly one source (XOR rule).
+command, on the instrument config, or both; at least one source must
+define it and conflicting values across sources are rejected.
 
 ## Scan Heights
 
 Scan heights are *labware-relative* offsets above `labware.height_mm`
 (positive = above the plate surface; negative = below):
 
-- `measurement_height` is the action plane offset. Set it on the protocol
-  command or on the instrument config — exactly one place (XOR rule).
-- `safe_approach_height` is the between-wells XY-travel offset, required
-  on every scan. Must be at or above `measurement_height` in +Z-up.
+- `measurement_height` is the action plane offset. Set it on the
+  protocol command, the instrument config, or both — at least one source
+  must define it; conflicting values across sources are rejected.
+- `safe_approach_height` is the between-wells XY-travel offset. Same
+  dual-source rule as `measurement_height`. Must be at or above
+  `measurement_height` in +Z-up.
 - `indentation_limit` is a sign-agnostic *magnitude* — the descent
   distance below the action plane. Legacy ASMI `z_limit` is rejected.
 

@@ -1,14 +1,16 @@
 """Scan argument normalization.
 
-The scan command takes two height fields and both are *labware-relative*
-offsets (mm above the labware's ``height_mm`` surface; negative = below):
+The scan command takes two labware-relative height fields:
 
-* ``measurement_height``: action-plane offset.
+* ``measurement_height``: action-plane offset (mm above the labware's
+  ``height_mm`` surface; negative = below).
 * ``safe_approach_height``: between-well XY-travel offset (above the
   action plane).
 
-Inter-labware travel uses the gantry's absolute ``safe_z``, not these
-fields.
+Each field may be set on the protocol command, on the instrument config,
+or both. Resolution against the instrument config happens in the scan
+command at runtime (see ``scan.py``); this module only validates the
+command's argument surface and rejects legacy field names.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ class NormalizedScanArguments:
     """Runtime scan arguments after compatibility checks."""
 
     measurement_height: float | None
-    safe_approach_height: float
+    safe_approach_height: float | None
     method_kwargs: dict[str, Any]
 
 
@@ -51,20 +53,14 @@ def normalize_scan_arguments(
     """Validate and normalize the scan command's argument surface.
 
     Raises:
-        ValueError: When required fields are missing, legacy fields are
-            present, or top-level args conflict with ``method_kwargs``.
+        ValueError: When legacy fields are present or top-level args
+            conflict with ``method_kwargs``.
     """
     kwargs = dict(method_kwargs or {})
 
     for legacy_key, message in _LEGACY_KWARG_HINTS.items():
         if legacy_key in kwargs:
             raise ValueError(message)
-
-    if safe_approach_height is None:
-        raise ValueError(
-            "scan requires `safe_approach_height` (labware-relative offset, "
-            "mm above the labware's `height_mm` surface)."
-        )
 
     if measurement_height is not None and "measurement_height" in kwargs:
         if kwargs["measurement_height"] != measurement_height:

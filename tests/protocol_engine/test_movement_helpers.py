@@ -60,14 +60,22 @@ class TestResolveMeasurementHeight:
             command_label="measure",
         ) == -1.0
 
-    def test_rejects_when_both_set(self):
-        with pytest.raises(ValueError, match="set both on instrument"):
+    def test_rejects_when_both_set_with_conflicting_values(self):
+        with pytest.raises(ValueError, match="conflicting values"):
             resolve_measurement_height(
                 instrument_value=1.0,
                 command_value=2.0,
                 instrument_name="probe",
                 command_label="measure",
             )
+
+    def test_accepts_when_both_set_to_same_value(self):
+        assert resolve_measurement_height(
+            instrument_value=1.5,
+            command_value=1.5,
+            instrument_name="probe",
+            command_label="measure",
+        ) == 1.5
 
     def test_rejects_when_neither_set(self):
         with pytest.raises(ValueError, match="not set"):
@@ -114,13 +122,21 @@ class TestEngageAtLabware:
         )
         assert action_z == pytest.approx(13.10)
 
-    def test_xor_violation_when_both_set(self):
+    def test_conflict_when_both_set_with_different_values(self):
         ctx, _, _ = _mock_ctx_with_labware(measurement_height=2.0, height_mm=14.10)
-        with pytest.raises(ValueError, match="set both on instrument"):
+        with pytest.raises(ValueError, match="conflicting values"):
             engage_at_labware(
                 ctx, "sensor", "plate.A1",
                 command_label="measure", measurement_height=3.0,
             )
+
+    def test_accepts_matching_values_on_both_sources(self):
+        ctx, _, _ = _mock_ctx_with_labware(measurement_height=2.0, height_mm=14.10)
+        action_z = engage_at_labware(
+            ctx, "sensor", "plate.A1",
+            command_label="measure", measurement_height=2.0,
+        )
+        assert action_z == pytest.approx(16.10)
 
     def test_missing_height_mm_raises(self):
         ctx, _, labware = _mock_ctx_with_labware(measurement_height=2.0, height_mm=None)

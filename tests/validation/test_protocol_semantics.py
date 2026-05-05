@@ -29,13 +29,18 @@ def _plate() -> WellPlate:
     )
 
 
-def _instrument(name: str = "asmi", measurement_height: float | None = None):
+def _instrument(
+    name: str = "asmi",
+    measurement_height: float | None = None,
+    safe_approach_height: float | None = None,
+):
     instr = MagicMock()
     instr.name = name
     instr.offset_x = 0.0
     instr.offset_y = 0.0
     instr.depth = 0.0
     instr.measurement_height = measurement_height
+    instr.safe_approach_height = safe_approach_height
     return instr
 
 
@@ -217,7 +222,7 @@ def test_legacy_scan_travel_names_are_semantic_violations():
     assert any("interwell_travel_height" in v.message for v in violations)
 
 
-def test_scan_xor_violation_when_both_set():
+def test_scan_conflict_when_both_set_with_different_values():
     instr = _instrument("asmi", measurement_height=-1.0)
     board, deck = _board_and_deck(instr)
     protocol = _protocol({
@@ -231,7 +236,24 @@ def test_scan_xor_violation_when_both_set():
 
     violations = validate_protocol_semantics(protocol, board, deck)
 
-    assert any("set both" in v.message for v in violations)
+    assert any("conflicting values" in v.message for v in violations)
+
+
+def test_scan_passes_when_both_set_to_same_value():
+    """Same value on instrument and command is allowed (no conflict)."""
+    instr = _instrument("asmi", measurement_height=-1.0)
+    board, deck = _board_and_deck(instr)
+    gantry = _gantry_config(z_max=100.0, safe_z=85.0)
+    protocol = _protocol({
+        "plate": "plate",
+        "instrument": "asmi",
+        "method": "indentation",
+        "measurement_height": -1.0,   # matches instrument
+        "safe_approach_height": 10.0,
+        "method_kwargs": {"step_size": 0.01},
+    })
+
+    assert validate_protocol_semantics(protocol, board, deck, gantry) == []
 
 
 def test_scan_xor_violation_when_neither_set():

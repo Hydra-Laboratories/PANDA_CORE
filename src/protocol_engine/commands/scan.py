@@ -15,7 +15,11 @@ from ..errors import ProtocolExecutionError
 from ..measurements import normalize_measurement
 from ..registry import protocol_command
 from ..scan_args import normalize_scan_arguments
-from ._movement import resolve_labware_height, resolve_measurement_height
+from ._movement import (
+    resolve_height_field,
+    resolve_labware_height,
+    resolve_measurement_height,
+)
 
 if TYPE_CHECKING:
     from ..protocol import ProtocolContext
@@ -59,10 +63,13 @@ def scan(
         instrument:           Name of the instrument registered on the board.
         method:               Method on the instrument to call per well.
         safe_approach_height: Labware-relative offset for between-wells XY
-                              travel (mm above the labware's ``height_mm``;
-                              required).
+                              travel (mm above ``labware.height_mm``).
+                              May be set here or on the instrument config;
+                              at least one source must define it, and
+                              conflicting values across sources are rejected.
         measurement_height:   Labware-relative offset for the action plane.
-                              XOR with the instrument config.
+                              Same dual-source rule as
+                              ``safe_approach_height``.
         indentation_limit:    ASMI indentation stopping bound (magnitude).
         delay_s:              Seconds to pause between wells (default 0.0).
         method_kwargs:        Keyword arguments passed per well.
@@ -104,17 +111,24 @@ def scan(
             instrument_name=instrument,
             command_label="scan",
         )
+        relative_approach = resolve_height_field(
+            field_name="safe_approach_height",
+            instrument_value=getattr(instr, "safe_approach_height", None),
+            command_value=normalized.safe_approach_height,
+            instrument_name=instrument,
+            command_label="scan",
+        )
     except ValueError as exc:
         raise ProtocolExecutionError(str(exc)) from exc
 
     action_z = ref_z + relative_action
-    approach_z = ref_z + normalized.safe_approach_height
+    approach_z = ref_z + relative_approach
 
     if approach_z < action_z:
         raise ProtocolExecutionError(
-            f"scan: safe_approach_height ({normalized.safe_approach_height}) "
-            f"resolves below measurement_height ({relative_action}) for "
-            f"plate '{plate}'. Approach must be at or above the action plane."
+            f"scan: safe_approach_height ({relative_approach}) resolves "
+            f"below measurement_height ({relative_action}) for plate "
+            f"'{plate}'. Approach must be at or above the action plane."
         )
 
     results: Dict[str, Any] = {}

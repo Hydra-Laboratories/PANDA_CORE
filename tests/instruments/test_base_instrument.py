@@ -10,6 +10,7 @@ class MockInstrument(BaseInstrument):
         offset_y=0.0,
         depth=0.0,
         measurement_height=None,
+        safe_approach_height=None,
     ):
         super().__init__(
             name=name,
@@ -17,6 +18,7 @@ class MockInstrument(BaseInstrument):
             offset_y=offset_y,
             depth=depth,
             measurement_height=measurement_height,
+            safe_approach_height=safe_approach_height,
         )
         self.connected = False
         self.healthy = True
@@ -106,11 +108,19 @@ def test_custom_measurement_height_relative_offset():
     assert instr2.measurement_height == -2.5
 
 
-def test_safe_approach_height_kwarg_rejected():
-    """safe_approach_height is no longer an instrument-level field."""
-    with pytest.raises(TypeError):
-        BaseInstrument.__init__(
-            object.__new__(MockInstrument),
-            name="x",
-            safe_approach_height=10.0,
-        )
+def test_safe_approach_height_kwarg_accepted_and_stored():
+    """``safe_approach_height`` (labware-relative) is supported on the
+    instrument again — it acts as a default for ``scan`` if the protocol
+    command omits the field. ``measure`` does not consume it."""
+    instr = MockInstrument()
+    BaseInstrument.__init__(
+        instr, name="x",
+        measurement_height=2.0, safe_approach_height=10.0,
+    )
+    assert instr.measurement_height == 2.0
+    assert instr.safe_approach_height == 10.0
+
+
+def test_safe_approach_height_defaults_to_none():
+    instr = MockInstrument()
+    assert instr.safe_approach_height is None

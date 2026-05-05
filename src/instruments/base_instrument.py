@@ -21,11 +21,14 @@ class BaseInstrument(ABC):
     -----------
     CubOS uses a +Z-up deck frame.
 
-    * ``measurement_height`` is a *labware-relative* offset (mm above the
-      labware's ``height_mm`` surface; negative = below). It is one of the
-      two allowed sources for the per-action measurement height. The other
-      source is the protocol ``measure``/``scan`` command. Exactly one of
-      the two must be set per command (XOR rule, enforced by validation).
+    * ``measurement_height`` and ``safe_approach_height`` are
+      *labware-relative* offsets (mm above the labware's ``height_mm``
+      surface; negative = below).
+    * Each may be set here, on the protocol ``measure``/``scan`` command,
+      or both. At least one source must define each, and conflicting
+      values between the two sources are rejected.
+    * ``safe_approach_height`` is consumed by ``scan`` only; ``measure``
+      does not use it.
 
     Inter-labware travel and the entry approach for the first well of a
     scan use the gantry-level ``safe_z`` (absolute deck-frame Z), not any
@@ -39,6 +42,7 @@ class BaseInstrument(ABC):
         offset_y: float = 0.0,
         depth: float = 0.0,
         measurement_height: Optional[float] = None,
+        safe_approach_height: Optional[float] = None,
         offline: bool = False,
     ):
         self.name = name or self.__class__.__name__
@@ -46,6 +50,7 @@ class BaseInstrument(ABC):
         self.offset_y = offset_y
         self.depth = depth
         self.measurement_height = measurement_height
+        self.safe_approach_height = safe_approach_height
         self._offline = offline
         self.logger = logging.getLogger(f"{__name__}.{self.name}")
 

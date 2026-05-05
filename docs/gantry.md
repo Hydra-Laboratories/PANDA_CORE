@@ -129,29 +129,33 @@ Mounted instruments live under the gantry YAML `instruments` key.
   reference point.
 - `depth` is positive tool depth below the gantry reference point; in the +Z-up
   deck frame, gantry Z is computed as target/tool Z plus `depth`.
-- `measurement_height` is a *labware-relative* offset (mm above
-  `labware.height_mm`; negative = below). Optional — the protocol command
-  may supply it instead. Exactly one source must set it (XOR rule).
+- `measurement_height` and `safe_approach_height` are *labware-relative*
+  offsets (mm above `labware.height_mm`; negative = below). Each may be
+  set here, on the protocol command, or both. At least one source must
+  define each, and conflicting values across sources are rejected.
+  `safe_approach_height` is consumed only by `scan`.
 
-`safe_approach_height` is no longer an instrument field. Inter-labware and
-first-well-entry travel use the gantry-level `safe_z`.
+Inter-labware and first-well-entry travel use the gantry-level `safe_z`,
+not any instrument field.
 
 ## Protocol Height Fields
 
 Protocol heights are *labware-relative* offsets above `labware.height_mm`
 (positive = above the surface; negative = below):
 
-- `measurement_height` is the action plane offset for `measure` and `scan`.
-  XOR with the instrument config — set on exactly one of the two.
-- `safe_approach_height` is the between-wells XY-travel offset for `scan`,
-  required on every scan command. Must be at or above `measurement_height`.
+- `measurement_height` is the action plane offset for `measure` and
+  `scan`. Set it on the protocol command, the instrument config, or
+  both — at least one source must define it; conflicting values across
+  sources are rejected.
+- `safe_approach_height` is the between-wells XY-travel offset for
+  `scan`. Same dual-source rule as `measurement_height`. Must be at or
+  above `measurement_height`.
 - `park_position` is an explicit rest pose (absolute coords, not relative).
 - ASMI `indentation_limit` is a sign-agnostic *magnitude* — the descent
   distance below the action plane.
 
 Legacy names `entry_travel_z`, `entry_travel_height`,
-`interwell_travel_height`, ASMI `z_limit`, and instrument-level
-`safe_approach_height` are rejected before motion.
+`interwell_travel_height`, and ASMI `z_limit` are rejected before motion.
 
 ## Controller Bring-Up
 

@@ -29,9 +29,13 @@ class TestNormalizeScanArguments:
         assert normalized.measurement_height is None
         assert normalized.safe_approach_height == 10.0
 
-    def test_safe_approach_height_required_for_scan(self):
-        with pytest.raises(ValueError, match="safe_approach_height"):
-            normalize_scan_arguments(measurement_height=1.0)
+    def test_safe_approach_height_optional_at_args_layer(self):
+        """``normalize_scan_arguments`` no longer requires
+        ``safe_approach_height`` — runtime resolution against the
+        instrument config happens later in the scan command."""
+        normalized = normalize_scan_arguments(measurement_height=1.0)
+        assert normalized.safe_approach_height is None
+        assert normalized.measurement_height == 1.0
 
     def test_legacy_entry_travel_height_rejected(self):
         with pytest.raises(ValueError, match="entry_travel_height"):

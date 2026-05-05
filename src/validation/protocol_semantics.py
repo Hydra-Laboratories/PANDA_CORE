@@ -118,20 +118,36 @@ def _resolve_labware_for_target(
     return deck[labware_key]
 
 
-def _resolve_measurement_height(
+def _resolve_dual_source_height(
     *,
     instrument_value: float | None,
     command_value: float | None,
 ) -> tuple[float | None, str | None]:
-    """Return ``(resolved, error_message)``. Error if XOR rule fails."""
+    """Return ``(resolved, error_message)``.
+
+    The field may be set on the instrument config, on the command, or
+    both. At least one source must define it; if both do, they must
+    agree.
+    """
     if instrument_value is not None and command_value is not None:
-        return (None, "set both on the instrument config and on the command")
+        if instrument_value != command_value:
+            return (
+                None,
+                f"set on the instrument config ({instrument_value}) and on "
+                f"the command ({command_value}) with conflicting values; "
+                "they must match",
+            )
+        return (instrument_value, None)
     if instrument_value is None and command_value is None:
         return (None, "is not set on either the instrument config or the command")
     return (
         instrument_value if instrument_value is not None else command_value,
         None,
     )
+
+
+# Kept for compatibility with callers that import the old name.
+_resolve_measurement_height = _resolve_dual_source_height
 
 
 def _validate_scan_command(
@@ -171,7 +187,7 @@ def _validate_scan_command(
         ))
         return violations
 
-    relative_action, error = _resolve_measurement_height(
+    relative_action, error = _resolve_dual_source_height(
         instrument_value=instr.measurement_height,
         command_value=normalized.measurement_height,
     )
@@ -182,35 +198,43 @@ def _validate_scan_command(
         ))
         return violations
 
-    if not math.isfinite(relative_action) or not math.isfinite(
-        normalized.safe_approach_height
-    ):
+    relative_approach, approach_error = _resolve_dual_source_height(
+        instrument_value=getattr(instr, "safe_approach_height", None),
+        command_value=normalized.safe_approach_height,
+    )
+    if approach_error:
+        violations.append(_violation(
+            step_index, "scan",
+            f"`safe_approach_height` {approach_error}.",
+        ))
+        return violations
+
+    if not math.isfinite(relative_action) or not math.isfinite(relative_approach):
         violations.append(_violation(
             step_index, "scan",
             "scan heights must be finite.",
         ))
         return violations
 
-    if normalized.safe_approach_height < relative_action:
+    if relative_approach < relative_action:
         violations.append(_violation(
             step_index, "scan",
-            f"safe_approach_height ({normalized.safe_approach_height}) is "
-            f"below measurement_height ({relative_action}). In +Z-up, the "
+            f"safe_approach_height ({relative_approach}) is below "
+            f"measurement_height ({relative_action}). In +Z-up, the "
             "approach must be at or above the action plane.",
         ))
 
     ref_z = plate_obj.height_mm
     action_abs = ref_z + relative_action
-    approach_abs = ref_z + normalized.safe_approach_height
+    approach_abs = ref_z + relative_approach
 
     safe_z = _resolved_safe_z(gantry)
     if safe_z is not None and approach_abs > safe_z:
         violations.append(_violation(
             step_index, "scan",
             f"resolved approach Z ({approach_abs:.3f} = "
-            f"{ref_z}+{normalized.safe_approach_height}) is above the "
-            f"gantry's safe_z ({safe_z}). Lower `safe_approach_height` or "
-            "raise `safe_z`.",
+            f"{ref_z}+{relative_approach}) is above the gantry's safe_z "
+            f"({safe_z}). Lower `safe_approach_height` or raise `safe_z`.",
         ))
 
     for well_id, well in plate_obj.wells.items():
@@ -275,7 +299,7 @@ def _validate_measure_command(
         return violations
 
     instr = board.instruments[instrument]
-    relative_action, error = _resolve_measurement_height(
+    relative_action, error = _resolve_dual_source_height(
         instrument_value=instr.measurement_height,
         command_value=command_height,
     )
