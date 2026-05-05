@@ -6,6 +6,7 @@ from typing import Any, Dict, TYPE_CHECKING
 
 from ..errors import ProtocolExecutionError
 from ..registry import protocol_command
+from ._dispatch import inject_runtime_args
 from ._movement import approach_and_descend
 
 if TYPE_CHECKING:
@@ -54,4 +55,7 @@ def measure(
     coord = context.deck.resolve(position)
     context.logger.info("measure: %s.%s(%s) at %s", instrument, method, method_kwargs, position)
     approach_and_descend(context, instrument, coord)
-    return getattr(instr, method)(**method_kwargs)
+
+    callable_method = getattr(instr, method)
+    kwargs = inject_runtime_args(callable_method, method_kwargs, context)
+    return callable_method(**kwargs)

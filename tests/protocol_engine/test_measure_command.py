@@ -92,3 +92,69 @@ def test_measure_unknown_method_raises():
     ctx = _ctx(instr)
     with pytest.raises(ProtocolExecutionError, match="has no method"):
         measure(ctx, instrument="uvvis", position="plate_1.A1", method="nope")
+
+
+class _ClosedLoopInstrument(BaseInstrument):
+    """Real-class fake whose method declares a `gantry` parameter, mirroring
+    ASMI.indentation. ``inspect.signature`` only sees real method signatures —
+    not MagicMock side effects — so the gantry-injection path can only be
+    tested against an actual class.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="indenter",
+            offset_x=0.0, offset_y=0.0, depth=0.0,
+            measurement_height=0.0, safe_approach_height=0.0,
+        )
+        self.last_call: dict = {}
+
+    def connect(self) -> None: ...
+    def disconnect(self) -> None: ...
+    def health_check(self) -> bool: return True
+
+    def indentation(self, gantry, step_size: float = 0.01) -> dict:
+        self.last_call = {"gantry": gantry, "step_size": step_size}
+        return {"ok": True}
+
+    def measure(self) -> str:
+        return "no-gantry"
+
+
+def test_measure_injects_gantry_when_method_signature_declares_it():
+    """Closed-loop methods (e.g. ASMI.indentation) declare a ``gantry``
+    parameter; ``measure`` must inject ``context.board.gantry`` so the YAML
+    doesn't have to mention the gantry handle. Mirrors scan's behavior."""
+    instr = _ClosedLoopInstrument()
+    coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
+    sentinel_gantry = object()
+    board = MagicMock()
+    board.instruments = {"indenter": instr}
+    board.gantry = sentinel_gantry
+    deck = MagicMock()
+    deck.resolve = MagicMock(return_value=coord)
+    ctx = ProtocolContext(board=board, deck=deck)
+
+    measure(
+        ctx, instrument="indenter", position="plate_1.A1",
+        method="indentation", method_kwargs={"step_size": 0.02},
+    )
+
+    assert instr.last_call["gantry"] is sentinel_gantry
+    assert instr.last_call["step_size"] == 0.02
+
+
+def test_measure_does_not_inject_gantry_when_method_does_not_declare_it():
+    """Open-loop methods (no gantry parameter) must not receive a gantry kwarg."""
+    instr = _ClosedLoopInstrument()
+    coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
+    board = MagicMock()
+    board.instruments = {"indenter": instr}
+    board.gantry = object()
+    deck = MagicMock()
+    deck.resolve = MagicMock(return_value=coord)
+    ctx = ProtocolContext(board=board, deck=deck)
+
+    # Should not raise — measure has no gantry param.
+    result = measure(ctx, instrument="indenter", position="plate_1.A1", method="measure")
+    assert result == "no-gantry"

@@ -15,6 +15,7 @@ from ..errors import ProtocolExecutionError
 from ..measurements import normalize_measurement
 from ..registry import protocol_command
 from ..scan_args import normalize_scan_arguments
+from ._dispatch import inject_runtime_args
 from ._movement import approach_and_descend
 
 if TYPE_CHECKING:
@@ -127,16 +128,12 @@ def scan(
             measurement_height=normalized.measurement_height,
         )
 
-        # Inject gantry if the method accepts it (e.g. ASMI.indentation
-        # needs the gantry for Z stepping), then merge with method_kwargs.
-        kwargs: Dict[str, Any] = dict(normalized.method_kwargs)
+        kwargs = inject_runtime_args(callable_method, normalized.method_kwargs, context)
         if (
             normalized.measurement_height is not None
             and "measurement_height" in sig.parameters
         ):
             kwargs["measurement_height"] = normalized.measurement_height
-        if "gantry" in sig.parameters:
-            kwargs["gantry"] = context.board.gantry
         result = callable_method(**kwargs)
         results[well_id] = result
 
