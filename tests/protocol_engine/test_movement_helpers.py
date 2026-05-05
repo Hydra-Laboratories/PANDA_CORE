@@ -5,10 +5,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from deck.labware.labware import Coordinate3D
-from protocol_engine.commands._movement import approach_and_descend, unpack_xyz
-
-
-# ─── unpack_xyz ─────────────────────────────────────────────────────────────
+from protocol_engine.commands._movement import (
+    engage_at_labware,
+    resolve_labware_height,
+    resolve_measurement_height,
+    unpack_xyz,
+)
 
 
 class TestUnpackXyz:
@@ -28,88 +30,102 @@ class TestUnpackXyz:
         assert unpack_xyz(obj) == (10.0, 20.0, 30.0)
 
 
-# ─── approach_and_descend ───────────────────────────────────────────────────
+class TestResolveLabwareHeight:
+
+    def test_returns_height_mm(self):
+        labware = MagicMock(height_mm=14.10)
+        assert resolve_labware_height(labware, "plate") == 14.10
+
+    def test_raises_when_height_mm_missing(self):
+        labware = MagicMock(spec=["x", "y"])
+        with pytest.raises(ValueError, match="height_mm"):
+            resolve_labware_height(labware, "plate")
 
 
-def _mock_ctx(measurement_height=0.0):
+class TestResolveMeasurementHeight:
+
+    def test_uses_command_value_when_only_command_set(self):
+        assert resolve_measurement_height(
+            instrument_value=None,
+            command_value=2.5,
+            instrument_name="probe",
+            command_label="measure",
+        ) == 2.5
+
+    def test_uses_instrument_value_when_only_instrument_set(self):
+        assert resolve_measurement_height(
+            instrument_value=-1.0,
+            command_value=None,
+            instrument_name="probe",
+            command_label="measure",
+        ) == -1.0
+
+    def test_rejects_when_both_set(self):
+        with pytest.raises(ValueError, match="set both on instrument"):
+            resolve_measurement_height(
+                instrument_value=1.0,
+                command_value=2.0,
+                instrument_name="probe",
+                command_label="measure",
+            )
+
+    def test_rejects_when_neither_set(self):
+        with pytest.raises(ValueError, match="not set"):
+            resolve_measurement_height(
+                instrument_value=None,
+                command_value=None,
+                instrument_name="probe",
+                command_label="measure",
+            )
+
+
+def _mock_ctx_with_labware(measurement_height=None, height_mm=14.10):
     instr = MagicMock()
     instr.measurement_height = measurement_height
     board = MagicMock()
     board.instruments = {"sensor": instr}
+    labware = MagicMock(height_mm=height_mm)
+    labware.x, labware.y, labware.z = 10.0, 20.0, height_mm or 0.0
+    deck = MagicMock()
+    deck.resolve.return_value = Coordinate3D(x=10.0, y=20.0, z=height_mm or 0.0)
+    deck.__getitem__.return_value = labware
     ctx = MagicMock()
     ctx.board = board
-    return ctx, instr
+    ctx.deck = deck
+    return ctx, instr, labware
 
 
-class TestApproachAndDescend:
+class TestEngageAtLabware:
 
-    def test_calls_move_to_labware_then_descent_move(self):
-        ctx, instr = _mock_ctx(measurement_height=3.0)
-        coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
-
-        order = []
-        ctx.board.move_to_labware.side_effect = lambda *a, **k: order.append("approach")
-        ctx.board.move.side_effect = lambda *a, **k: order.append("descent")
-
-        approach_and_descend(ctx, "sensor", coord)
-
-        assert order == ["approach", "descent"]
-        ctx.board.move_to_labware.assert_called_once_with("sensor", coord)
-
-    def test_descent_uses_measurement_height(self):
-        ctx, instr = _mock_ctx(measurement_height=3.0)
-        coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
-        approach_and_descend(ctx, "sensor", coord)
-        ctx.board.move.assert_called_once_with("sensor", (10.0, 20.0, 3.0))
-
-    def test_descent_for_contact_instrument_is_below_reference(self):
-        # Lower absolute Z means the tip moves down toward the deck.
-        ctx, instr = _mock_ctx(measurement_height=-5.0)
-        coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
-        approach_and_descend(ctx, "sensor", coord)
-        ctx.board.move.assert_called_once_with("sensor", (10.0, 20.0, -5.0))
-
-    def test_descent_for_non_contact_lands_at_same_z_as_approach(self):
-        """Non-contact instrument: action == approach Z. Descent is a
-        structural no-op (same Z) but the call still happens."""
-        ctx, instr = _mock_ctx(measurement_height=0.0)
-        coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
-        approach_and_descend(ctx, "sensor", coord)
-        ctx.board.move.assert_called_once_with("sensor", (10.0, 20.0, 0.0))
-
-    def test_accepts_tuple_coord(self):
-        ctx, instr = _mock_ctx(measurement_height=2.0)
-        approach_and_descend(ctx, "sensor", (5.0, 6.0, 7.0))
-        ctx.board.move.assert_called_once_with("sensor", (5.0, 6.0, 2.0))
-
-    def test_safe_approach_height_override_uses_protocol_value(self):
-        """Protocol-level absolute safe_approach_height overrides
-        move_to_labware. In positive-down Z, approach (smaller z)
-        must be above action (larger z)."""
-        ctx, instr = _mock_ctx(measurement_height=3.0)
-        coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
-
-        approach_and_descend(
-            ctx, "sensor", coord,
-            safe_approach_height=20.0, measurement_height=50.0,
+    def test_travels_at_safe_z_then_descends_to_action_plane(self):
+        ctx, _, _ = _mock_ctx_with_labware(measurement_height=2.0, height_mm=14.10)
+        action_z = engage_at_labware(
+            ctx, "sensor", "plate.A1", command_label="measure",
         )
+        assert action_z == pytest.approx(16.10)
+        ctx.board.move_to_labware.assert_called_once()
+        ctx.board.move.assert_called_once_with("sensor", (10.0, 20.0, 16.10))
 
-        ctx.board.move_to_labware.assert_not_called()
-        assert len(ctx.board.move.call_args_list) == 2
-        first_call, second_call = ctx.board.move.call_args_list
-        assert first_call.args == ("sensor", (10.0, 20.0, 20.0))
-        assert first_call.kwargs == {"travel_z": 20.0}
-        assert second_call.args == ("sensor", (10.0, 20.0, 50.0))
-        assert second_call.kwargs == {}
+    def test_command_value_overrides_unset_instrument_value(self):
+        ctx, _, _ = _mock_ctx_with_labware(measurement_height=None, height_mm=14.10)
+        action_z = engage_at_labware(
+            ctx, "sensor", "plate.A1",
+            command_label="measure", measurement_height=-1.0,
+        )
+        assert action_z == pytest.approx(13.10)
 
-    def test_safe_approach_height_override_must_not_sit_below_action_height(self):
-        """In positive-down Z, approach z must be <= action z. An approach
-        z larger than action z means travel below the action height."""
-        ctx, instr = _mock_ctx(measurement_height=3.0)
-        coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
+    def test_xor_violation_when_both_set(self):
+        ctx, _, _ = _mock_ctx_with_labware(measurement_height=2.0, height_mm=14.10)
+        with pytest.raises(ValueError, match="set both on instrument"):
+            engage_at_labware(
+                ctx, "sensor", "plate.A1",
+                command_label="measure", measurement_height=3.0,
+            )
 
-        with pytest.raises(ValueError, match="safe_approach_height"):
-            approach_and_descend(
-                ctx, "sensor", coord,
-                safe_approach_height=60.0, measurement_height=50.0,
+    def test_missing_height_mm_raises(self):
+        ctx, _, labware = _mock_ctx_with_labware(measurement_height=2.0, height_mm=None)
+        labware.height_mm = None
+        with pytest.raises(ValueError, match="height_mm"):
+            engage_at_labware(
+                ctx, "sensor", "plate.A1", command_label="measure",
             )

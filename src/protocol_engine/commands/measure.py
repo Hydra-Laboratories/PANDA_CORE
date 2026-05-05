@@ -1,4 +1,4 @@
-"""Protocol command: measure with an instrument at the current position."""
+"""Protocol command: measure with an instrument at a deck position."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from typing import Any, Dict, TYPE_CHECKING
 
 from ..errors import ProtocolExecutionError
 from ..registry import protocol_command
-from ._movement import approach_and_descend
+from ._movement import engage_at_labware
 
 if TYPE_CHECKING:
     from ..protocol import ProtocolContext
@@ -18,26 +18,19 @@ def measure(
     instrument: str,
     position: str,
     method: str = "measure",
+    measurement_height: float | None = None,
     method_kwargs: Dict[str, Any] = {},
 ) -> Any:
     """Measure at a deck position using *instrument*.
 
-    Three phases:
-      1. **Approach.** ``Board.move_to_labware`` retracts (if below
-         ``safe_approach_height``) and travels XY to above the target.
-      2. **Descend.** Lower straight down to the current action Z.
-      3. **Act.** Call the instrument method.
+    Motion:
+      1. Travel at the gantry's ``safe_z`` (absolute) to above the target.
+      2. Descend straight down to ``labware.height_mm + measurement_height``.
+      3. Call ``instrument.method(**method_kwargs)``.
 
-    Args:
-        context:       Runtime context (board, deck, logger).
-        instrument:    Name of the instrument registered on the board.
-        position:      Deck target string (e.g. "plate_1.A1").
-        method:        Name of the callable on the instrument (default "measure").
-        method_kwargs: Keyword arguments passed to the instrument method
-                       (e.g. {"intensity": 50, "exposure_time": 10.0}).
-
-    Returns:
-        Whatever the instrument method returns.
+    ``measurement_height`` is a labware-relative offset (mm above the
+    labware's ``height_mm`` surface; negative = below). The XOR rule
+    requires it to be set on either the instrument config or this command.
     """
     if instrument not in context.board.instruments:
         raise ProtocolExecutionError(
@@ -51,8 +44,19 @@ def measure(
             f"Instrument '{instrument}' has no method '{method}'."
         )
 
-    coord = context.deck.resolve(position)
-    action_z = coord.z - instr.measurement_height
-    context.logger.info("measure: %s.%s(%s) at %s", instrument, method, method_kwargs, position)
-    approach_and_descend(context, instrument, coord, measurement_height=action_z)
+    try:
+        action_z = engage_at_labware(
+            context,
+            instrument,
+            position,
+            command_label="measure",
+            measurement_height=measurement_height,
+        )
+    except ValueError as exc:
+        raise ProtocolExecutionError(str(exc)) from exc
+
+    context.logger.info(
+        "measure: %s.%s(%s) at %s — action_z=%.3f",
+        instrument, method, method_kwargs, position, action_z,
+    )
     return getattr(instr, method)(**method_kwargs)

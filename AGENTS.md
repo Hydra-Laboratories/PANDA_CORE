@@ -40,6 +40,26 @@ Do not pre-flip signs in high-level code. GRBL `$3` axis direction and `$23` hom
 
 Current high-level gantry code no longer applies a hidden Z sign flip. Working-volume bounds are deck-frame values.
 
+### Heights: absolute vs. labware-relative
+
+Two kinds of Z fields coexist:
+
+- **Absolute deck-frame Z** (`gantry.cnc.safe_z`, gantry working-volume
+  bounds, `move` command's `travel_z`, named positions, literal `[x, y, z]`
+  targets). `safe_z` is the travel ceiling: every resolved approach/action
+  Z must be ≤ `safe_z`. Defaults to `working_volume.z_max` when omitted.
+- **Labware-relative offsets** (`measurement_height`,
+  `safe_approach_height` on `scan`/`measure`). Positive = above the
+  labware's `height_mm` surface; negative = below. Resolved at command
+  time as `labware.height_mm + relative_offset`.
+
+`measurement_height` follows an XOR rule: exactly one of
+`gantry.instruments.<name>.measurement_height` and the protocol
+`measure`/`scan` command must define it. `safe_approach_height` is
+required only on `scan` (instrument-level field is removed). ASMI
+`indentation_limit` is a sign-agnostic magnitude (descent distance below
+the action plane).
+
 ## Where to Look
 
 Use `docs/agent-index.md` for exact files/tests. Common entrypoints:

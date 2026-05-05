@@ -903,7 +903,10 @@ labware:
         assert isinstance(plate, WellPlate)
         assert plate.length_mm is None
         assert plate.width_mm is None
-        assert plate.height_mm is None
+        # height_mm is now the absolute deck-frame Z of the plate surface,
+        # resolved from the calibration. It is no longer a "geometry" field
+        # and is not None when calibration is provided.
+        assert plate.height_mm == -5.0
         assert plate.capacity_ul is None
         assert plate.working_volume_ul is None
         assert len(plate.wells) == 6

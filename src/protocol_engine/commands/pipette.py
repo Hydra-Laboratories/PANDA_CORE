@@ -10,7 +10,7 @@ from deck.labware.well_plate import WellPlate
 
 from ..errors import ProtocolExecutionError
 from ..registry import protocol_command
-from ._movement import approach_and_descend
+from ._movement import engage_at_labware
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +64,8 @@ def aspirate(
     speed: float = 50.0,
 ) -> Any:
     """Move pipette to *position*, then aspirate."""
-    coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
-    approach_and_descend(context, "pipette", coord)
+    engage_at_labware(context, "pipette", position, command_label="aspirate")
     return pipette.aspirate(volume_ul, speed)
 
 
@@ -81,9 +80,8 @@ def dispense(
     Not exposed as a YAML protocol command — use ``transfer`` instead,
     which correctly tracks source labware for DB logging.
     """
-    coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
-    approach_and_descend(context, "pipette", coord)
+    engage_at_labware(context, "pipette", position, command_label="dispense")
     return pipette.dispense(volume_ul, speed)
 
 
@@ -94,9 +92,8 @@ def blowout(
     speed: float = 50.0,
 ) -> None:
     """Move pipette to *position*, then blowout."""
-    coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
-    approach_and_descend(context, "pipette", coord)
+    engage_at_labware(context, "pipette", position, command_label="blowout")
     pipette.blowout(speed)
 
 
@@ -109,9 +106,8 @@ def mix(
     speed: float = 50.0,
 ) -> Any:
     """Move pipette to *position*, then mix."""
-    coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
-    approach_and_descend(context, "pipette", coord)
+    engage_at_labware(context, "pipette", position, command_label="mix")
     return pipette.mix(volume_ul, repetitions, speed)
 
 
@@ -122,9 +118,8 @@ def pick_up_tip(
     speed: float = 50.0,
 ) -> None:
     """Move pipette to *position*, then pick up a tip."""
-    coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
-    approach_and_descend(context, "pipette", coord)
+    engage_at_labware(context, "pipette", position, command_label="pick_up_tip")
     pipette.pick_up_tip(speed)
 
 
@@ -137,12 +132,10 @@ def transfer(
     speed: float = 50.0,
 ) -> None:
     """Aspirate from *source* and dispense into *destination*."""
-    source_coord = context.deck.resolve(source)
-    dest_coord = context.deck.resolve(destination)
     pipette = _get_pipette(context)
-    approach_and_descend(context, "pipette", source_coord)
+    engage_at_labware(context, "pipette", source, command_label="transfer.aspirate")
     pipette.aspirate(volume_ul, speed)
-    approach_and_descend(context, "pipette", dest_coord)
+    engage_at_labware(context, "pipette", destination, command_label="transfer.dispense")
     pipette.dispense(volume_ul, speed)
 
     source_key, _ = _parse_position(source)
@@ -157,9 +150,8 @@ def drop_tip(
     speed: float = 50.0,
 ) -> None:
     """Move pipette to *position*, then drop the tip."""
-    coord = context.deck.resolve(position)
     pipette = _get_pipette(context)
-    approach_and_descend(context, "pipette", coord)
+    engage_at_labware(context, "pipette", position, command_label="drop_tip")
     pipette.drop_tip(speed)
 
 

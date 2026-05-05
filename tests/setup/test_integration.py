@@ -34,6 +34,7 @@ serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
   total_z_height: 90.0
+  safe_z: 70.0
 working_volume:
   x_min: 0.0
   x_max: 300.0

@@ -1,4 +1,4 @@
-"""Tests for the `measure` protocol command."""
+"""Tests for the ``measure`` protocol command."""
 
 from unittest.mock import MagicMock
 
@@ -11,62 +11,95 @@ from protocol_engine.errors import ProtocolExecutionError
 from protocol_engine.protocol import ProtocolContext
 
 
-def _mock_instr(measurement_height=0.0, safe_approach_height=None):
-    resolved_safe = (
-        safe_approach_height if safe_approach_height is not None else measurement_height
-    )
+HEIGHT_MM = 14.10
+
+
+def _mock_instr(measurement_height=None):
     instr = MagicMock(spec=BaseInstrument)
     instr.name = "uvvis"
     instr.offset_x = 0.0
     instr.offset_y = 0.0
     instr.depth = 0.0
     instr.measurement_height = measurement_height
-    instr.safe_approach_height = resolved_safe
     instr.measure = MagicMock(return_value="spectrum")
     return instr
 
 
-def _ctx(instr, well_coord=Coordinate3D(x=10.0, y=20.0, z=30.0)):
+def _ctx(instr, well_coord=None, height_mm=HEIGHT_MM):
+    well_coord = well_coord or Coordinate3D(x=10.0, y=20.0, z=height_mm or 0.0)
     board = MagicMock()
     board.instruments = {"uvvis": instr}
     deck = MagicMock()
     deck.resolve = MagicMock(return_value=well_coord)
+    labware = MagicMock(height_mm=height_mm)
+    deck.__getitem__ = MagicMock(return_value=labware)
     return ProtocolContext(board=board, deck=deck)
 
 
-def test_measure_approaches_then_descends_then_acts():
-    """measure: approach above labware via move_to_labware, descend to
-    action Z via raw move, then call the instrument method."""
-    instr = _mock_instr(measurement_height=3.0)
-    coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
+def test_measure_travels_at_safe_z_then_descends():
+    """measure: move_to_labware (XY at safe_z), then descend to
+    height_mm + measurement_height, then call the method."""
+    instr = _mock_instr(measurement_height=2.0)
+    coord = Coordinate3D(x=10.0, y=20.0, z=HEIGHT_MM)
     ctx = _ctx(instr, well_coord=coord)
 
     result = measure(ctx, instrument="uvvis", position="plate_1.A1")
 
-    # Step 1: approach.
     ctx.board.move_to_labware.assert_called_once_with("uvvis", coord)
-    # Step 2: descend to action_z = well.z - measurement_height = 30 - 3 = 27.
-    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, 27.0))
-    # Step 3: act.
+    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, HEIGHT_MM + 2.0))
     instr.measure.assert_called_once()
     assert result == "spectrum"
 
 
-def test_measure_contact_instrument_descends_below_reference():
-    """Contact instrument with negative measurement_height descends
-    below the labware reference Z."""
-    instr = _mock_instr(measurement_height=-5.0, safe_approach_height=20.0)
-    coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
+def test_measure_with_negative_offset_descends_below_surface():
+    """Negative measurement_height = below the labware surface."""
+    instr = _mock_instr(measurement_height=-1.0)
+    coord = Coordinate3D(x=10.0, y=20.0, z=HEIGHT_MM)
     ctx = _ctx(instr, well_coord=coord)
 
     measure(ctx, instrument="uvvis", position="plate_1.A1")
 
-    # action_z = well.z - measurement_height = 30 - (-5) = 35.
-    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, 35.0))
+    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, HEIGHT_MM - 1.0))
+
+
+def test_measure_command_value_overrides_unset_instrument():
+    """XOR: command supplies measurement_height when instrument has none."""
+    instr = _mock_instr(measurement_height=None)
+    ctx = _ctx(instr)
+
+    measure(ctx, instrument="uvvis", position="plate_1.A1",
+            measurement_height=2.5)
+
+    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, HEIGHT_MM + 2.5))
+
+
+def test_measure_xor_violation_when_both_set():
+    instr = _mock_instr(measurement_height=1.0)
+    ctx = _ctx(instr)
+
+    with pytest.raises(ProtocolExecutionError, match="set both"):
+        measure(ctx, instrument="uvvis", position="plate_1.A1",
+                measurement_height=2.0)
+
+
+def test_measure_xor_violation_when_neither_set():
+    instr = _mock_instr(measurement_height=None)
+    ctx = _ctx(instr)
+
+    with pytest.raises(ProtocolExecutionError, match="not set"):
+        measure(ctx, instrument="uvvis", position="plate_1.A1")
+
+
+def test_measure_height_mm_required():
+    instr = _mock_instr(measurement_height=1.0)
+    ctx = _ctx(instr, height_mm=None)
+
+    with pytest.raises(ProtocolExecutionError, match="height_mm"):
+        measure(ctx, instrument="uvvis", position="plate_1.A1")
 
 
 def test_measure_passes_method_kwargs():
-    instr = _mock_instr()
+    instr = _mock_instr(measurement_height=0.0)
     ctx = _ctx(instr)
     measure(
         ctx, instrument="uvvis", position="plate_1.A1",
@@ -83,13 +116,10 @@ def test_measure_unknown_instrument_raises():
 
 
 def test_measure_unknown_method_raises():
-    # Use a spec-bound mock so hasattr() returns False for methods
-    # that aren't on BaseInstrument (i.e. "nope").
     instr = MagicMock(spec=BaseInstrument)
     instr.name = "uvvis"
     instr.offset_x = instr.offset_y = instr.depth = 0.0
     instr.measurement_height = 0.0
-    instr.safe_approach_height = 0.0
     ctx = _ctx(instr)
     with pytest.raises(ProtocolExecutionError, match="has no method"):
         measure(ctx, instrument="uvvis", position="plate_1.A1", method="nope")

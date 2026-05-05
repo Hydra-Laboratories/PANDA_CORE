@@ -330,6 +330,11 @@ def _build_well_plate(
     )
     kwargs = _entry_kwargs_for_model(entry, WellPlate)
     kwargs["wells"] = _derive_wells_from_calibration(entry, resolved_z=resolved_z)
+    # Runtime height_mm carries the absolute deck-frame Z of the plate
+    # surface (per WellPlate.height_mm docstring), used as the reference
+    # for labware-relative measurement and approach heights. The labware
+    # definition's intrinsic ``height_mm`` (plate thickness) is overridden.
+    kwargs["height_mm"] = resolved_z
     return WellPlate(**kwargs)
 
 
@@ -421,7 +426,8 @@ def _build_nested_well_plate(
         model_name=entry.model_name,
         length_mm=entry.length_mm,
         width_mm=entry.width_mm,
-        height_mm=entry.height_mm,
+        # Runtime height_mm = absolute deck-frame Z of the plate surface.
+        height_mm=resolved_z,
         rows=entry.rows,
         columns=entry.columns,
         wells=_derive_wells_from_calibration(entry, resolved_z=resolved_z),

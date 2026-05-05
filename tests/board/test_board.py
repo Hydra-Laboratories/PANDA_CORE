@@ -16,21 +16,14 @@ def _mock_instrument(
     offset_x=0.0,
     offset_y=0.0,
     depth=0.0,
-    measurement_height=0.0,
-    safe_approach_height=None,
+    measurement_height=None,
 ):
-    # Mirror BaseInstrument's fallback so tests that set only
-    # measurement_height get a consistent safe_approach_height.
-    resolved_safe = (
-        safe_approach_height if safe_approach_height is not None else measurement_height
-    )
     instr = MagicMock(spec=BaseInstrument)
     instr.name = name
     instr.offset_x = offset_x
     instr.offset_y = offset_y
     instr.depth = depth
     instr.measurement_height = measurement_height
-    instr.safe_approach_height = resolved_safe
     return instr
 
 
@@ -304,74 +297,63 @@ class TestBoardDisconnectInstruments:
 class TestBoardMoveToLabware:
 
     def test_single_gantry_call_with_travel_z(self):
-        """One gantry.move_to call, target xyz at approach Z, travel_z = approach Z."""
+        """move_to_labware travels XY at safe_z (absolute deck-frame)."""
         gantry = _mock_gantry()
-        instr = _mock_instrument(measurement_height=3.0, safe_approach_height=3.0)
-        board = Board(gantry=gantry, instruments={"sensor": instr})
+        instr = _mock_instrument()
+        board = Board(gantry=gantry, instruments={"sensor": instr}, safe_z=85.0)
         board.move_to_labware("sensor", _mock_labware(x=100, y=50, z=20))
 
         assert gantry.move_to.call_count == 1
         call = gantry.move_to.call_args
-        # Deck-origin +Z-up: safe_approach_height is an absolute Z plane.
-        assert call.args == (100.0, 50.0, 3.0)
-        assert call.kwargs == {"travel_z": 3.0}
-
-    def test_contact_instrument_travel_at_approach_above_action(self):
-        """Contact instrument with safe_approach > measurement: travel_z
-        is the approach Z, above the action Z."""
-        gantry = _mock_gantry()
-        instr = _mock_instrument(measurement_height=-5.0, safe_approach_height=20.0)
-        board = Board(gantry=gantry, instruments={"pipette": instr})
-        board.move_to_labware("pipette", _mock_labware(x=100, y=50, z=30))
-
-        assert gantry.move_to.call_count == 1
-        call = gantry.move_to.call_args
-        # approach z is the absolute safe_approach_height plane.
-        assert call.args == (100.0, 50.0, 20.0)
-        assert call.kwargs == {"travel_z": 20.0}
+        assert call.args == (100.0, 50.0, 85.0)
+        assert call.kwargs == {"travel_z": 85.0}
 
     def test_applies_instrument_xy_offsets_and_depth(self):
-        """Instrument offsets shift gantry coords; depth shifts both
-        target z and travel_z since both are tip-frame Zs."""
+        """Instrument offsets shift gantry coords; depth shifts the
+        gantry Z (tip Z + depth)."""
         gantry = _mock_gantry()
-        instr = _mock_instrument(
-            offset_x=10.0, offset_y=-5.0, depth=2.0,
-            measurement_height=0.0, safe_approach_height=15.0,
-        )
-        board = Board(gantry=gantry, instruments={"probe": instr})
+        instr = _mock_instrument(offset_x=10.0, offset_y=-5.0, depth=2.0)
+        board = Board(gantry=gantry, instruments={"probe": instr}, safe_z=15.0)
         board.move_to_labware("probe", _mock_labware(x=100, y=50, z=30))
 
         call = gantry.move_to.call_args
-        # approach tip z = 15 absolute; gantry z = 15 + depth(2) = 17.
+        # tip Z = safe_z = 15; gantry Z = 15 + depth(2) = 17.
         # gantry x = 100 - 10 = 90; gantry y = 50 - (-5) = 55.
         assert call.args == (90.0, 55.0, 17.0)
         assert call.kwargs == {"travel_z": 17.0}
 
     def test_accepts_tuple_position(self):
         gantry = _mock_gantry()
-        instr = _mock_instrument(measurement_height=2.0, safe_approach_height=2.0)
-        board = Board(gantry=gantry, instruments={"probe": instr})
+        instr = _mock_instrument()
+        board = Board(gantry=gantry, instruments={"probe": instr}, safe_z=20.0)
         board.move_to_labware("probe", (50.0, 40.0, 10.0))
 
         assert gantry.move_to.call_count == 1
         call = gantry.move_to.call_args
-        assert call.args == (50.0, 40.0, 2.0)
-        assert call.kwargs == {"travel_z": 2.0}
+        assert call.args == (50.0, 40.0, 20.0)
+        assert call.kwargs == {"travel_z": 20.0}
 
     def test_rejects_nan_position_z(self):
         """NaN in position z is caught (via Board.move's validation)."""
         gantry = _mock_gantry()
-        instr = _mock_instrument(measurement_height=0.0, safe_approach_height=0.0)
-        board = Board(gantry=gantry, instruments={"probe": instr})
+        instr = _mock_instrument()
+        board = Board(gantry=gantry, instruments={"probe": instr}, safe_z=20.0)
         with pytest.raises(ValueError, match="non-finite"):
             board.move_to_labware("probe", (10.0, 20.0, float("nan")))
 
     def test_rejects_infinite_position_x(self):
         gantry = _mock_gantry()
-        instr = _mock_instrument(measurement_height=0.0, safe_approach_height=0.0)
-        board = Board(gantry=gantry, instruments={"probe": instr})
+        instr = _mock_instrument()
+        board = Board(gantry=gantry, instruments={"probe": instr}, safe_z=20.0)
         with pytest.raises(ValueError, match="non-finite"):
             board.move_to_labware("probe", (float("inf"), 20.0, 10.0))
+
+    def test_unset_safe_z_raises(self):
+        gantry = _mock_gantry()
+        instr = _mock_instrument()
+        board = Board(gantry=gantry, instruments={"probe": instr})
+        with pytest.raises(ValueError, match="safe_z"):
+            board.move_to_labware("probe", (10.0, 20.0, 5.0))
 
     def test_raw_move_rejects_non_finite_z(self):
         """Raw Board.move (used for descent in commands) must also guard

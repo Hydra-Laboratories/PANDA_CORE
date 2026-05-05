@@ -60,7 +60,7 @@ class TestInstrumentYamlEntry:
         assert entry.offset_x == 0.0
         assert entry.offset_y == 0.0
         assert entry.depth == 0.0
-        assert entry.measurement_height == 0.0
+        assert entry.measurement_height is None
 
     def test_missing_vendor_raises(self):
         with pytest.raises(Exception):
@@ -182,7 +182,8 @@ class TestLoadBoardMeasurementHeight:
         board = load_board_from_yaml(yaml_path, _mock_gantry())
         assert board.instruments["sensor"].measurement_height == 4.5
 
-    def test_measurement_height_defaults_to_zero(self, tmp_path):
+    def test_measurement_height_defaults_to_none(self, tmp_path):
+        """No instrument default — protocol command must supply it."""
         yaml_path = _write_yaml(tmp_path, """\
             instruments:
               sensor:
@@ -190,51 +191,7 @@ class TestLoadBoardMeasurementHeight:
                 vendor: thorlabs
         """)
         board = load_board_from_yaml(yaml_path, _mock_gantry())
-        assert board.instruments["sensor"].measurement_height == 0.0
-
-
-class TestLoadBoardSafeApproachHeight:
-
-    def test_safe_approach_height_explicit_is_preserved(self, tmp_path):
-        yaml_path = _write_yaml(tmp_path, """\
-            instruments:
-              pipette:
-                type: pipette
-                vendor: opentrons
-                pipette_model: p300_single_gen2
-                measurement_height: -5.0
-                safe_approach_height: 20.0
-        """)
-        board = load_board_from_yaml(yaml_path, _mock_gantry())
-        assert board.instruments["pipette"].measurement_height == -5.0
-        assert board.instruments["pipette"].safe_approach_height == 20.0
-
-    def test_safe_approach_height_defaults_to_measurement_height(self, tmp_path):
-        """Omitting safe_approach_height is valid and falls back to measurement_height."""
-        yaml_path = _write_yaml(tmp_path, """\
-            instruments:
-              sensor:
-                type: uvvis_ccs
-                vendor: thorlabs
-                measurement_height: 3.0
-        """)
-        board = load_board_from_yaml(yaml_path, _mock_gantry())
-        assert board.instruments["sensor"].measurement_height == 3.0
-        assert board.instruments["sensor"].safe_approach_height == 3.0
-
-    def test_safe_approach_below_measurement_is_rejected(self, tmp_path):
-        """YAML validator catches misconfiguration at parse time."""
-        yaml_path = _write_yaml(tmp_path, """\
-            instruments:
-              pipette:
-                type: pipette
-                vendor: opentrons
-                pipette_model: p300_single_gen2
-                measurement_height: 5.0
-                safe_approach_height: 2.0
-        """)
-        with pytest.raises(Exception, match="safe_approach_height"):
-            load_board_from_yaml(yaml_path, _mock_gantry())
+        assert board.instruments["sensor"].measurement_height is None
 
 
 class TestLoadBoardGantry:
@@ -293,8 +250,7 @@ class TestLoadBoardFromGantryConfig:
               asmi:
                 type: asmi
                 vendor: vernier
-                measurement_height: 26.0
-                safe_approach_height: 35.0
+                measurement_height: -1.0
         """)
         gantry_config = load_gantry_from_yaml(gantry_path)
         board = load_board_from_gantry_config(

@@ -79,10 +79,13 @@ class WellPlate(Labware):
             raise ValueError(
                 f"WellPlate wells count must equal rows*columns ({expected_well_count}), got {len(self.wells)}."
             )
+        # ``height_mm`` is the absolute deck-frame Z of the plate surface
+        # (used as the reference for labware-relative measurement and
+        # approach heights). It is *not* a bounding-box dimension; the
+        # geometry below carries only XY footprint metadata.
         self.geometry = BoundingBoxGeometry(
             length_mm=self.length_mm,
             width_mm=self.width_mm,
-            height_mm=self.height_mm,
         )
         return self
 

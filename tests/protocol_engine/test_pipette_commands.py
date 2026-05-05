@@ -16,22 +16,28 @@ from protocol_engine.protocol import ProtocolContext
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
+PIPETTE_HEIGHT_MM = 14.10
+
+
 def _mock_context(
     resolve_return: Coordinate3D | None = None,
     has_pipette: bool = True,
+    height_mm: float | None = PIPETTE_HEIGHT_MM,
 ) -> ProtocolContext:
-    coord = resolve_return or Coordinate3D(x=100.0, y=50.0, z=20.0)
+    coord = resolve_return or Coordinate3D(x=100.0, y=50.0, z=PIPETTE_HEIGHT_MM)
 
     board = MagicMock()
     deck = MagicMock()
     deck.resolve.return_value = coord
+    labware = MagicMock(height_mm=height_mm)
+    deck.__getitem__ = MagicMock(return_value=labware)
 
     if has_pipette:
         pipette = MagicMock()
         pipette.aspirate.return_value = MagicMock(success=True, volume_ul=100.0)
         pipette.dispense.return_value = MagicMock(success=True, volume_ul=100.0)
         pipette.mix.return_value = MagicMock(success=True, volume_ul=50.0, repetitions=3)
-        # measurement_height is added to labware.z to get the descent target.
+        # Default: pipette's instrument-config measurement_height is 0 (well surface).
         pipette.measurement_height = 0.0
         board.instruments = {"pipette": pipette}
     else:
@@ -126,15 +132,17 @@ class TestAspirateCommand:
         ctx.board.move_to_labware.assert_called_once_with("pipette", coord)
 
     def test_descends_to_action_z_after_approach(self):
-        """aspirate: descent raw-move must target absolute measurement_height."""
+        """aspirate descends to height_mm + measurement_height (relative)."""
         from protocol_engine.commands.pipette import aspirate
 
-        coord = Coordinate3D(x=10.0, y=20.0, z=75.0)
+        coord = Coordinate3D(x=10.0, y=20.0, z=PIPETTE_HEIGHT_MM)
         ctx = _mock_context(resolve_return=coord)
-        # Contact pipette uses a low absolute deck-frame action plane.
+        # Contact pipette: instrument config sets a negative offset (below).
         _get_pipette(ctx).measurement_height = -5.0
         aspirate(ctx, position="plate_1.A1", volume_ul=100.0)
-        ctx.board.move.assert_called_once_with("pipette", (10.0, 20.0, -5.0))
+        ctx.board.move.assert_called_once_with(
+            "pipette", (10.0, 20.0, PIPETTE_HEIGHT_MM - 5.0),
+        )
 
     def test_approach_then_descend_then_aspirate(self):
         """Ordering: approach (move_to_labware) -> descent (move) -> aspirate."""

@@ -33,7 +33,9 @@ cnc:
   homing_strategy: standard
   total_z_height: 87.0
   y_axis_motion: head
-  structure_clearance_z: 85.0
+  # Absolute deck-frame Z used for inter-labware travel and the entry
+  # approach to the first well of a scan. Defaults to working_volume.z_max.
+  safe_z: 85.0
 
 working_volume:
   x_min: 0.0
@@ -50,8 +52,8 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    measurement_height: 26.0
-    safe_approach_height: 35.0
+    # Labware-relative offset (mm above labware.height_mm; negative = below).
+    measurement_height: -1.0
 ```
 
 Use this file when:
@@ -112,9 +114,11 @@ Use this file when:
 Mounted instruments are defined inside the gantry YAML under `instruments`.
 Offsets are relative to the gantry/router reference point.
 
-`measurement_height` and `safe_approach_height` are absolute deck-frame Z
-planes, not labware-relative offsets. `safe_approach_height` must be greater
-than or equal to `measurement_height` in the +Z-up deck frame.
+`measurement_height` is a *labware-relative* offset (mm above the
+labware's `height_mm` surface; negative = below). It is optional on the
+instrument and may be set on the protocol command instead — exactly one
+source must define it (XOR rule). Inter-labware and first-well-entry
+travel use the gantry-level `safe_z`, not any instrument field.
 
 Representative example:
 
@@ -129,8 +133,7 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    measurement_height: 3.0
-    safe_approach_height: 20.0
+    measurement_height: 3.0   # 3 mm above the plate surface
 ```
 
 ## Protocol Config
@@ -156,10 +159,16 @@ Use this file when:
 - adding measurement or liquid-handling steps
 - adjusting step parameters without changing the machine layout
 
-Protocol scan heights use the current names `measurement_height`,
-`entry_travel_height`, and `interwell_travel_height`. Legacy scan names
-`entry_travel_z`, scan-level `safe_approach_height`, and ASMI `z_limit` are
-rejected before motion.
+Protocol scan heights are labware-relative (mm above `labware.height_mm`):
+
+- `measurement_height` — action plane (XOR with the instrument config).
+- `safe_approach_height` — between-wells XY-travel plane (required on
+  every scan; must be at or above `measurement_height`).
+
+Inter-labware travel uses the gantry's absolute `safe_z`. Legacy names
+`entry_travel_z`, `entry_travel_height`, `interwell_travel_height`,
+instrument-level `safe_approach_height`, and ASMI `z_limit` are rejected
+before motion.
 
 ## Recommended Editing Rule
 

@@ -15,7 +15,7 @@ from ..errors import ProtocolExecutionError
 from ..measurements import normalize_measurement
 from ..registry import protocol_command
 from ..scan_args import normalize_scan_arguments
-from ._movement import approach_and_descend
+from ._movement import resolve_labware_height, resolve_measurement_height
 
 if TYPE_CHECKING:
     from ..protocol import ProtocolContext
@@ -34,44 +34,38 @@ def scan(
     plate: str,
     instrument: str,
     method: str,
-    delay_s: float = 0.0,
+    safe_approach_height: float | None = None,
     measurement_height: float | None = None,
-    entry_travel_height: float | None = None,
-    interwell_travel_height: float | None = None,
     indentation_limit: float | None = None,
+    delay_s: float = 0.0,
     method_kwargs: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """Scan every well on *plate* using *instrument*'s *method*.
 
     Iterates wells in row-major order (A1, A2, ..., B1, B2, ...).
-    For each well, uses :func:`approach_and_descend` to safely travel
-    above the well (at ``interwell_travel_height``) and descend to the
-    action Z (``measurement_height``), then calls the method with any
-    provided keyword arguments.
 
-    When a ``DataStore`` is configured on *context*, each measurement
-    is persisted as an experiment + measurement row in the database.
+    Motion per well, with ``ref_z = plate.height_mm``:
+
+    * **First well of the plate.** Travel at the gantry's ``safe_z``
+      (absolute) → descend to ``ref_z + safe_approach_height`` →
+      descend to ``ref_z + measurement_height`` → act.
+    * **Subsequent wells.** Rise to ``ref_z + safe_approach_height`` at
+      the current XY → travel XY at that height → descend to
+      ``ref_z + measurement_height`` → act.
 
     Args:
-        context:       Runtime context (board, deck, logger).
-        plate:         Deck key of the well plate (e.g. "plate_1").
-        instrument:    Name of the instrument registered on the board.
-        method:        Name of the method on the instrument to call per well.
-        delay_s:       Seconds to pause between wells (default 0.0).
-        measurement_height:
-                       Optional protocol-level action/start Z. This is an
-                       absolute deck-frame Z plane, not a labware-relative
-                       offset.
-        entry_travel_height:
-                       Optional absolute Z coordinate used only for the
-                       initial transit into the first well of the scan.
-        interwell_travel_height:
-                       Optional absolute Z coordinate used between wells.
-                       Defaults to ``measurement_height`` when provided.
-        indentation_limit:
-                       ASMI indentation stopping Z.
-        method_kwargs: Keyword arguments passed to the instrument method
-                       on each well (e.g. {"intensity": 50, "exposure_time": 10.0}).
+        context:              Runtime context (board, deck, logger).
+        plate:                Deck key of the well plate.
+        instrument:           Name of the instrument registered on the board.
+        method:               Method on the instrument to call per well.
+        safe_approach_height: Labware-relative offset for between-wells XY
+                              travel (mm above the labware's ``height_mm``;
+                              required).
+        measurement_height:   Labware-relative offset for the action plane.
+                              XOR with the instrument config.
+        indentation_limit:    ASMI indentation stopping bound (magnitude).
+        delay_s:              Seconds to pause between wells (default 0.0).
+        method_kwargs:        Keyword arguments passed per well.
 
     Returns:
         Mapping of well ID to the result of each method call.
@@ -79,7 +73,8 @@ def scan(
     plate_obj = context.deck[plate]
     if not isinstance(plate_obj, WellPlate):
         raise ProtocolExecutionError(
-            f"scan requires a WellPlate, but '{plate}' is {type(plate_obj).__name__}."
+            f"scan requires a WellPlate, but '{plate}' is "
+            f"{type(plate_obj).__name__}."
         )
 
     if instrument not in context.board.instruments:
@@ -94,52 +89,56 @@ def scan(
             f"Instrument '{instrument}' has no method '{method}'."
         )
     callable_method = getattr(instr, method)
+
     try:
         normalized = normalize_scan_arguments(
             measurement_height=measurement_height,
-            entry_travel_height=entry_travel_height,
-            interwell_travel_height=interwell_travel_height,
+            safe_approach_height=safe_approach_height,
             indentation_limit=indentation_limit,
             method_kwargs=method_kwargs,
+        )
+        ref_z = resolve_labware_height(plate_obj, plate)
+        relative_action = resolve_measurement_height(
+            instrument_value=instr.measurement_height,
+            command_value=normalized.measurement_height,
+            instrument_name=instrument,
+            command_label="scan",
         )
     except ValueError as exc:
         raise ProtocolExecutionError(str(exc)) from exc
 
+    action_z = ref_z + relative_action
+    approach_z = ref_z + normalized.safe_approach_height
+
+    if approach_z < action_z:
+        raise ProtocolExecutionError(
+            f"scan: safe_approach_height ({normalized.safe_approach_height}) "
+            f"resolves below measurement_height ({relative_action}) for "
+            f"plate '{plate}'. Approach must be at or above the action plane."
+        )
+
     results: Dict[str, Any] = {}
     sorted_wells = sorted(plate_obj.wells, key=_row_major_key)
     sig = inspect.signature(callable_method)
+
     for i, well_id in enumerate(sorted_wells):
         if i > 0 and delay_s > 0:
             context.logger.info("Pausing %.1fs between wells", delay_s)
             time.sleep(delay_s)
 
         well = plate_obj.get_well_center(well_id)
-        approach_z = (
-            normalized.entry_travel_height
-            if i == 0 and normalized.entry_travel_height is not None
-            else normalized.interwell_travel_height
-        )
-        action_z = (
-            normalized.measurement_height
-            if normalized.measurement_height is not None
-            else well.z - instr.measurement_height
-        )
-        approach_and_descend(
-            context,
-            instrument,
-            well,
-            safe_approach_height=approach_z,
-            measurement_height=action_z,
-        )
+        if i == 0:
+            context.board.move_to_labware(instrument, well)
+            context.board.move(instrument, (well.x, well.y, approach_z))
+        else:
+            context.board.move(
+                instrument, (well.x, well.y, approach_z), travel_z=approach_z,
+            )
+        context.board.move(instrument, (well.x, well.y, action_z))
 
-        # Inject gantry if the method accepts it (e.g. ASMI.indentation
-        # needs the gantry for Z stepping), then merge with method_kwargs.
         kwargs: Dict[str, Any] = dict(normalized.method_kwargs)
-        if (
-            normalized.measurement_height is not None
-            and "measurement_height" in sig.parameters
-        ):
-            kwargs["measurement_height"] = normalized.measurement_height
+        if "measurement_height" in sig.parameters:
+            kwargs["measurement_height"] = action_z
         if "gantry" in sig.parameters:
             kwargs["gantry"] = context.board.gantry
         result = callable_method(**kwargs)
@@ -170,11 +169,9 @@ def scan(
 
     if sorted_wells:
         last_well = plate_obj.get_well_center(sorted_wells[-1])
-        final_approach_z = (
-            normalized.interwell_travel_height
-            if normalized.interwell_travel_height is not None
-            else instr.safe_approach_height
+        context.board.move(
+            instrument, (last_well.x, last_well.y, approach_z),
+            travel_z=approach_z,
         )
-        context.board.move(instrument, (last_well.x, last_well.y, final_approach_z))
 
     return results

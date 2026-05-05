@@ -22,15 +22,19 @@ protocol:
   # Home the gantry without redefining calibrated deck-origin WPos
   - home:
 
-  # Scan all wells: move to each well, run indentation
+  # Scan all wells: travel at gantry safe_z to the first well, descend to
+  # safe_approach_height above each plate surface, then to measurement_height.
   - scan:
       plate: plate
       instrument: asmi
       method: indentation
-      measurement_height: 26.0
-      entry_travel_height: 85.0
-      interwell_travel_height: 35.0
-      indentation_limit: 24.0
+      # safe_approach_height is the labware-relative XY-travel offset
+      # between wells (mm above the plate surface). Required.
+      safe_approach_height: 8.0
+      # measurement_height (the action plane offset) may be set here OR on
+      # the instrument config — exactly one place (XOR rule). Here we let
+      # the instrument config supply it.
+      indentation_limit: 5.0   # magnitude: descend 5 mm into the well
       method_kwargs:
         step_size: 0.01
         force_limit: 10.0
@@ -80,23 +84,26 @@ The `move` command accepts:
 - raw `[x, y, z]` coordinates
 - a deck target string such as `plate_1.A1` or `vial_1`
 
-The `measure` command requires both `instrument` and `position`. It resolves the deck target, approaches with the instrument's absolute `safe_approach_height`, descends to the instrument's absolute `measurement_height`, and then calls the selected method. The default method is `measure`.
+The `measure` command requires `instrument` and `position`. It travels XY
+at the gantry's absolute `safe_z`, descends to
+`labware.height_mm + measurement_height`, and calls the selected method.
+The default method is `measure`. `measurement_height` may be set on the
+command or on the instrument config — exactly one source (XOR rule).
 
 ## Scan Heights
 
-Use these scan names for new protocols:
+Scan heights are *labware-relative* offsets above `labware.height_mm`
+(positive = above the plate surface; negative = below):
 
-- `measurement_height` is the absolute deck-frame action/start Z for a scan target.
-- `interwell_travel_height` is the between-well travel Z. When omitted, it
-  defaults to `measurement_height`.
-- `entry_travel_height` is the first transit Z into the scan. When omitted, it
-  defaults to `interwell_travel_height`.
-- `indentation_limit` is the ASMI indentation stopping Z. The legacy ASMI name
-  `z_limit` is no longer accepted. Under the +Z-up deck frame, downward ASMI
-  indentation requires `indentation_limit < measurement_height`.
+- `measurement_height` is the action plane offset. Set it on the protocol
+  command or on the instrument config — exactly one place (XOR rule).
+- `safe_approach_height` is the between-wells XY-travel offset, required
+  on every scan. Must be at or above `measurement_height` in +Z-up.
+- `indentation_limit` is a sign-agnostic *magnitude* — the descent
+  distance below the action plane. Legacy ASMI `z_limit` is rejected.
 
-These fields are absolute deck-frame Z planes, not offsets from the labware Z.
-Runtime motion must not add them to, or subtract them from, labware Z.
+Inter-labware travel and the entry approach for the first well of a scan
+use the gantry's absolute `safe_z`, not these labware-relative fields.
 
 Example:
 

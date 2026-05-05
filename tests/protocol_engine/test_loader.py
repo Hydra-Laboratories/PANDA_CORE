@@ -42,9 +42,8 @@ protocol:
       plate: plate_1
       instrument: uvvis
       method: measure
-      measurement_height: 10.0
-      interwell_travel_height: 10.0
-      entry_travel_height: 10.0
+      measurement_height: 1.0
+      safe_approach_height: 10.0
 """
 
 
@@ -115,9 +114,8 @@ def test_scan_accepts_new_height_names():
             "plate": "plate_1",
             "instrument": "uvvis",
             "method": "measure",
-            "measurement_height": 10.0,
-            "interwell_travel_height": 10.0,
-            "entry_travel_height": 10.0,
+            "measurement_height": 1.0,
+            "safe_approach_height": 10.0,
         }
     finally:
         Path(path).unlink(missing_ok=True)

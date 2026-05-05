@@ -17,7 +17,7 @@ serial_port: /dev/cu.usbserial-2130
 cnc:
   homing_strategy: standard
   total_z_height: 90.0
-  structure_clearance_z: 75.0
+  safe_z: 75.0
 working_volume:
   x_min: 0.0
   x_max: 300.0
@@ -35,8 +35,7 @@ instruments:
   asmi:
     type: asmi
     vendor: vernier
-    measurement_height: 26.0
-    safe_approach_height: 35.0
+    measurement_height: -1.0
     sensor_channels: [1]
 """
 
@@ -70,7 +69,7 @@ class TestLoadGantryFromYaml:
             assert vol.z_min == 0.0
             assert vol.z_max == 80.0
             assert config.total_z_height == 90.0
-            assert config.structure_clearance_z == 75.0
+            assert config.safe_z == 75.0
         finally:
             os.unlink(path)
 

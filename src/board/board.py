@@ -28,12 +28,14 @@ class Board:
         gantry: Gantry,
         instruments: dict[str, BaseInstrument] | None = None,
         expected_grbl_settings: dict[str, float] | None = None,
+        safe_z: float | None = None,
     ):
         self.gantry = gantry
         self.instruments: dict[str, BaseInstrument] = instruments or {}
         self.expected_grbl_settings = (
             dict(expected_grbl_settings) if expected_grbl_settings else None
         )
+        self.safe_z = safe_z
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     def move(
@@ -84,14 +86,14 @@ class Board:
         instrument: str | BaseInstrument,
         labware: Position,
     ) -> None:
-        """Travel *instrument* to the approach height above a labware target.
+        """Travel *instrument* to ``safe_z`` above a labware target.
 
-        Emits a single ``move`` with ``travel_z = safe_approach_height``.
-        The gantry lifts/lowers to that absolute deck-frame Z plane at
-        the current XY, travels XY at approach Z, and ends above the
-        target — not engaged with it. Higher-level commands
-        (``measure``, ``aspirate``, ``scan``, ...) follow up with a raw
-        ``board.move`` to descend to ``measurement_height``.
+        Emits a single ``move`` with ``travel_z = self.safe_z``: the
+        gantry lifts/lowers to that absolute deck-frame Z plane at
+        the current XY, travels XY at ``safe_z``, and ends above the
+        target without descending. Higher-level commands
+        (``measure``, ``scan``, ...) follow up with a raw ``board.move``
+        to descend to the per-labware action plane.
 
         Args:
             instrument: Name or instance.
@@ -99,12 +101,19 @@ class Board:
                         attributes (e.g. a ``Coordinate3D`` returned by
                         ``Deck.resolve()``). ``(x, y, z)`` tuples are
                         accepted for convenience/testing.
+
+        Raises:
+            ValueError: If ``self.safe_z`` is not configured.
         """
+        if self.safe_z is None:
+            raise ValueError(
+                "Board.safe_z is not set. Configure `cnc.safe_z` in the "
+                "gantry YAML or build the Board with `safe_z=...`."
+            )
         instr = self._resolve_instrument(instrument)
         x, y, z = self._resolve_position(labware)
         self._validate_finite_xyz(x, y, z, instr.name)
-        approach_z = instr.safe_approach_height
-        self.move(instr, (x, y, approach_z), travel_z=approach_z)
+        self.move(instr, (x, y, self.safe_z), travel_z=self.safe_z)
 
     def _validate_finite_xyz(self, x: float, y: float, z: float, instr_name: str) -> None:
         for label, value in (("x", x), ("y", y), ("z", z)):

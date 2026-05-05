@@ -29,14 +29,13 @@ def _plate() -> WellPlate:
     )
 
 
-def _instrument(name: str = "asmi", measurement_height: float = 0.0):
+def _instrument(name: str = "asmi", measurement_height: float | None = None):
     instr = MagicMock()
     instr.name = name
     instr.offset_x = 0.0
     instr.offset_y = 0.0
     instr.depth = 0.0
     instr.measurement_height = measurement_height
-    instr.safe_approach_height = measurement_height
     return instr
 
 
@@ -56,7 +55,7 @@ def _gantry_config(
     x_max: float = 300.0,
     y_max: float = 200.0,
     z_max: float = 100.0,
-    structure_clearance_z: float | None = None,
+    safe_z: float | None = None,
 ) -> GantryConfig:
     return GantryConfig(
         serial_port="/dev/null",
@@ -67,14 +66,14 @@ def _gantry_config(
             y_min=0.0, y_max=y_max,
             z_min=0.0, z_max=z_max,
         ),
-        structure_clearance_z=structure_clearance_z,
+        safe_z=safe_z,
     )
 
 
 def _board_and_deck(instrument=None):
     board = Board(
         gantry=MagicMock(),
-        instruments={"asmi": instrument or _instrument("asmi", measurement_height=0.0)},
+        instruments={"asmi": instrument or _instrument("asmi")},
     )
     deck = Deck({"plate": _plate()})
     return board, deck
@@ -88,55 +87,115 @@ def _move_step(*, position, instrument: str = "asmi", travel_z: float | None = N
     return _protocol(args, command_name=command_name)
 
 
-def test_asmi_indentation_limit_must_be_below_measurement_height():
+def test_asmi_indentation_within_z_bounds_passes():
+    """Indentation deepest abs Z = height_mm + measurement_height - |limit|."""
     board, deck = _board_and_deck()
+    gantry = _gantry_config(z_max=100.0)
     protocol = _protocol({
         "plate": "plate",
         "instrument": "asmi",
         "method": "indentation",
-        "measurement_height": 73.0,
-        "indentation_limit": 75.0,
+        "measurement_height": -1.0,
+        "safe_approach_height": 10.0,
+        "indentation_limit": 5.0,
         "method_kwargs": {"step_size": 0.01},
     })
 
-    violations = validate_protocol_semantics(protocol, board, deck)
-
-    assert len(violations) == 1
-    assert "indentation_limit must be less" in violations[0].message
+    assert validate_protocol_semantics(protocol, board, deck, gantry) == []
 
 
-def test_scan_travel_height_must_not_be_below_action_height():
+def test_asmi_indentation_below_z_min_violates():
+    """height_mm=14.10 + measurement_height=-1.0 - |20.0| = -6.90 < z_min=0."""
     board, deck = _board_and_deck()
+    gantry = _gantry_config(z_max=100.0)
     protocol = _protocol({
         "plate": "plate",
         "instrument": "asmi",
         "method": "indentation",
-        "measurement_height": 73.0,
-        "interwell_travel_height": 70.0,
-        "indentation_limit": 69.0,
+        "measurement_height": -1.0,
+        "safe_approach_height": 10.0,
+        "indentation_limit": 20.0,
         "method_kwargs": {"step_size": 0.01},
     })
 
-    violations = validate_protocol_semantics(protocol, board, deck)
+    violations = validate_protocol_semantics(protocol, board, deck, gantry)
 
-    assert len(violations) == 1
-    assert "interwell_travel_height" in violations[0].message
+    assert any("indentation deepest" in v.message for v in violations)
+
+
+def test_indentation_limit_is_sign_agnostic():
+    """A negative limit and its positive counterpart produce identical bounds."""
+    board, deck = _board_and_deck()
+    gantry = _gantry_config(z_max=100.0)
+    base_args = {
+        "plate": "plate",
+        "instrument": "asmi",
+        "method": "indentation",
+        "measurement_height": -1.0,
+        "safe_approach_height": 10.0,
+        "method_kwargs": {"step_size": 0.01},
+    }
+
+    pos = validate_protocol_semantics(
+        _protocol({**base_args, "indentation_limit": 20.0}),
+        board, deck, gantry,
+    )
+    neg = validate_protocol_semantics(
+        _protocol({**base_args, "indentation_limit": -20.0}),
+        board, deck, gantry,
+    )
+
+    assert [v.message for v in pos] == [v.message for v in neg]
+
+
+def test_scan_safe_approach_below_measurement_violates():
+    board, deck = _board_and_deck()
+    gantry = _gantry_config()
+    protocol = _protocol({
+        "plate": "plate",
+        "instrument": "asmi",
+        "method": "indentation",
+        "measurement_height": 2.0,
+        "safe_approach_height": 1.0,
+        "method_kwargs": {"step_size": 0.01},
+    })
+
+    violations = validate_protocol_semantics(protocol, board, deck, gantry)
+
+    assert any("approach must be at or above" in v.message for v in violations)
+
+
+def test_scan_approach_above_safe_z_violates():
+    board, deck = _board_and_deck()
+    gantry = _gantry_config(z_max=100.0, safe_z=20.0)
+    protocol = _protocol({
+        "plate": "plate",
+        "instrument": "asmi",
+        "method": "indentation",
+        "measurement_height": -1.0,
+        "safe_approach_height": 10.0,
+        "method_kwargs": {"step_size": 0.01},
+    })
+
+    violations = validate_protocol_semantics(protocol, board, deck, gantry)
+
+    assert any("safe_z" in v.message for v in violations)
 
 
 def test_valid_asmi_scan_semantics_pass():
     board, deck = _board_and_deck()
+    gantry = _gantry_config(z_max=100.0, safe_z=85.0)
     protocol = _protocol({
         "plate": "plate",
         "instrument": "asmi",
         "method": "indentation",
-        "measurement_height": 73.0,
-        "entry_travel_height": 85.0,
-        "interwell_travel_height": 80.0,
-        "indentation_limit": 70.0,
+        "measurement_height": -1.0,
+        "safe_approach_height": 10.0,
+        "indentation_limit": 5.0,
         "method_kwargs": {"step_size": 0.01},
     })
 
-    assert validate_protocol_semantics(protocol, board, deck) == []
+    assert validate_protocol_semantics(protocol, board, deck, gantry) == []
 
 
 def test_legacy_scan_travel_names_are_semantic_violations():
@@ -145,18 +204,50 @@ def test_legacy_scan_travel_names_are_semantic_violations():
         "plate": "plate",
         "instrument": "asmi",
         "method": "indentation",
-        "entry_travel_z": 20.0,
-        "safe_approach_height": 70.0,
-        "measurement_height": 73.0,
-        "indentation_limit": 70.0,
+        "measurement_height": -1.0,
+        "safe_approach_height": 10.0,
+        "method_kwargs": {
+            "interwell_travel_height": 70.0,
+            "step_size": 0.01,
+        },
+    })
+
+    violations = validate_protocol_semantics(protocol, board, deck)
+
+    assert any("interwell_travel_height" in v.message for v in violations)
+
+
+def test_scan_xor_violation_when_both_set():
+    instr = _instrument("asmi", measurement_height=-1.0)
+    board, deck = _board_and_deck(instr)
+    protocol = _protocol({
+        "plate": "plate",
+        "instrument": "asmi",
+        "method": "indentation",
+        "measurement_height": 2.0,
+        "safe_approach_height": 10.0,
         "method_kwargs": {"step_size": 0.01},
     })
 
     violations = validate_protocol_semantics(protocol, board, deck)
 
-    assert len(violations) == 2
-    assert "`entry_travel_z` is no longer supported" in violations[0].message
-    assert "`safe_approach_height` is no longer supported" in violations[1].message
+    assert any("set both" in v.message for v in violations)
+
+
+def test_scan_xor_violation_when_neither_set():
+    instr = _instrument("asmi", measurement_height=None)
+    board, deck = _board_and_deck(instr)
+    protocol = _protocol({
+        "plate": "plate",
+        "instrument": "asmi",
+        "method": "indentation",
+        "safe_approach_height": 10.0,
+        "method_kwargs": {"step_size": 0.01},
+    })
+
+    violations = validate_protocol_semantics(protocol, board, deck)
+
+    assert any("not set on either" in v.message for v in violations)
 
 
 def test_legacy_asmi_z_limit_is_semantic_violation():
@@ -165,15 +256,39 @@ def test_legacy_asmi_z_limit_is_semantic_violation():
         "plate": "plate",
         "instrument": "asmi",
         "method": "indentation",
-        "interwell_travel_height": 70.0,
-        "measurement_height": 73.0,
+        "measurement_height": -1.0,
+        "safe_approach_height": 10.0,
         "method_kwargs": {"z_limit": 70.0, "step_size": 0.01},
     })
 
     violations = validate_protocol_semantics(protocol, board, deck)
 
-    assert len(violations) == 1
-    assert "`z_limit` is no longer supported" in violations[0].message
+    assert any("`z_limit` is no longer supported" in v.message for v in violations)
+
+
+def test_measure_xor_violation_when_neither_set():
+    instr = _instrument("asmi", measurement_height=None)
+    board, deck = _board_and_deck(instr)
+    protocol = _protocol(
+        {"instrument": "asmi", "position": "plate.A1", "method": "measure"},
+        command_name="measure",
+    )
+
+    violations = validate_protocol_semantics(protocol, board, deck)
+
+    assert any("not set on either" in v.message for v in violations)
+
+
+def test_measure_with_instrument_default_passes():
+    instr = _instrument("asmi", measurement_height=-1.0)
+    board, deck = _board_and_deck(instr)
+    gantry = _gantry_config(z_max=100.0, safe_z=85.0)
+    protocol = _protocol(
+        {"instrument": "asmi", "position": "plate.A1", "method": "measure"},
+        command_name="measure",
+    )
+
+    assert validate_protocol_semantics(protocol, board, deck, gantry) == []
 
 
 # ─── working-volume bound checks for `move` ──────────────────────────────────
@@ -279,7 +394,7 @@ def test_move_without_gantry_config_skips_bound_check():
 
 
 def test_scan_well_offset_x_drives_volume_violation():
-    instr = _instrument("asmi", measurement_height=50.0)
+    instr = _instrument("asmi", measurement_height=-1.0)
     instr.offset_x = -350.0
     board, deck = _board_and_deck(instr)
     gantry = _gantry_config(x_max=300.0)
@@ -287,8 +402,7 @@ def test_scan_well_offset_x_drives_volume_violation():
         "plate": "plate",
         "instrument": "asmi",
         "method": "indentation",
-        "measurement_height": 50.0,
-        "indentation_limit": 40.0,
+        "safe_approach_height": 10.0,
         "method_kwargs": {"step_size": 0.01},
     })
 
@@ -298,7 +412,8 @@ def test_scan_well_offset_x_drives_volume_violation():
 
 
 def test_scan_depth_drives_z_violation():
-    instr = _instrument("asmi", measurement_height=80.0)
+    """height_mm=14.10 + measurement_height=80.0 + depth=30.0 = 124.10 > z_max=100."""
+    instr = _instrument("asmi")
     instr.depth = 30.0
     board, deck = _board_and_deck(instr)
     gantry = _gantry_config(z_max=100.0)
@@ -307,7 +422,7 @@ def test_scan_depth_drives_z_violation():
         "instrument": "asmi",
         "method": "indentation",
         "measurement_height": 80.0,
-        "indentation_limit": 70.0,
+        "safe_approach_height": 85.0,
         "method_kwargs": {"step_size": 0.01},
     })
 
