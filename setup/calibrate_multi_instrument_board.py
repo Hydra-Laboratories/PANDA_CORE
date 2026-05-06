@@ -6,18 +6,20 @@ This guided path separates deck-frame XY origining from Z origining:
    pose with the left-most/reference instrument to the front-left XY artifact
    and assign only G54 WPos X=0, Y=0.
 2. Re-home to measure machine-derived X/Y bounds after XY origining.
-3. Attach all instruments, jog the lowest instrument to the deck/reference Z
-   point, and assign G54 WPos Z=0.
-4. Re-home to measure final Z max, then jog each instrument to a known artifact
-   point and compute its CubOS offset/depth fields.
+3. Move to the measured X/Y center, attach all instruments, jog the lowest
+   instrument to the deck/reference Z point, and assign G54 WPos Z=0.
+4. Re-home to measure final Z max, return to the measured X/Y center, then jog
+   each instrument to the same reachable calibration-block point and compute
+   relative CubOS offset/depth fields.
 
 Usage example:
 
     python setup/calibrate_multi_instrument_board.py \
         --gantry configs/gantry/cub_xl_multi.yaml
 
-The script prompts for the reference instrument, lowest instrument, and artifact
-coordinates. It prints the calibrated YAML; optional flags can pre-fill values
+The script prompts for the reference instrument and lowest instrument. Place the
+calibration block somewhere near the deck center where all instruments can reach
+the same point. It prints the calibrated YAML; optional flags can pre-fill values
 or write the YAML for scripted runs/tests.
 """
 
@@ -45,8 +47,10 @@ from setup.calibrate_deck_origin import (  # noqa: E402
     _load_raw_config,
     _maybe_write_gantry_yaml,
     _print_yaml_block,
+    _restore_soft_limits_after_origin_jog,
     _round_mm,
     _set_serial_timeout_if_available,
+    _temporarily_disable_soft_limits_for_origin_jog,
 )
 from setup.keyboard_input import flush_stdin, read_keypress_batch  # noqa: E402
 
@@ -65,6 +69,13 @@ class _GantryLike(Protocol):
         z: float | None = None,
     ) -> None: ...
     def get_coordinates(self) -> dict[str, float]: ...
+    def move_to(
+        self,
+        x: float,
+        y: float,
+        z: float,
+        travel_z: float | None = None,
+    ) -> None: ...
     def jog(
         self,
         x: float = 0,
@@ -100,7 +111,7 @@ class MultiInstrumentCalibrationResult:
     grbl_max_travel: tuple[float, float, float]
     reference_instrument: str
     lowest_instrument: str
-    artifact_xyz: tuple[float, float, float]
+    block_reference_coordinates: dict[str, tuple[float, float, float]]
 
 
 def _coords_tuple(coords: dict[str, float]) -> tuple[float, float, float]:
@@ -124,30 +135,47 @@ def _assert_near_xy_origin(
         )
 
 
-def compute_instrument_calibration(
+def compute_relative_instrument_calibrations(
     *,
-    gantry_coords: dict[str, float],
-    artifact_xyz: tuple[float, float, float],
-) -> dict[str, float]:
-    """Compute CubOS instrument offset/depth from a known artifact point.
+    block_coordinates: dict[str, dict[str, float]],
+    reference_instrument: str,
+    lowest_instrument: str,
+) -> dict[str, dict[str, float]]:
+    """Compute offsets/depths from one shared, arbitrary block point.
 
-    Board.move() uses:
-        gantry_x = target_x - offset_x
-        gantry_y = target_y - offset_y
-        gantry_z = target_z + depth
-
-    Therefore, when an instrument is jogged so its TCP is at a known artifact
-    point, the inverse is:
-        offset_x = artifact_x - gantry_x
-        offset_y = artifact_y - gantry_y
-        depth = gantry_z - artifact_z
+    The block does not need known deck-frame X/Y/Z coordinates. The reference
+    instrument defines zero XY offset, and the lowest instrument defines zero
+    depth after the Z-reference step. For every other instrument, touching the
+    same physical block point gives the relative WPos deltas needed by
+    Board.move() semantics:
+        offset_i = offset_ref + gantry_ref - gantry_i
+        depth_i = depth_lowest + gantry_i_z - gantry_lowest_z
+    with offset_ref=(0, 0) and depth_lowest=0 in this calibration flow.
     """
-    artifact_x, artifact_y, artifact_z = artifact_xyz
-    return {
-        "offset_x": _round_mm(artifact_x - float(gantry_coords["x"])),
-        "offset_y": _round_mm(artifact_y - float(gantry_coords["y"])),
-        "depth": _round_mm(float(gantry_coords["z"]) - artifact_z),
-    }
+    missing = [
+        name
+        for name in (reference_instrument, lowest_instrument)
+        if name not in block_coordinates
+    ]
+    if missing:
+        raise ValueError(
+            "Missing block coordinate(s) for required baseline instrument(s): "
+            + ", ".join(missing)
+        )
+    reference_coords = block_coordinates[reference_instrument]
+    lowest_coords = block_coordinates[lowest_instrument]
+    calibrations: dict[str, dict[str, float]] = {}
+    for instrument, coords in block_coordinates.items():
+        calibrations[instrument] = {
+            "offset_x": _round_mm(
+                float(reference_coords["x"]) - float(coords["x"])
+            ),
+            "offset_y": _round_mm(
+                float(reference_coords["y"]) - float(coords["y"])
+            ),
+            "depth": _round_mm(float(coords["z"]) - float(lowest_coords["z"])),
+        }
+    return calibrations
 
 
 def _build_grbl_settings(
@@ -222,6 +250,91 @@ def _instrument_names(raw_config: dict[str, Any]) -> tuple[str, ...]:
     return tuple(instruments.keys())
 
 
+def _unique_instrument_sequence(names: Sequence[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for name in names:
+        if name not in seen:
+            ordered.append(name)
+            seen.add(name)
+    return tuple(ordered)
+
+
+def _prompt_z_reference_height_mm(
+    *,
+    input_reader: Callable[[str], str],
+    output: Callable[[str], None],
+) -> float:
+    output("")
+    output("Z reference contact:")
+    output("  y = the lowest instrument is touching the deck/reference Z=0 surface")
+    output("  n = it is touching the top of a calibration block; enter block height")
+    while True:
+        raw = input_reader(
+            "Is the lowest instrument touching the true Z=0 surface? [y/N]: "
+        ).strip().lower()
+        if raw in ("y", "yes"):
+            return 0.0
+        if raw in ("", "n", "no", "u", "unsure"):
+            break
+        output("Enter y for true Z=0 contact, or n/Enter for block-height mode.")
+    while True:
+        raw = input_reader("Calibration block height in mm: ").strip()
+        try:
+            value = float(raw)
+        except ValueError:
+            output("Enter a numeric block height in millimeters.")
+            continue
+        if value <= 0:
+            output("Calibration block height must be > 0 mm. Use contact mode for Z=0.")
+            continue
+        return value
+
+
+def _looks_like_serial_device_not_configured(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "device not configured" in message
+
+
+def _home_with_serial_reconnect(
+    gantry: _GantryLike,
+    *,
+    output: Callable[[str], None],
+) -> None:
+    try:
+        gantry.home()
+    except KeyboardInterrupt:
+        raise
+    except Exception as exc:
+        if not _looks_like_serial_device_not_configured(exc):
+            raise
+        output(
+            "Serial device disappeared during homing ('Device not configured'). "
+            "Reconnecting once, then retrying $H."
+        )
+        gantry.disconnect()
+        gantry.connect()
+        gantry.home()
+
+
+def _move_to_xy_center(
+    gantry: _GantryLike,
+    bounds_coords: dict[str, float],
+    *,
+    output: Callable[[str], None],
+    label: str,
+) -> dict[str, float]:
+    center_x = _round_mm(float(bounds_coords["x"]) / 2.0)
+    center_y = _round_mm(float(bounds_coords["y"]) / 2.0)
+    z = float(bounds_coords["z"])
+    output(
+        f"Moving to deck XY center before {label}: "
+        f"X={center_x:.3f} Y={center_y:.3f} while keeping Z={z:.3f}."
+    )
+    gantry.move_to(center_x, center_y, z)
+    return dict(gantry.get_coordinates())
+
+
 def run_multi_instrument_calibration(
     gantry_path: Path,
     *,
@@ -266,10 +379,11 @@ def run_multi_instrument_calibration(
         input_reader=input_reader,
         output=output,
     )
-    artifact_xyz = artifact_xyz or _prompt_artifact_xyz(
-        input_reader=input_reader,
-        output=output,
-    )
+    if artifact_xyz is not None:
+        output(
+            "Ignoring deprecated artifact_xyz/--artifact-* input: the block point "
+            "no longer needs known deck-frame coordinates."
+        )
     instruments = tuple(instruments_to_calibrate or available_instruments)
     _validate_instrument_names(
         raw_config,
@@ -279,14 +393,18 @@ def run_multi_instrument_calibration(
         output(f"Loaded deck-origin gantry config: {gantry_path}")
         output("Dry run only. Physical calibration flow:")
         output("  $H")
+        output("  temporarily disable stale GRBL soft limits during calibration jogs")
         output("  attach reference/left-most instrument at the homed pose")
         output("  jog reference/left-most instrument from home to FLB XY artifact")
         output("  G10 L20 P1 X0 Y0  # XY only, do not set Z here")
         output("  $H and read X/Y bounds")
-        output("  attach all instruments and jog lowest instrument to Z reference")
-        output("  G10 L20 P1 Z0")
-        output("  $H and read final Z bound")
-        output("  jog each instrument to the known artifact point and compute offsets/depths")
+        output("  move to measured X/Y center for calibration-block work")
+        output("  attach all instruments and jog lowest instrument to the shared Z/block point")
+        output("  ask whether this is true Z=0 contact or a calibration-block height")
+        output("  G10 L20 P1 Z<reference_height>")
+        output("  record the lowest instrument's X/Y/Z block coordinate immediately")
+        output("  jog each remaining instrument to that same block point and compute offsets/depths")
+        output("  $H and read final working-volume maxima")
         return None
 
     output(f"Loaded deck-origin gantry config: {gantry_path}")
@@ -298,26 +416,35 @@ def run_multi_instrument_calibration(
     output(f"  - Reference/left-most instrument: {reference_instrument}")
     output(f"  - Lowest Z instrument: {lowest_instrument}")
     output(
-        "  - Calibration artifact point: "
-        f"X={artifact_xyz[0]:.3f} Y={artifact_xyz[1]:.3f} Z={artifact_xyz[2]:.3f}"
+        "  - Calibration block/reference point: place it near the deck center where every "
+        "instrument can reach the same physical point. The lowest instrument will "
+        "define Z and be recorded there first; its X/Y/Z coordinates will not be "
+        "requested a second time."
     )
     output("")
 
     gantry_runtime_config = copy.deepcopy(raw_config)
     gantry_runtime_config.pop("grbl_settings", None)
     gantry = gantry_factory(config=gantry_runtime_config)
+    restore_soft_limits_after_calibration = False
     try:
         output("Connecting to gantry...")
         gantry.connect()
 
         output("Homing to normalized BRT corner...")
         _set_serial_timeout_if_available(gantry, homing_serial_timeout_s)
-        gantry.home()
+        _home_with_serial_reconnect(gantry, output=output)
         _set_serial_timeout_if_available(gantry, jog_serial_timeout_s)
         output("Forcing GRBL WPos status reporting ($10=0), G90, G54, and clearing G92...")
         gantry.enforce_work_position_reporting()
         gantry.activate_work_coordinate_system("G54")
         gantry.clear_g92_offsets()
+        restore_soft_limits_after_calibration = (
+            _temporarily_disable_soft_limits_for_origin_jog(
+                gantry,
+                output=output,
+            )
+        )
         stdin_flusher()
 
         output(
@@ -348,23 +475,32 @@ def run_multi_instrument_calibration(
 
         output("Re-homing after XY origining to measure machine-derived X/Y bounds...")
         _set_serial_timeout_if_available(gantry, homing_serial_timeout_s)
-        gantry.home()
+        _home_with_serial_reconnect(gantry, output=output)
         _set_serial_timeout_if_available(gantry, jog_serial_timeout_s)
         xy_bounds_coords = dict(gantry.get_coordinates())
 
+        center_before_z_coords = _move_to_xy_center(
+            gantry,
+            xy_bounds_coords,
+            output=output,
+            label="lowest-instrument Z calibration",
+        )
         output(
-            "Attach/verify all instruments at the homed BRT pose before setting Z. "
-            "No automatic center move will be made."
+            "Attach/verify all instruments at the deck XY center before setting Z."
         )
         _interactive_jog_to_reference(
             gantry,
             target_description=(
-                f"Step 2: from the homed pose, jog the lowest instrument "
-                f"({lowest_instrument!r}) to the deck/reference Z=0 point."
+                f"Step 2: from the deck XY center "
+                f"(X={center_before_z_coords['x']:.3f}, "
+                f"Y={center_before_z_coords['y']:.3f}), jog the lowest instrument "
+                f"({lowest_instrument!r}) to the shared calibration block/reference point. "
+                "This one touch records its X/Y/Z and defines Z."
             ),
             confirmation_description=(
-                "Press ENTER when this lowest instrument defines WPos Z=0. "
-                "X/Y will not be changed in this step."
+                "Press ENTER when this lowest instrument is touching the shared point. "
+                "X/Y will not be changed when assigning the Z work coordinate, and this "
+                "instrument will not be requested again in the per-instrument pass."
             ),
             key_reader=key_reader,
             output=output,
@@ -372,23 +508,76 @@ def run_multi_instrument_calibration(
             initial_step_mm=jog_step_mm,
             limit_pull_off_mm=2.0,
         )
-        output("Setting current physical pose to WPos Z=0 only...")
-        gantry.set_work_coordinates(z=0.0)
+        z_reference_height_mm = _prompt_z_reference_height_mm(
+            input_reader=input_reader,
+            output=output,
+        )
+        output(
+            f"Setting current physical pose to WPos Z={z_reference_height_mm:g} only..."
+        )
+        gantry.set_work_coordinates(z=z_reference_height_mm)
         z_origin_coords = dict(gantry.get_coordinates())
         _assert_near_xyz(
             z_origin_coords,
             expected={
                 "x": z_origin_coords["x"],
                 "y": z_origin_coords["y"],
-                "z": 0.0,
+                "z": z_reference_height_mm,
             },
             tolerance_mm=tolerance_mm,
-            label="Lowest-instrument Z origin",
+            label="Lowest-instrument Z reference",
         )
 
-        output("Re-homing after Z origining to measure final working-volume maxima...")
+        block_coordinates: dict[str, dict[str, float]] = {
+            lowest_instrument: dict(z_origin_coords)
+        }
+        output(
+            f"Recorded block WPos for lowest instrument {lowest_instrument}: "
+            f"X={block_coordinates[lowest_instrument]['x']:.3f}, "
+            f"Y={block_coordinates[lowest_instrument]['y']:.3f}, "
+            f"Z={block_coordinates[lowest_instrument]['z']:.3f}"
+        )
+        output(
+            "Now calibrate each remaining instrument against that same physical point. "
+            "Do not move the block/reference point between instruments."
+        )
+        calibration_sequence = tuple(
+            instrument
+            for instrument in _unique_instrument_sequence(
+                (reference_instrument, *instruments)
+            )
+            if instrument != lowest_instrument
+        )
+        for instrument in calibration_sequence:
+            _interactive_jog_to_reference(
+                gantry,
+                target_description=(
+                    f"Step 3: calibrate {instrument!r}. Jog this instrument TCP to "
+                    "the same physical point used by the lowest instrument. The block's "
+                    "deck-frame X/Y/Z coordinates do not need to be known."
+                ),
+                confirmation_description=(
+                    "Press ENTER when this instrument is touching the same block point "
+                    "used for the other instruments. Do not move the block between "
+                    "instruments."
+                ),
+                key_reader=key_reader,
+                output=output,
+                feed_rate=jog_feed_rate,
+                initial_step_mm=jog_step_mm,
+                limit_pull_off_mm=2.0,
+            )
+            block_coordinates[instrument] = dict(gantry.get_coordinates())
+            output(
+                f"Recorded block WPos for {instrument}: "
+                f"X={block_coordinates[instrument]['x']:.3f}, "
+                f"Y={block_coordinates[instrument]['y']:.3f}, "
+                f"Z={block_coordinates[instrument]['z']:.3f}"
+            )
+
+        output("Re-homing after instrument calibration to measure final working-volume maxima...")
         _set_serial_timeout_if_available(gantry, homing_serial_timeout_s)
-        gantry.home()
+        _home_with_serial_reconnect(gantry, output=output)
         _set_serial_timeout_if_available(gantry, jog_serial_timeout_s)
         measured_coords = dict(gantry.get_coordinates())
         max_travel = _calculate_grbl_max_travel(
@@ -406,40 +595,23 @@ def run_multi_instrument_calibration(
                 max_travel_z=max_travel["max_travel_z"],
                 tolerance_mm=tolerance_mm,
             )
+            restore_soft_limits_after_calibration = False
 
-        output(
-            "Instrument artifact calibration starts from the final homed BRT pose. "
-            "No automatic center move will be made."
+        all_calibrations = compute_relative_instrument_calibrations(
+            block_coordinates=block_coordinates,
+            reference_instrument=reference_instrument,
+            lowest_instrument=lowest_instrument,
         )
-        instrument_calibrations: dict[str, dict[str, float]] = {}
-        for instrument in instruments:
-            _interactive_jog_to_reference(
-                gantry,
-                target_description=(
-                    f"Step 3: calibrate {instrument!r}. Place the homing block/artifact "
-                    "and jog this instrument TCP to the known artifact point."
-                ),
-                confirmation_description=(
-                    "Press ENTER when the instrument is positioned at the artifact "
-                    f"point X={artifact_xyz[0]:.3f} Y={artifact_xyz[1]:.3f} "
-                    f"Z={artifact_xyz[2]:.3f}."
-                ),
-                key_reader=key_reader,
-                output=output,
-                feed_rate=jog_feed_rate,
-                initial_step_mm=jog_step_mm,
-                limit_pull_off_mm=2.0,
-            )
-            coords = dict(gantry.get_coordinates())
-            instrument_calibrations[instrument] = compute_instrument_calibration(
-                gantry_coords=coords,
-                artifact_xyz=artifact_xyz,
-            )
+        instrument_calibrations = {
+            instrument: all_calibrations[instrument]
+            for instrument in instruments
+        }
+        for instrument, calibration in instrument_calibrations.items():
             output(
-                f"Recorded {instrument}: "
-                f"offset_x={instrument_calibrations[instrument]['offset_x']:.3f}, "
-                f"offset_y={instrument_calibrations[instrument]['offset_y']:.3f}, "
-                f"depth={instrument_calibrations[instrument]['depth']:.3f}"
+                f"Computed {instrument}: "
+                f"offset_x={calibration['offset_x']:.3f}, "
+                f"offset_y={calibration['offset_y']:.3f}, "
+                f"depth={calibration['depth']:.3f}"
             )
 
         yaml_text = _updated_yaml_text(
@@ -474,12 +646,20 @@ def run_multi_instrument_calibration(
             ),
             reference_instrument=reference_instrument,
             lowest_instrument=lowest_instrument,
-            artifact_xyz=artifact_xyz,
+            block_reference_coordinates={
+                name: _coords_tuple(coords)
+                for name, coords in block_coordinates.items()
+            },
         )
     finally:
-        _set_serial_timeout_if_available(gantry, 0.05)
-        output("Disconnecting...")
-        gantry.disconnect()
+        try:
+            if restore_soft_limits_after_calibration:
+                restore_soft_limits_after_calibration = False
+                _restore_soft_limits_after_origin_jog(gantry, output=output)
+        finally:
+            _set_serial_timeout_if_available(gantry, 0.05)
+            output("Disconnecting...")
+            gantry.disconnect()
 
 
 def _prompt_instrument_name(
@@ -540,7 +720,7 @@ def main() -> None:
         description=(
             "Interactively calibrate a multi-instrument gantry config by "
             "setting XY origin first, Z origin from the lowest instrument, "
-            "then per-instrument offsets/depths from a known artifact."
+            "then per-instrument offsets/depths from one shared block point."
         )
     )
     parser.add_argument("--gantry", type=Path, required=True)

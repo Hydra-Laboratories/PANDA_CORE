@@ -32,6 +32,7 @@ include = ["board", "board.*", "data", "data.*", "deck", "deck.*",
 
 [tool.setuptools.package-data]
 "instruments" = ["registry.yaml"]
+"deck.labware.definitions" = ["registry.yaml", "*/*.yaml"]
 "gantry.gantry_driver" = ["*.json"]
 
 [tool.pytest.ini_options]

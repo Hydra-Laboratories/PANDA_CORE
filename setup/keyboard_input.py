@@ -36,6 +36,8 @@ _ARROW_MAP_WINDOWS = {
 def _unix_read_one_key():
     """Read a single key. Must already be in raw mode."""
     ch = sys.stdin.read(1)
+    if ch == "\x03":
+        raise KeyboardInterrupt
     if ch == "\x1b":
         seq = sys.stdin.read(2)
         return _ARROW_MAP_UNIX.get(seq, ch)
@@ -80,6 +82,8 @@ def _unix_read_keypress_batch():
 def _windows_read_one_key():
     """Read a single key using msvcrt."""
     ch = msvcrt.getch()
+    if ch == b"\x03":
+        raise KeyboardInterrupt
     if ch in (b"\xe0", b"\x00"):
         scan = msvcrt.getch()
         return _ARROW_MAP_WINDOWS.get(scan, "")

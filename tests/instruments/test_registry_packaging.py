@@ -42,7 +42,7 @@ def _build_distribution_artifacts(project_root: Path, dist_dir: Path) -> None:
     )
 
 
-def test_distribution_artifacts_include_registry_yaml(tmp_path):
+def test_distribution_artifacts_include_runtime_registry_yaml(tmp_path):
     repo_root = Path(__file__).resolve().parents[2]
     project_root = tmp_path / "project"
     dist_dir = tmp_path / "dist"
@@ -51,12 +51,25 @@ def test_distribution_artifacts_include_registry_yaml(tmp_path):
     dist_dir.mkdir()
     _build_distribution_artifacts(project_root, dist_dir)
 
+    expected_wheel_members = {
+        "instruments/registry.yaml",
+        "deck/labware/definitions/registry.yaml",
+        "deck/labware/definitions/ursa_vial_holder/9VialHolder.yaml",
+        "deck/labware/definitions/ursa_tip_rack/TipRack.yaml",
+        "deck/labware/definitions/ursa_wellplate_holder/WellplateHolder.yaml",
+        "deck/labware/definitions/ursa_wellplate_holder_conductive/WellplateHolder.yaml",
+        "deck/labware/definitions/sbs_96_wellplate/SBS96WellPlate.yaml",
+    }
+
     wheel_path = next(dist_dir.glob("*.whl"))
     with zipfile.ZipFile(wheel_path) as wheel_file:
-        assert "instruments/registry.yaml" in wheel_file.namelist()
+        wheel_members = set(wheel_file.namelist())
+
+    assert expected_wheel_members <= wheel_members
 
     sdist_path = next(dist_dir.glob("*.tar.gz"))
     with tarfile.open(sdist_path) as sdist_file:
         sdist_members = sdist_file.getnames()
 
-    assert any(path.endswith("/src/instruments/registry.yaml") for path in sdist_members)
+    for member in expected_wheel_members:
+        assert any(path.endswith(f"/src/{member}") for path in sdist_members)

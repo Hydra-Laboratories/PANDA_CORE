@@ -12,6 +12,7 @@ from gantry.gantry_driver.exceptions import (
 )
 from setup.calibrate_deck_origin import (
     DeckOriginCalibrationResult,
+    _interactive_jog_to_reference,
     run_calibration,
 )
 
@@ -173,6 +174,32 @@ class _LimitRecoveringNoReadbackFakeGantry(_LimitRecoveringFakeGantry):
         self.fail_next_recovery_readback = True
 
 
+class _ResetRequiredLimitRecoveringFakeGantry(_LimitRecoveringFakeGantry):
+    def __init__(self, config: dict):
+        super().__init__(config)
+        self.reset_done = False
+
+    def unlock(self) -> None:
+        self.calls.append(("unlock",))
+        raise CommandExecutionError("alarm:1\n[msg:reset to continue]")
+
+    def reset_and_unlock(self) -> None:
+        self.calls.append(("reset_and_unlock",))
+        self.reset_done = True
+
+    def jog(
+        self,
+        x: float = 0,
+        y: float = 0,
+        z: float = 0,
+        feed_rate: float = 2000,
+    ) -> None:
+        if not self.fail_next_jog and not self.reset_done:
+            self.calls.append(("jog", x, y, z, feed_rate))
+            raise CommandExecutionError("Jog failed: alarm:1\n[msg:reset to continue]")
+        super().jog(x=x, y=y, z=z, feed_rate=feed_rate)
+
+
 class _SoftLimitAwareFakeGantry(_FakeGantry):
     def __init__(self, config: dict):
         super().__init__(config)
@@ -225,6 +252,34 @@ def _key_reader(keys):
         return next(iterator)
 
     return read
+
+
+def test_interactive_jog_supports_50_and_100_mm_steps():
+    gantry = _FakeGantry(config={})
+    messages: list[str] = []
+
+    coords = _interactive_jog_to_reference(
+        gantry,
+        target_description="Jog target",
+        confirmation_description="Confirm target",
+        key_reader=_key_reader([
+            ("6", 1),
+            ("RIGHT", 1),
+            ("7", 1),
+            ("UP", 1),
+            ("\r", 1),
+        ]),
+        output=messages.append,
+        feed_rate=2500.0,
+        initial_step_mm=1.0,
+        limit_pull_off_mm=2.0,
+    )
+
+    assert coords == {"x": 50.0, "y": 100.0, "z": 0.0}
+    assert ("jog", 50.0, 0.0, 0.0, 2500.0) in gantry.calls
+    assert ("jog", 0.0, 100.0, 0.0, 2500.0) in gantry.calls
+    assert any("Jog step set to 50.0 mm." in message for message in messages)
+    assert any("Jog step set to 100.0 mm." in message for message in messages)
 
 
 def test_run_calibration_sets_xy_then_z_and_measures_home(tmp_path):
@@ -554,6 +609,35 @@ def test_run_calibration_recovers_from_limit_alarm_during_jog(tmp_path):
         in _LimitRecoveringFakeGantry.instance.calls
     )
     assert any("Limit alarm detected" in message for message in messages)
+
+
+def test_run_calibration_uses_soft_reset_before_limit_alarm_pull_off(tmp_path):
+    path = _write_gantry(tmp_path / "gantry.yaml")
+    messages: list[str] = []
+
+    result = run_calibration(
+        path,
+        output=messages.append,
+        gantry_factory=_ResetRequiredLimitRecoveringFakeGantry,
+        key_reader=_key_reader(
+            [
+                ("DOWN", 1),
+                ("\r", 1),
+                ("\r", 1),
+            ]
+        ),
+        stdin_flusher=lambda: None,
+        limit_pull_off_mm=2.0,
+    )
+
+    assert isinstance(result, DeckOriginCalibrationResult)
+    calls = _ResetRequiredLimitRecoveringFakeGantry.instance.calls
+    assert ("reset_and_unlock",) in calls
+    assert ("unlock",) not in calls
+    assert calls.index(("reset_and_unlock",)) < calls.index(
+        ("jog", 0.0, 2.0, 0.0, 2500.0)
+    )
+    assert any("Soft-resetting GRBL" in message for message in messages)
 
 
 def test_run_calibration_temporarily_disables_stale_soft_limits(tmp_path):

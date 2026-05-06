@@ -94,6 +94,7 @@ class _GantryLike(Protocol):
     def jog_cancel(self) -> None: ...
     def stop(self) -> None: ...
     def unlock(self) -> None: ...
+    def reset_and_unlock(self) -> None: ...
     def configure_soft_limits_from_spans(
         self,
         *,
@@ -112,7 +113,8 @@ Jog controls after homing:
   RIGHT / LEFT       +X right / -X left
   UP / DOWN          +Y back-away / -Y front-toward-operator
   X / Z              +Z up / -Z down
-  1 / 2 / 3 / 4 / 5  Set jog step to 0.1 / 1 / 5 / 10 / 25 mm
+  1 / 2 / 3 / 4 / 5 / 6 / 7
+                      Set jog step to 0.1 / 1 / 5 / 10 / 25 / 50 / 100 mm
   SPACE              Cancel any active jog
   ENTER              Confirm the current calibration step
   Q                  Abort calibration
@@ -591,6 +593,27 @@ def _opposite_pull_off_delta(
     return pull_off
 
 
+def _reset_controller_after_limit_alarm(
+    gantry: _GantryLike,
+    *,
+    output: Callable[[str], None],
+) -> None:
+    reset_and_unlock = getattr(gantry, "reset_and_unlock", None)
+    try:
+        if callable(reset_and_unlock):
+            output("Soft-resetting GRBL, then unlocking before pull-off.")
+            reset_and_unlock()
+        else:
+            output("Unlocking GRBL before pull-off.")
+            gantry.unlock()
+    except MillConnectionError:
+        raise
+    except (CommandExecutionError, StatusReturnError) as exc:
+        output(f"Reset/unlock during limit recovery failed: {exc}")
+        output("Use the controller/E-stop reset path before continuing.")
+        raise
+
+
 def _recover_from_limit_alarm(
     gantry: _GantryLike,
     delta: dict[str, float],
@@ -601,8 +624,8 @@ def _recover_from_limit_alarm(
 ) -> dict[str, float] | None:
     pull_off = _opposite_pull_off_delta(delta, pull_off_mm)
     output(
-        "Limit alarm detected. Unlocking GRBL and pulling off the switch "
-        f"by {pull_off_mm:g} mm."
+        "Limit alarm detected. Resetting/unlocking GRBL and pulling off the "
+        f"switch by {pull_off_mm:g} mm."
     )
     try:
         gantry.jog_cancel()
@@ -613,14 +636,7 @@ def _recover_from_limit_alarm(
         output("Aborting calibration; use E-stop and rerun before continuing.")
         raise
 
-    try:
-        gantry.unlock()
-    except MillConnectionError:
-        raise
-    except (CommandExecutionError, StatusReturnError) as exc:
-        output(f"Unlock during limit recovery failed: {exc}")
-        output("Use the controller/E-stop reset path before continuing.")
-        raise
+    _reset_controller_after_limit_alarm(gantry, output=output)
 
     try:
         gantry.jog(feed_rate=feed_rate, **pull_off)
@@ -695,6 +711,14 @@ def _interactive_jog_to_reference(
         if key == "5":
             step_mm = 25.0
             output("Jog step set to 25.0 mm.")
+            continue
+        if key == "6":
+            step_mm = 50.0
+            output("Jog step set to 50.0 mm.")
+            continue
+        if key == "7":
+            step_mm = 100.0
+            output("Jog step set to 100.0 mm.")
             continue
 
         delta = {"x": 0.0, "y": 0.0, "z": 0.0}
