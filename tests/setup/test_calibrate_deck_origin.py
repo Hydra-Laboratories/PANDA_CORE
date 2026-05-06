@@ -13,6 +13,7 @@ from gantry.gantry_driver.exceptions import (
 from setup.calibrate_deck_origin import (
     DeckOriginCalibrationResult,
     _interactive_jog_to_reference,
+    _opposite_pull_off_delta,
     run_calibration,
 )
 
@@ -252,6 +253,19 @@ def _key_reader(keys):
         return next(iterator)
 
     return read
+
+
+def test_z_limit_pull_off_always_moves_up_even_after_attempted_up_jog():
+    assert _opposite_pull_off_delta({"x": 0.0, "y": 0.0, "z": 1.0}, 2.0) == {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 2.0,
+    }
+    assert _opposite_pull_off_delta({"x": 0.0, "y": 0.0, "z": -1.0}, 2.0) == {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 2.0,
+    }
 
 
 def test_interactive_jog_supports_50_and_100_mm_steps():

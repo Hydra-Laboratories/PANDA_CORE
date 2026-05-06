@@ -43,6 +43,13 @@
 - Added larger interactive jog step hotkeys: `6` = 50 mm and `7` = 100 mm. This affects one-instrument and multi-instrument calibration because multi-instrument calibration reuses the shared jog helper.
 - Simplified multi-instrument Step 2/3 flow after hardware feedback: the lowest instrument's first touch now both defines Z and records its X/Y/Z block coordinate. The script no longer immediately re-homes and asks for that same lowest instrument point again; it calibrates only remaining instruments, then re-homes once at the end to measure final working-volume maxima.
 - Updated stale Sterling ASMI protocols/tests after Sterling was changed to potentiostat + pipette: `sterling_park.yaml` and `sterling_vial_scan.yaml` now use `potentiostat`; tests assert potentiostat offline state.
+- Cleaned up end-user multi-instrument calibration prompts: defer lowest-tool selection until after full board attach/verify; replace unexplained TCP wording with active tip/probe point plus tool center point; Step 1 tells user to place front-left origin block/artifact and jog over the X mark.
+- Fixed limit-alarm Z recovery: Z-axis recovery now always pulls upward (+Z in CubOS deck frame), avoiding the stale-alarm case where pressing X/up after a lower-limit hit caused the old opposite-delta logic to pull deeper into the switch.
+- Increased calibration limit pull-off distance from 2 mm to 5 mm.
+- Added best-effort proactive limit detection after each jog by querying status for `Alarm` or active `Pn:X/Y/Z` limit pins.
+- Added 15 mm automatic +Z retract after each instrument contact point is recorded in multi-instrument calibration.
+- Changed instrument selection prompts to numbered menus; operators now enter `1`, `2`, etc. instead of typing instrument names.
+- Added a brief calibration overview before preflight explaining that Step 1 establishes the shared system origin by placing the front-left origin block/artifact and jogging the first/left-most tool over the X mark; Z is set later with the full board attached.
 
 ## Validation
 
@@ -59,6 +66,10 @@
 - `PYTHONPATH=src python setup/validate_setup.py configs/gantry/cub_xl_sterling.yaml configs/deck/sterling_deck.yaml configs/protocol/sterling_2_instrument_vial_scan.yaml` → PASS
 - `PYTHONPATH=src python setup/validate_setup.py configs/gantry/cub_xl_sterling.yaml configs/deck/sterling_deck.yaml configs/protocol/sterling_park.yaml` → PASS
 - `PYTHONPATH=src python -m pytest -q` → 1044 passed, 4 subtests passed
+- `PYTHONPATH=src python -m pytest tests/setup/test_calibrate_multi_instrument_board.py tests/setup/test_calibrate_deck_origin.py tests/setup/test_keyboard_input.py -q` → 27 passed after prompt/recovery cleanup
+- `PYTHONPATH=src python -m pytest -q` → 1045 passed, 4 subtests passed after prompt/recovery cleanup
+- `PYTHONPATH=src python -m pytest -q` → 1045 passed, 4 subtests passed after 5 mm pull-off/status probe/15 mm retract changes
+- `PYTHONPATH=src python -m pytest -q` → 1045 passed, 4 subtests passed after numbered instrument prompt change
 
 ## Hardware validation pending
 

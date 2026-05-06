@@ -239,6 +239,8 @@ def test_dry_run_prompts_for_only_operator_choices(tmp_path):
 
     assert result is None
     assert any("Available instruments" in message for message in messages)
+    assert any("  1. left_probe" in message for message in messages)
+    assert any("  2. camera" in message for message in messages)
     assert any("Dry run only" in message for message in messages)
 
 
@@ -368,7 +370,7 @@ def test_multi_instrument_calibration_sets_xy_before_z_and_updates_yaml(tmp_path
                 ("\r", 1),  # confirm lowest instrument shared Z/block point
                 ("RIGHT", 15),
                 ("UP", 7),
-                ("X", 6),
+                ("Z", 9),
                 ("\r", 1),  # camera shared block point
             ]
         ),
@@ -398,6 +400,11 @@ def test_multi_instrument_calibration_sets_xy_before_z_and_updates_yaml(tmp_path
 
     move_calls = [call for call in _FakeGantry.instance.calls if call[0] == "move_to"]
     assert move_calls == [("move_to", 199.0, 149.5, 88.0, None)]
+    retract_calls = [
+        call for call in _FakeGantry.instance.calls
+        if call == ("jog", 0, 0, 15.0, 2500.0)
+    ]
+    assert len(retract_calls) == 2
 
     written = yaml.safe_load(out_path.read_text(encoding="utf-8"))
     assert written["working_volume"] == {

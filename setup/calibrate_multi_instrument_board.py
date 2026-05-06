@@ -3,7 +3,7 @@
 This guided path separates deck-frame XY origining from Z origining:
 
 1. Home to the normalized back-right-top corner, then jog from that known homed
-   pose with the left-most/reference instrument to the front-left XY artifact
+   pose with the first/left-most tool to a front-left origin block/artifact
    and assign only G54 WPos X=0, Y=0.
 2. Re-home to measure machine-derived X/Y bounds after XY origining.
 3. Move to the measured X/Y center, attach all instruments, jog the lowest
@@ -17,10 +17,11 @@ Usage example:
     python setup/calibrate_multi_instrument_board.py \
         --gantry configs/gantry/cub_xl_multi.yaml
 
-The script prompts for the reference instrument and lowest instrument. Place the
-calibration block somewhere near the deck center where all instruments can reach
-the same point. It prints the calibrated YAML; optional flags can pre-fill values
-or write the YAML for scripted runs/tests.
+The script prompts for the first/left-most tool before XY origining, then asks
+which mounted tool is lowest when it is time to attach/verify the full board.
+Place the calibration block somewhere near the deck center where all instruments
+can reach the same point. It prints the calibrated YAML; optional flags can
+pre-fill values or write the YAML for scripted runs/tests.
 """
 
 from __future__ import annotations
@@ -335,6 +336,21 @@ def _move_to_xy_center(
     return dict(gantry.get_coordinates())
 
 
+def _retract_up_after_contact(
+    gantry: _GantryLike,
+    *,
+    retract_z_mm: float,
+    feed_rate: float,
+    output: Callable[[str], None],
+) -> None:
+    if retract_z_mm <= 0:
+        return
+    output(
+        f"Raising Z by {retract_z_mm:g} mm before moving to the next tool/reference step."
+    )
+    gantry.jog(z=retract_z_mm, feed_rate=feed_rate)
+
+
 def run_multi_instrument_calibration(
     gantry_path: Path,
     *,
@@ -346,6 +362,7 @@ def run_multi_instrument_calibration(
     tolerance_mm: float = 0.25,
     jog_step_mm: float = 1.0,
     jog_feed_rate: float = 2500.0,
+    post_contact_retract_z_mm: float = 15.0,
     skip_soft_limit_config: bool = False,
     write_gantry_yaml: bool = False,
     output_gantry_path: Path | None = None,
@@ -365,17 +382,18 @@ def run_multi_instrument_calibration(
     if output_gantry_path is not None:
         output_gantry_path = output_gantry_path.resolve()
     available_instruments = _instrument_names(raw_config)
+    output(f"Loaded deck-origin gantry config: {gantry_path}")
+    output("Calibration overview:")
+    output("  This guided routine creates the shared CubOS deck frame for the whole instrument board.")
+    output("  Step 1 sets the system origin: place the origin block/artifact in the front-left")
+    output("  corner, then jog the first/left-most tool's active tip/probe point over the X mark.")
+    output("  The script sets only G54 WPos X=0 and Y=0 there; Z is set later after the full")
+    output("  instrument board is attached and the lowest mounted tool touches the reference point.")
+    output("")
     reference_instrument = reference_instrument or _prompt_instrument_name(
-        "Reference/left-most instrument",
+        "First/left-most tool for front-left origin",
         available_instruments,
         default=available_instruments[0],
-        input_reader=input_reader,
-        output=output,
-    )
-    lowest_instrument = lowest_instrument or _prompt_instrument_name(
-        "Lowest instrument for WPos Z=0",
-        available_instruments,
-        default=reference_instrument,
         input_reader=input_reader,
         output=output,
     )
@@ -385,17 +403,18 @@ def run_multi_instrument_calibration(
             "no longer needs known deck-frame coordinates."
         )
     instruments = tuple(instruments_to_calibrate or available_instruments)
-    _validate_instrument_names(
-        raw_config,
-        (reference_instrument, lowest_instrument, *instruments),
-    )
+    names_to_validate = [reference_instrument, *instruments]
+    if lowest_instrument is not None:
+        names_to_validate.append(lowest_instrument)
+    _validate_instrument_names(raw_config, names_to_validate)
     if dry_run:
         output(f"Loaded deck-origin gantry config: {gantry_path}")
         output("Dry run only. Physical calibration flow:")
         output("  $H")
         output("  temporarily disable stale GRBL soft limits during calibration jogs")
-        output("  attach reference/left-most instrument at the homed pose")
-        output("  jog reference/left-most instrument from home to FLB XY artifact")
+        output("  attach the first/left-most tool at the homed pose")
+        output("  place an origin block/artifact at the front-left corner")
+        output("  jog that tool's active tip/probe point over the X mark as closely as possible")
         output("  G10 L20 P1 X0 Y0  # XY only, do not set Z here")
         output("  $H and read X/Y bounds")
         output("  move to measured X/Y center for calibration-block work")
@@ -407,14 +426,16 @@ def run_multi_instrument_calibration(
         output("  $H and read final working-volume maxima")
         return None
 
-    output(f"Loaded deck-origin gantry config: {gantry_path}")
     output("Preflight:")
     output("  - GRBL $3 axis directions and $23 homing corner must be normalized.")
     output("  - $H must home to back-right-top (BRT).")
     output("  - Positive jogs must move from FLB toward +X right, +Y back, +Z up.")
-    output("  - Initial origining sets only WPos X/Y; Z is set later by the lowest instrument.")
-    output(f"  - Reference/left-most instrument: {reference_instrument}")
-    output(f"  - Lowest Z instrument: {lowest_instrument}")
+    output("  - Keep E-stop reachable; calibration can move mounted tools and changes G54 WPos.")
+    output(f"  - First/left-most tool for front-left origin: {reference_instrument}")
+    if lowest_instrument is None:
+        output("  - The lowest mounted tool will be selected later, after the full board is attached/verified.")
+    else:
+        output(f"  - Lowest mounted tool for Z/reference point: {lowest_instrument}")
     output(
         "  - Calibration block/reference point: place it near the deck center where every "
         "instrument can reach the same physical point. The lowest instrument will "
@@ -449,14 +470,16 @@ def run_multi_instrument_calibration(
 
         output(
             f"Attach {reference_instrument!r} at the homed BRT pose before jogging. "
+            "Place the front-left origin block/artifact in the front-left corner. "
             "No automatic center move will be made."
         )
         _interactive_jog_to_reference(
             gantry,
             target_description=(
-                f"Step 1: attach {reference_instrument!r} at the homed pose and "
-                "jog its TCP to the front-left XY artifact/origin. Do not use "
-                "this step to define Z."
+                f"Step 1: attach {reference_instrument!r} at the homed pose. "
+                "Place the origin block/artifact in the front-left corner, then "
+                "jog the tool's active tip/probe point (tool center point) directly "
+                "over the X mark as closely as possible. Do not use this step to define Z."
             ),
             confirmation_description=(
                 "Press ENTER when current X/Y should become WPos X=0, Y=0. "
@@ -466,7 +489,7 @@ def run_multi_instrument_calibration(
             output=output,
             feed_rate=jog_feed_rate,
             initial_step_mm=jog_step_mm,
-            limit_pull_off_mm=2.0,
+            limit_pull_off_mm=5.0,
         )
         output("Setting current physical pose to WPos X=0, Y=0 only...")
         gantry.set_work_coordinates(x=0.0, y=0.0)
@@ -486,8 +509,17 @@ def run_multi_instrument_calibration(
             label="lowest-instrument Z calibration",
         )
         output(
-            "Attach/verify all instruments at the deck XY center before setting Z."
+            "Attach/verify the full instrument board at the deck XY center before setting Z."
         )
+        if lowest_instrument is None:
+            lowest_instrument = _prompt_instrument_name(
+                "Which mounted tool reaches lowest / will touch the Z reference first?",
+                available_instruments,
+                default=reference_instrument,
+                input_reader=input_reader,
+                output=output,
+            )
+            _validate_instrument_names(raw_config, (lowest_instrument,))
         _interactive_jog_to_reference(
             gantry,
             target_description=(
@@ -506,7 +538,7 @@ def run_multi_instrument_calibration(
             output=output,
             feed_rate=jog_feed_rate,
             initial_step_mm=jog_step_mm,
-            limit_pull_off_mm=2.0,
+            limit_pull_off_mm=5.0,
         )
         z_reference_height_mm = _prompt_z_reference_height_mm(
             input_reader=input_reader,
@@ -537,6 +569,12 @@ def run_multi_instrument_calibration(
             f"Y={block_coordinates[lowest_instrument]['y']:.3f}, "
             f"Z={block_coordinates[lowest_instrument]['z']:.3f}"
         )
+        _retract_up_after_contact(
+            gantry,
+            retract_z_mm=post_contact_retract_z_mm,
+            feed_rate=jog_feed_rate,
+            output=output,
+        )
         output(
             "Now calibrate each remaining instrument against that same physical point. "
             "Do not move the block/reference point between instruments."
@@ -552,8 +590,8 @@ def run_multi_instrument_calibration(
             _interactive_jog_to_reference(
                 gantry,
                 target_description=(
-                    f"Step 3: calibrate {instrument!r}. Jog this instrument TCP to "
-                    "the same physical point used by the lowest instrument. The block's "
+                    f"Step 3: calibrate {instrument!r}. Jog this tool's active tip/probe point "
+                    "(tool center point) to the same physical point used by the lowest instrument. The block's "
                     "deck-frame X/Y/Z coordinates do not need to be known."
                 ),
                 confirmation_description=(
@@ -565,7 +603,7 @@ def run_multi_instrument_calibration(
                 output=output,
                 feed_rate=jog_feed_rate,
                 initial_step_mm=jog_step_mm,
-                limit_pull_off_mm=2.0,
+                limit_pull_off_mm=5.0,
             )
             block_coordinates[instrument] = dict(gantry.get_coordinates())
             output(
@@ -573,6 +611,12 @@ def run_multi_instrument_calibration(
                 f"X={block_coordinates[instrument]['x']:.3f}, "
                 f"Y={block_coordinates[instrument]['y']:.3f}, "
                 f"Z={block_coordinates[instrument]['z']:.3f}"
+            )
+            _retract_up_after_contact(
+                gantry,
+                retract_z_mm=post_contact_retract_z_mm,
+                feed_rate=jog_feed_rate,
+                output=output,
             )
 
         output("Re-homing after instrument calibration to measure final working-volume maxima...")
@@ -670,13 +714,21 @@ def _prompt_instrument_name(
     input_reader: Callable[[str], str],
     output: Callable[[str], None],
 ) -> str:
-    output(f"Available instruments: {', '.join(available)}")
+    default_index = available.index(default) + 1 if default in available else 1
+    output("Available instruments:")
+    for index, name in enumerate(available, start=1):
+        output(f"  {index}. {name}")
     while True:
-        raw = input_reader(f"{label} [{default}]: ").strip()
-        value = raw or default
-        if value in available:
-            return value
-        output(f"Unknown instrument {value!r}. Choose one of: {', '.join(available)}")
+        raw = input_reader(f"{label} [{default_index}]: ").strip()
+        value = raw or str(default_index)
+        try:
+            selected_index = int(value)
+        except ValueError:
+            output(f"Enter a number from 1 to {len(available)}.")
+            continue
+        if 1 <= selected_index <= len(available):
+            return available[selected_index - 1]
+        output(f"Enter a number from 1 to {len(available)}.")
 
 
 def _prompt_float(
@@ -743,6 +795,7 @@ def main() -> None:
     parser.add_argument("--tolerance-mm", type=float, default=0.25, help=argparse.SUPPRESS)
     parser.add_argument("--jog-step-mm", type=float, default=1.0, help=argparse.SUPPRESS)
     parser.add_argument("--jog-feed-rate", type=float, default=2500.0, help=argparse.SUPPRESS)
+    parser.add_argument("--post-contact-retract-z-mm", type=float, default=15.0, help=argparse.SUPPRESS)
     parser.add_argument("--homing-serial-timeout-s", type=float, default=10.0, help=argparse.SUPPRESS)
     parser.add_argument("--jog-serial-timeout-s", type=float, default=1.0, help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -758,6 +811,7 @@ def main() -> None:
             tolerance_mm=args.tolerance_mm,
             jog_step_mm=args.jog_step_mm,
             jog_feed_rate=args.jog_feed_rate,
+            post_contact_retract_z_mm=args.post_contact_retract_z_mm,
             skip_soft_limit_config=args.skip_soft_limit_config,
             write_gantry_yaml=args.write_gantry_yaml,
             output_gantry_path=args.output_gantry,

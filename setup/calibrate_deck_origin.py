@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import copy
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -84,6 +85,7 @@ class _GantryLike(Protocol):
         z: float | None = None,
     ) -> None: ...
     def get_coordinates(self) -> dict[str, float]: ...
+    def get_status(self) -> str: ...
     def jog(
         self,
         x: float = 0,
@@ -586,9 +588,19 @@ def _opposite_pull_off_delta(
 ) -> dict[str, float]:
     pull_off = {"x": 0.0, "y": 0.0, "z": 0.0}
     for axis, value in delta.items():
-        if value > 0:
+        if value == 0:
+            continue
+        if axis == "z":
+            # During calibration, Z limit alarms almost always mean the user
+            # descended too far into the lower switch/contact direction. A
+            # stale GRBL alarm can make the next attempted jog fail regardless
+            # of its sign, so using "opposite of the failed command" can pull
+            # deeper into the lower switch if the operator was trying to jog up
+            # to recover. Always pull upward in the CubOS deck frame.
+            pull_off[axis] = pull_off_mm
+        elif value > 0:
             pull_off[axis] = -pull_off_mm
-        elif value < 0:
+        else:
             pull_off[axis] = pull_off_mm
     return pull_off
 
@@ -614,6 +626,27 @@ def _reset_controller_after_limit_alarm(
         raise
 
 
+def _raise_if_limit_status(status: str) -> None:
+    lower_status = status.lower()
+    if "alarm" in lower_status:
+        raise StatusReturnError(f"Alarm in status: {status}")
+    # GRBL reports active limit pins as Pn:X, Pn:Y, Pn:Z (possibly combined).
+    # Treat that as a limit condition during manual calibration so the operator
+    # gets an immediate pull-off instead of discovering it on the next jog.
+    if "pn:" in lower_status:
+        pin_text = lower_status.split("pn:", 1)[1].split("|", 1)[0].split(">", 1)[0]
+        if any(axis in pin_text for axis in ("x", "y", "z")):
+            raise StatusReturnError(f"Limit pin active in status: {status}")
+
+
+def _probe_for_limit_status_after_jog(gantry: _GantryLike) -> None:
+    get_status = getattr(gantry, "get_status", None)
+    if not callable(get_status):
+        return
+    time.sleep(0.05)
+    _raise_if_limit_status(str(get_status()))
+
+
 def _recover_from_limit_alarm(
     gantry: _GantryLike,
     delta: dict[str, float],
@@ -625,7 +658,8 @@ def _recover_from_limit_alarm(
     pull_off = _opposite_pull_off_delta(delta, pull_off_mm)
     output(
         "Limit alarm detected. Resetting/unlocking GRBL and pulling off the "
-        f"switch by {pull_off_mm:g} mm."
+        f"switch by {pull_off_mm:g} mm. Z-axis recovery always pulls upward "
+        "(+Z in the CubOS deck frame)."
     )
     try:
         gantry.jog_cancel()
@@ -741,6 +775,7 @@ def _interactive_jog_to_reference(
         try:
             gantry.jog(feed_rate=feed_rate, **delta)
             coords = gantry.get_coordinates()
+            _probe_for_limit_status_after_jog(gantry)
         except MillConnectionError:
             raise
         except (CommandExecutionError, StatusReturnError) as exc:
@@ -815,7 +850,7 @@ def run_calibration(
     tolerance_mm: float = 0.25,
     jog_step_mm: float = 1.0,
     jog_feed_rate: float = 2500.0,
-    limit_pull_off_mm: float = 2.0,
+    limit_pull_off_mm: float = 5.0,
     tip_gap_mm: float | None = None,
     reference_surface_z_mm: float | None = None,
     z_reference_mode: str = "bottom",
@@ -1199,7 +1234,7 @@ def main() -> None:
     parser.add_argument(
         "--limit-pull-off-mm",
         type=float,
-        default=2.0,
+        default=5.0,
         help="Distance to pull off in the opposite direction after a limit alarm.",
     )
     parser.add_argument(
