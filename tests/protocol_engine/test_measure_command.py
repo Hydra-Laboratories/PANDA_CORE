@@ -92,3 +92,185 @@ def test_measure_unknown_method_raises():
     ctx = _ctx(instr)
     with pytest.raises(ProtocolExecutionError, match="has no method"):
         measure(ctx, instrument="uvvis", position="plate_1.A1", method="nope")
+
+
+class _ClosedLoopInstrument(BaseInstrument):
+    """Real-class fake whose method declares a `gantry` parameter, mirroring
+    ASMI.indentation. ``inspect.signature`` only sees real method signatures —
+    not MagicMock side effects — so the gantry-injection path can only be
+    tested against an actual class.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="indenter",
+            offset_x=0.0, offset_y=0.0, depth=0.0,
+            measurement_height=0.0, safe_approach_height=0.0,
+        )
+        self.last_call: dict = {}
+
+    def connect(self) -> None: ...
+    def disconnect(self) -> None: ...
+    def health_check(self) -> bool: return True
+
+    def indentation(self, gantry, step_size: float = 0.01) -> dict:
+        self.last_call = {"gantry": gantry, "step_size": step_size}
+        return {"ok": True}
+
+    def measure(self) -> str:
+        return "no-gantry"
+
+
+def test_measure_injects_gantry_when_method_signature_declares_it():
+    """Closed-loop methods (e.g. ASMI.indentation) declare a ``gantry``
+    parameter; ``measure`` must inject ``context.board.gantry`` so the YAML
+    doesn't have to mention the gantry handle. Mirrors scan's behavior."""
+    instr = _ClosedLoopInstrument()
+    coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
+    sentinel_gantry = object()
+    board = MagicMock()
+    board.instruments = {"indenter": instr}
+    board.gantry = sentinel_gantry
+    deck = MagicMock()
+    deck.resolve = MagicMock(return_value=coord)
+    ctx = ProtocolContext(board=board, deck=deck)
+
+    measure(
+        ctx, instrument="indenter", position="plate_1.A1",
+        method="indentation", method_kwargs={"step_size": 0.02},
+    )
+
+    assert instr.last_call["gantry"] is sentinel_gantry
+    assert instr.last_call["step_size"] == 0.02
+
+
+def test_measure_does_not_inject_gantry_when_method_does_not_declare_it():
+    """Open-loop methods (no gantry parameter) must not receive a gantry kwarg."""
+    instr = _ClosedLoopInstrument()
+    coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
+    board = MagicMock()
+    board.instruments = {"indenter": instr}
+    board.gantry = object()
+    deck = MagicMock()
+    deck.resolve = MagicMock(return_value=coord)
+    ctx = ProtocolContext(board=board, deck=deck)
+
+    # Should not raise — measure has no gantry param.
+    result = measure(ctx, instrument="indenter", position="plate_1.A1", method="measure")
+    assert result == "no-gantry"
+
+
+def test_measure_uses_protocol_measurement_height_for_descent():
+    """Protocol-level measurement_height overrides instr.measurement_height
+    for the action descent. Mirrors scan's per-step override."""
+    instr = _mock_instr(measurement_height=0.0, safe_approach_height=20.0)
+    coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
+    ctx = _ctx(instr, well_coord=coord)
+
+    measure(
+        ctx, instrument="uvvis", position="plate_1.A1",
+        measurement_height=27.0,
+    )
+
+    # Descend went to 27.0 (protocol override), not 0.0 (instrument default).
+    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, 27.0))
+
+
+class _MethodWithMeasurementHeight(BaseInstrument):
+    """Fake whose action method has a `measurement_height` parameter so the
+    inject_runtime_args measurement_height path can be exercised."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="indenter",
+            offset_x=0.0, offset_y=0.0, depth=0.0,
+            measurement_height=0.0, safe_approach_height=10.0,
+        )
+        self.last_call: dict = {}
+
+    def connect(self) -> None: ...
+    def disconnect(self) -> None: ...
+    def health_check(self) -> bool: return True
+
+    def indentation(self, gantry, measurement_height: float = 0.0) -> dict:
+        self.last_call = {"gantry": gantry, "measurement_height": measurement_height}
+        return {"ok": True}
+
+
+def test_measure_forwards_measurement_height_into_method_when_method_declares_it():
+    """When the method declares a `measurement_height` parameter and the
+    protocol provides one, inject_runtime_args forwards it so closed-loop
+    methods (e.g. ASMI.indentation) start from the same Z the gantry was
+    descended to."""
+    instr = _MethodWithMeasurementHeight()
+    coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
+    sentinel_gantry = object()
+    board = MagicMock()
+    board.instruments = {"indenter": instr}
+    board.gantry = sentinel_gantry
+    deck = MagicMock()
+    deck.resolve = MagicMock(return_value=coord)
+    ctx = ProtocolContext(board=board, deck=deck)
+
+    measure(
+        ctx, instrument="indenter", position="plate_1.A1",
+        method="indentation", measurement_height=27.0,
+    )
+
+    assert instr.last_call["gantry"] is sentinel_gantry
+    assert instr.last_call["measurement_height"] == 27.0
+
+
+def test_measure_zero_measurement_height_descends_to_zero_not_instrument_default():
+    """Boundary case: `measurement_height=0.0` is a legitimate deck-frame Z,
+    not 'unspecified'. Pin the `is not None` semantic so a future "simplify
+    to truthy check" regression doesn't silently fall back to the instrument
+    default."""
+    instr = _mock_instr(measurement_height=27.0, safe_approach_height=40.0)
+    coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
+    ctx = _ctx(instr, well_coord=coord)
+
+    measure(
+        ctx, instrument="uvvis", position="plate_1.A1",
+        measurement_height=0.0,
+    )
+
+    # Must descend to the explicit 0.0, not back-fall to the instrument's 27.0.
+    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, 0.0))
+
+
+def test_measure_raises_when_method_requires_gantry_but_board_gantry_is_none():
+    """The dispatch helper raises a clear ProtocolExecutionError when a method
+    declares `gantry` but `context.board.gantry` is None — better than the
+    late `AttributeError: 'NoneType'` that would otherwise surface inside
+    the closed-loop method's first `gantry.move(...)`."""
+    instr = _ClosedLoopInstrument()
+    coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
+    board = MagicMock()
+    board.instruments = {"indenter": instr}
+    board.gantry = None
+    deck = MagicMock()
+    deck.resolve = MagicMock(return_value=coord)
+    ctx = ProtocolContext(board=board, deck=deck)
+
+    with pytest.raises(ProtocolExecutionError, match="gantry"):
+        measure(ctx, instrument="indenter", position="plate_1.A1",
+                method="indentation")
+
+
+@pytest.mark.parametrize("bad_value", ["", "27.0", "abc", float("nan"), float("inf"), True])
+def test_measure_rejects_non_finite_measurement_height(bad_value):
+    """Non-finite or wrong-typed `measurement_height` values fail at the
+    dispatch boundary with a clear error rather than slipping through to
+    motion code where they'd surface as opaque TypeErrors.
+
+    Covers strings (a real failure mode for `method_kwargs.measurement_height`
+    coming through YAML-as-Any), nan/inf (math.isfinite check), and bool
+    (subclass of int but never a legitimate Z value)."""
+    instr = _mock_instr(measurement_height=0.0, safe_approach_height=10.0)
+    ctx = _ctx(instr)
+    with pytest.raises(ProtocolExecutionError, match="measurement_height"):
+        measure(
+            ctx, instrument="uvvis", position="plate_1.A1",
+            measurement_height=bad_value,
+        )

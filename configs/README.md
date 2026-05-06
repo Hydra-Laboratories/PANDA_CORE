@@ -67,14 +67,15 @@ All protocol and instrument motion heights are absolute deck-frame Z planes:
 
 - instrument `measurement_height`: default action Z
 - instrument `safe_approach_height`: default XY-travel Z for deck-target moves
-- scan `measurement_height`: scan action/start Z
 - scan `entry_travel_height`: first scan transit Z
 - scan `interwell_travel_height`: between-well travel and final retract Z
-- ASMI `indentation_limit`: lower/deeper stopping Z
+- `method_kwargs.measurement_height`: per-well action/start Z (lives with
+  the method, not on scan)
+- `method_kwargs.indentation_limit`: ASMI lower/deeper stopping Z
 
-Runtime motion must not add these values to labware Z. Legacy scan names
-`entry_travel_z`, scan-level `safe_approach_height`, and ASMI `z_limit` are
-rejected before motion.
+Runtime motion must not add these values to labware Z. Unrecognized
+top-level scan fields are rejected at protocol-load time by the command's
+Pydantic schema.
 
 ## Validation Status
 

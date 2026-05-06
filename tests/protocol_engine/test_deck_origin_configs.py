@@ -75,8 +75,10 @@ def test_asmi_config_generates_deck_origin_scan_waypoints():
     last_well = deck["plate"].get_well_center("H12")
     entry_travel_height = scan_step.args["entry_travel_height"]
     interwell_travel_height = scan_step.args["interwell_travel_height"]
-    measurement_height = scan_step.args["measurement_height"]
-    indentation_limit = scan_step.args["indentation_limit"]
+    # measurement_height and indentation_limit live in method_kwargs;
+    # scan owns travel-Z between wells, the method owns per-well action Z.
+    measurement_height = scan_step.args["method_kwargs"]["measurement_height"]
+    indentation_limit = scan_step.args["method_kwargs"]["indentation_limit"]
 
     assert moves[0].args == pytest.approx(
         (first_well.x, first_well.y, entry_travel_height)

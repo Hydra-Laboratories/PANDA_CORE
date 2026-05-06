@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 import json
 import logging
 import sqlite3
@@ -15,6 +14,7 @@ from ..errors import ProtocolExecutionError
 from ..measurements import normalize_measurement
 from ..registry import protocol_command
 from ..scan_args import normalize_scan_arguments
+from ._dispatch import inject_runtime_args
 from ._movement import approach_and_descend
 
 if TYPE_CHECKING:
@@ -35,19 +35,25 @@ def scan(
     instrument: str,
     method: str,
     delay_s: float = 0.0,
-    measurement_height: float | None = None,
     entry_travel_height: float | None = None,
     interwell_travel_height: float | None = None,
-    indentation_limit: float | None = None,
     method_kwargs: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """Scan every well on *plate* using *instrument*'s *method*.
 
-    Iterates wells in row-major order (A1, A2, ..., B1, B2, ...).
-    For each well, uses :func:`approach_and_descend` to safely travel
-    above the well (at ``interwell_travel_height``) and descend to the
-    action Z (``measurement_height``), then calls the method with any
-    provided keyword arguments.
+    Iterates wells in row-major order (A1, A2, ..., B1, B2, ...). For each
+    well, uses :func:`approach_and_descend` to safely travel above the
+    well (at ``interwell_travel_height``) and descend to the per-well
+    action Z, then calls the method.
+
+    Scan owns travel-Z between positions; everything per-position
+    (action/start Z and any method-specific stopping criteria) lives in
+    ``method_kwargs`` or on the instrument's board config. The one
+    method-side knob scan understands is ``method_kwargs.measurement_height``:
+    when set, the gantry descends to that absolute deck-frame Z at every
+    well and the same value is forwarded into the bound method (so
+    closed-loop callees start from there). When omitted, the gantry
+    descends to ``instr.measurement_height`` from the board config.
 
     When a ``DataStore`` is configured on *context*, each measurement
     is persisted as an experiment + measurement row in the database.
@@ -58,20 +64,17 @@ def scan(
         instrument:    Name of the instrument registered on the board.
         method:        Name of the method on the instrument to call per well.
         delay_s:       Seconds to pause between wells (default 0.0).
-        measurement_height:
-                       Optional protocol-level action/start Z. This is an
-                       absolute deck-frame Z plane, not a labware-relative
-                       offset.
         entry_travel_height:
-                       Optional absolute Z coordinate used only for the
-                       initial transit into the first well of the scan.
+                       Optional absolute Z used only for the initial
+                       transit into the first well of the scan.
         interwell_travel_height:
-                       Optional absolute Z coordinate used between wells.
-                       Defaults to ``measurement_height`` when provided.
-        indentation_limit:
-                       ASMI indentation stopping Z.
+                       Optional absolute Z used between wells. When omitted,
+                       defaults to ``method_kwargs.measurement_height`` if
+                       set, otherwise scan delegates to
+                       ``Board.move_to_labware``'s default approach
+                       (``instr.safe_approach_height``).
         method_kwargs: Keyword arguments passed to the instrument method
-                       on each well (e.g. {"intensity": 50, "exposure_time": 10.0}).
+                       on each well.
 
     Returns:
         Mapping of well ID to the result of each method call.
@@ -96,18 +99,24 @@ def scan(
     callable_method = getattr(instr, method)
     try:
         normalized = normalize_scan_arguments(
-            measurement_height=measurement_height,
             entry_travel_height=entry_travel_height,
             interwell_travel_height=interwell_travel_height,
-            indentation_limit=indentation_limit,
             method_kwargs=method_kwargs,
         )
     except ValueError as exc:
         raise ProtocolExecutionError(str(exc)) from exc
 
+    # `measurement_height` in method_kwargs is a hybrid: it's the scan-level
+    # descent target *and*, for closed-loop methods like ASMI.indentation,
+    # the start Z passed into the method. Pop it out so we don't blindly
+    # forward it to methods that don't declare the parameter (e.g. open-loop
+    # `measure` would TypeError on the unexpected kwarg). The dispatch
+    # helper re-injects it via signature inspection.
+    forwarded_kwargs = dict(normalized.method_kwargs)
+    per_well_measurement_height = forwarded_kwargs.pop("measurement_height", None)
+
     results: Dict[str, Any] = {}
     sorted_wells = sorted(plate_obj.wells, key=_row_major_key)
-    sig = inspect.signature(callable_method)
     for i, well_id in enumerate(sorted_wells):
         if i > 0 and delay_s > 0:
             context.logger.info("Pausing %.1fs between wells", delay_s)
@@ -124,19 +133,13 @@ def scan(
             instrument,
             well,
             safe_approach_height=approach_z,
-            measurement_height=normalized.measurement_height,
+            measurement_height=per_well_measurement_height,
         )
 
-        # Inject gantry if the method accepts it (e.g. ASMI.indentation
-        # needs the gantry for Z stepping), then merge with method_kwargs.
-        kwargs: Dict[str, Any] = dict(normalized.method_kwargs)
-        if (
-            normalized.measurement_height is not None
-            and "measurement_height" in sig.parameters
-        ):
-            kwargs["measurement_height"] = normalized.measurement_height
-        if "gantry" in sig.parameters:
-            kwargs["gantry"] = context.board.gantry
+        kwargs = inject_runtime_args(
+            callable_method, forwarded_kwargs, context,
+            measurement_height=per_well_measurement_height,
+        )
         result = callable_method(**kwargs)
         results[well_id] = result
 

@@ -68,11 +68,13 @@ def _protocol(entry_travel_height: float) -> Protocol:
                 "plate": "plate",
                 "instrument": "asmi",
                 "method": "indentation",
-                "measurement_height": 26.0,
                 "entry_travel_height": entry_travel_height,
                 "interwell_travel_height": 35.0,
-                "indentation_limit": 24.0,
-                "method_kwargs": {"step_size": 0.1},
+                "method_kwargs": {
+                    "measurement_height": 26.0,
+                    "indentation_limit": 24.0,
+                    "step_size": 0.1,
+                },
             },
         )
     ])

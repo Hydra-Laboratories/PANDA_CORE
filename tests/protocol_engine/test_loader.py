@@ -42,9 +42,10 @@ protocol:
       plate: plate_1
       instrument: uvvis
       method: measure
-      measurement_height: 10.0
       interwell_travel_height: 10.0
       entry_travel_height: 10.0
+      method_kwargs:
+        measurement_height: 10.0
 """
 
 
@@ -106,7 +107,9 @@ def test_loaded_protocol_step_omits_unspecified_default_args():
         Path(path).unlink(missing_ok=True)
 
 
-def test_scan_accepts_new_height_names():
+def test_scan_accepts_travel_heights_and_method_kwargs_measurement_height():
+    """Scan owns travel-Z between wells; per-well action Z lives inside
+    `method_kwargs.measurement_height`, not on scan's signature."""
     path = _write_yaml(VALID_SCAN_WITH_NEW_NAMES)
     try:
         protocol = load_protocol_from_yaml(path)
@@ -115,9 +118,9 @@ def test_scan_accepts_new_height_names():
             "plate": "plate_1",
             "instrument": "uvvis",
             "method": "measure",
-            "measurement_height": 10.0,
             "interwell_travel_height": 10.0,
             "entry_travel_height": 10.0,
+            "method_kwargs": {"measurement_height": 10.0},
         }
     finally:
         Path(path).unlink(missing_ok=True)
