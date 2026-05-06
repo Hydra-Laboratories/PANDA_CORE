@@ -422,6 +422,7 @@ def _build_nested_well_plate(
         length_mm=entry.length_mm,
         width_mm=entry.width_mm,
         height_mm=entry.height_mm,
+        well_depth_mm=entry.well_depth_mm,
         rows=entry.rows,
         columns=entry.columns,
         wells=_derive_wells_from_calibration(entry, resolved_z=resolved_z),
