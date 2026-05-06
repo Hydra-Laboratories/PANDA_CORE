@@ -1292,22 +1292,75 @@ def test_well_plate_well_depth_mm_is_optional_default_none():
         Path(path).unlink(missing_ok=True)
 
 
-def test_well_plate_well_depth_mm_must_be_positive():
-    """Negative or zero inside depth is nonsensical and should fail validation."""
+def test_well_plate_well_depth_mm_negative_is_rejected():
+    """Strictly negative inside depth is nonsensical and must fail."""
     bad_yaml = WELL_DEPTH_DECK_YAML.replace("well_depth_mm: 10.67", "well_depth_mm: -1.0")
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(bad_yaml)
         path = f.name
     try:
-        with pytest.raises(Exception, match="well_depth_mm"):
+        with pytest.raises(ValidationError, match="well_depth_mm"):
             load_deck_from_yaml(path)
     finally:
         Path(path).unlink(missing_ok=True)
 
 
+def test_well_plate_well_depth_mm_zero_is_rejected():
+    """Boundary case: `gt=0` (not `ge=0`) means zero must also fail.
+
+    Pinning the boundary explicitly so `gt=0 -> ge=0` regressions are caught.
+    """
+    bad_yaml = WELL_DEPTH_DECK_YAML.replace("well_depth_mm: 10.67", "well_depth_mm: 0")
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(bad_yaml)
+        path = f.name
+    try:
+        with pytest.raises(ValidationError, match="well_depth_mm"):
+            load_deck_from_yaml(path)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_well_plate_well_depth_mm_cannot_exceed_height_mm():
+    """Inside depth must fit within outer plate height.
+
+    Catches the realistic miscalibration bug (e.g. swapped values) that the
+    `gt=0` per-field check alone would let through. Uses a YAML that sets a
+    sensible outer `height_mm` and a clearly-too-large `well_depth_mm`.
+    """
+    bad_yaml = WELL_DEPTH_DECK_YAML.replace("well_depth_mm: 10.67", "well_depth_mm: 50.0")
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(bad_yaml)
+        path = f.name
+    try:
+        with pytest.raises(ValidationError, match=r"well_depth_mm.*height_mm"):
+            load_deck_from_yaml(path)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_well_plate_direct_construction_rejects_negative_well_depth_mm():
+    """The runtime `WellPlate` model also enforces positivity, not just the
+    YAML schema. Guards against future test-only or programmatic constructors
+    bypassing schema validation.
+    """
+    a1 = Coordinate3D(x=10.0, y=10.0, z=25.9)
+    wells = {f"{r}{c}": a1 for r in "ABCDEFGH" for c in range(1, 13)}
+    with pytest.raises(ValidationError, match="well_depth_mm"):
+        WellPlate(
+            name="bad",
+            rows=8, columns=12,
+            wells=wells,
+            well_depth_mm=-1.0,
+        )
+
+
 def test_load_name_sbs_96_wellplate_carries_default_well_depth_mm():
     """The shipped SBS96 definition supplies a sane default inside depth so
     `load_name: sbs_96_wellplate` users get it without per-deck overrides.
+
+    The exact value (10.67 mm) lives in `sbs_96_wellplate/SBS96WellPlate.yaml`;
+    this test pins it so a registry typo is caught.
     """
     yaml_str = """
 labware:
@@ -1323,8 +1376,72 @@ labware:
     try:
         deck = load_deck_from_yaml(path)
         plate = deck["plate"]
-        assert plate.well_depth_mm is not None
-        # Standard flat-bottom shallow SBS96 inside depth.
-        assert 9.0 < plate.well_depth_mm < 12.0
+        assert plate.well_depth_mm == pytest.approx(10.67)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_load_name_sbs_96_wellplate_well_depth_mm_user_override_wins():
+    """Deck-level `well_depth_mm` overrides the registry default.
+
+    Regression guard for the registry merge order — confirms user-supplied
+    fields win over the definition's defaults (matches the comment in
+    `_resolve_load_names`).
+    """
+    yaml_str = """
+labware:
+  plate:
+    load_name: sbs_96_wellplate
+    well_depth_mm: 8.5
+    calibration:
+      a1: { x: 10.0, y: 10.0, z: 25.9 }
+      a2: { x: 19.0, y: 10.0, z: 25.9 }
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(yaml_str)
+        path = f.name
+    try:
+        deck = load_deck_from_yaml(path)
+        plate = deck["plate"]
+        assert plate.well_depth_mm == pytest.approx(8.5)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_nested_well_plate_carries_well_depth_mm():
+    """Wellplates declared inside a holder must also carry `well_depth_mm`
+    through to the WellPlate model.
+
+    The top-level `_build_well_plate` auto-wires fields via
+    `_entry_kwargs_for_model`, but `_build_nested_well_plate` is an explicit
+    constructor — without this test, dropping the field there would not be
+    caught by any other case.
+    """
+    yaml_str = """
+labware:
+  plate_holder:
+    type: well_plate_holder
+    name: plate_holder
+    location: { x: 221.75, y: 78.5, z: 183.0 }
+    well_plate:
+      model_name: panda_96_wellplate
+      rows: 2
+      columns: 2
+      well_depth_mm: 9.5
+      calibration:
+        a1: { x: 221.75, y: 78.5 }
+        a2: { x: 230.75, y: 78.5 }
+      x_offset_mm: 9.0
+      y_offset_mm: 9.0
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(yaml_str)
+        path = f.name
+    try:
+        deck = load_deck_from_yaml(path)
+        holder = deck["plate_holder"]
+        nested = holder.contained_labware["plate"]
+        assert isinstance(nested, WellPlate)
+        assert nested.well_depth_mm == pytest.approx(9.5)
     finally:
         Path(path).unlink(missing_ok=True)

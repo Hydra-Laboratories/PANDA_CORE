@@ -21,16 +21,23 @@ class WellPlate(Labware):
     # Geometry — optional metadata, not used for well position computation.
     length_mm: Optional[float] = Field(None, description="Overall plate length in millimeters.")
     width_mm: Optional[float] = Field(None, description="Overall plate width in millimeters.")
-    height_mm: Optional[float] = Field(None, description="Z position of the plate surface (absolute WPos).")
+    height_mm: Optional[float] = Field(
+        None,
+        description=(
+            "Outer plate height in millimeters — calibration rim to underside "
+            "of the plate (including skirt/feet). A dimension, not a deck-frame "
+            "Z coordinate."
+        ),
+    )
     well_depth_mm: Optional[float] = Field(
         None,
-        gt=0,
         description=(
-            "Inside well depth in millimeters from the calibration rim down "
-            "to the inside floor where the sample sits. Distinct from "
-            "`height_mm` (outer plate height); for SBS96 the outer is "
-            "~14.35 mm but inside depth is ~10.67 mm. Analysis pipelines "
-            "compute sample thickness as `a1.z - well_depth_mm`."
+            "Inside well depth in millimeters from the calibration rim to the "
+            "inside floor where the sample sits. Distinct from `height_mm` "
+            "(outer plate height): outer and inside depth differ by a few "
+            "millimeters depending on well-bottom geometry and skirt thickness. "
+            "External analysis consumers use it to compute the sample-floor Z "
+            "from the deck-frame rim Z."
         ),
     )
     rows: int = Field(
@@ -63,6 +70,24 @@ class WellPlate(Labware):
         if (self.capacity_ul is not None and self.working_volume_ul is not None
                 and self.working_volume_ul > self.capacity_ul):
             raise ValueError("working_volume_ul must be <= capacity_ul.")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_well_depth_le_height(self) -> "WellPlate":
+        # Inside well depth cannot exceed outer plate height; physically the
+        # inside floor sits *above* the underside of the plate by at least the
+        # bottom-wall thickness. Catches the realistic miscalibration bug
+        # (e.g. swapped values) that gt=0 alone wouldn't.
+        if (
+            self.well_depth_mm is not None
+            and self.height_mm is not None
+            and self.well_depth_mm > self.height_mm
+        ):
+            raise ValueError(
+                f"well_depth_mm ({self.well_depth_mm}) must be <= height_mm "
+                f"({self.height_mm}) — inside floor cannot sit below the plate "
+                f"underside."
+            )
         return self
 
     @field_validator("length_mm", "width_mm", "well_depth_mm")
