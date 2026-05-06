@@ -344,6 +344,38 @@ class TestScanCommand:
                 },
             )
 
+    @pytest.mark.parametrize(
+        "key,bad_value",
+        [
+            ("measurement_height", ""),
+            ("measurement_height", "27.0"),
+            ("measurement_height", float("nan")),
+            ("measurement_height", True),
+            ("indentation_limit", "70"),
+            ("indentation_limit", float("inf")),
+        ],
+    )
+    def test_scan_rejects_non_finite_numeric_method_kwargs(self, key, bad_value):
+        """`method_kwargs` is `Dict[str, Any]` — YAML strings/empty/non-finite
+        values for the numeric scan-relevant kwargs slip past the loader's
+        Pydantic schema. Scan must catch them at normalize-time with a clear
+        error rather than letting them surface as opaque TypeErrors deep
+        inside motion code."""
+        from protocol_engine.commands.scan import scan
+
+        plate = _make_2x2_plate()
+        sensor = _make_sensor(measurement_height=0.0, safe_approach_height=10.0)
+        ctx = _mock_context(plate=plate, sensor=sensor)
+
+        with pytest.raises(ProtocolExecutionError, match=key):
+            scan(
+                ctx,
+                plate="plate_1",
+                instrument="uvvis",
+                method="indentation",
+                method_kwargs={key: bad_value},
+            )
+
     def test_descent_and_retract_moves_do_not_pass_travel_z(self):
         """Regression guard: raw moves (descent per well + final retract)
         must NOT pass a travel_z. If they did, the gantry would lift to

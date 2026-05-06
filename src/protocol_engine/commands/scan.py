@@ -46,17 +46,14 @@ def scan(
     well (at ``interwell_travel_height``) and descend to the per-well
     action Z, then calls the method.
 
-    Scan owns travel-Z between positions; per-position concerns
-    (action/start Z, instrument-specific stopping criteria) live in
-    ``method_kwargs`` or on the instrument's board config:
-      * ``method_kwargs.measurement_height`` — absolute deck-frame action
-        Z. When set, the gantry descends to this Z at every well and the
-        same value is forwarded into the bound method (so closed-loop
-        callees like ``ASMI.indentation`` start from there). When omitted,
-        the gantry descends to ``instr.measurement_height`` from the
-        board config.
-      * ``method_kwargs.indentation_limit`` — ASMI-specific deepest Z.
-        Pass via ``method_kwargs``; scan does not own it.
+    Scan owns travel-Z between positions; everything per-position
+    (action/start Z and any method-specific stopping criteria) lives in
+    ``method_kwargs`` or on the instrument's board config. The one
+    method-side knob scan understands is ``method_kwargs.measurement_height``:
+    when set, the gantry descends to that absolute deck-frame Z at every
+    well and the same value is forwarded into the bound method (so
+    closed-loop callees start from there). When omitted, the gantry
+    descends to ``instr.measurement_height`` from the board config.
 
     When a ``DataStore`` is configured on *context*, each measurement
     is persisted as an experiment + measurement row in the database.
@@ -71,11 +68,13 @@ def scan(
                        Optional absolute Z used only for the initial
                        transit into the first well of the scan.
         interwell_travel_height:
-                       Optional absolute Z used between wells. Defaults
-                       to the per-well action Z when omitted.
+                       Optional absolute Z used between wells. When omitted,
+                       defaults to ``method_kwargs.measurement_height`` if
+                       set, otherwise scan delegates to
+                       ``Board.move_to_labware``'s default approach
+                       (``instr.safe_approach_height``).
         method_kwargs: Keyword arguments passed to the instrument method
-                       on each well. May include ``measurement_height``
-                       and method-specific knobs like ``indentation_limit``.
+                       on each well.
 
     Returns:
         Mapping of well ID to the result of each method call.

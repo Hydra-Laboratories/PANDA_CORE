@@ -256,3 +256,21 @@ def test_measure_raises_when_method_requires_gantry_but_board_gantry_is_none():
     with pytest.raises(ProtocolExecutionError, match="gantry"):
         measure(ctx, instrument="indenter", position="plate_1.A1",
                 method="indentation")
+
+
+@pytest.mark.parametrize("bad_value", ["", "27.0", "abc", float("nan"), float("inf"), True])
+def test_measure_rejects_non_finite_measurement_height(bad_value):
+    """Non-finite or wrong-typed `measurement_height` values fail at the
+    dispatch boundary with a clear error rather than slipping through to
+    motion code where they'd surface as opaque TypeErrors.
+
+    Covers strings (a real failure mode for `method_kwargs.measurement_height`
+    coming through YAML-as-Any), nan/inf (math.isfinite check), and bool
+    (subclass of int but never a legitimate Z value)."""
+    instr = _mock_instr(measurement_height=0.0, safe_approach_height=10.0)
+    ctx = _ctx(instr)
+    with pytest.raises(ProtocolExecutionError, match="measurement_height"):
+        measure(
+            ctx, instrument="uvvis", position="plate_1.A1",
+            measurement_height=bad_value,
+        )

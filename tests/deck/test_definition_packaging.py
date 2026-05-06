@@ -37,10 +37,18 @@ def _build_distribution_artifacts(project_root: Path, dist_dir: Path) -> None:
         "build_meta.build_wheel(str(dist_dir)); "
         "build_meta.build_sdist(str(dist_dir))"
     )
-    subprocess.run(
+    # Capture stdout/stderr so a build failure surfaces the setuptools
+    # traceback in the test output rather than just an exit code.
+    result = subprocess.run(
         [sys.executable, "-c", build_script, str(project_root), str(dist_dir)],
-        check=True,
+        capture_output=True,
+        text=True,
     )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"Wheel/sdist build failed (exit {result.returncode}).\n"
+            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+        )
 
 
 def test_wheel_includes_deck_definition_yamls(tmp_path):

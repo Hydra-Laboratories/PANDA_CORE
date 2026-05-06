@@ -15,6 +15,7 @@ loop.
 from __future__ import annotations
 
 import inspect
+import math
 from typing import Any, Callable, Dict, TYPE_CHECKING
 
 from ..errors import ProtocolExecutionError
@@ -49,7 +50,22 @@ def inject_runtime_args(
             ``context.board.gantry`` is None — produces a clearer error
             than the late ``AttributeError`` the closed-loop method would
             otherwise raise inside its first ``gantry.move(...)``.
+        ProtocolExecutionError: if ``measurement_height`` is supplied as
+            something other than a finite number (e.g. an unconverted
+            YAML string) — fail at the dispatch boundary rather than
+            deep inside motion code.
     """
+    if measurement_height is not None:
+        if (
+            isinstance(measurement_height, bool)
+            or not isinstance(measurement_height, (int, float))
+            or not math.isfinite(float(measurement_height))
+        ):
+            raise ProtocolExecutionError(
+                f"measurement_height must be a finite number, got "
+                f"{type(measurement_height).__name__} {measurement_height!r}."
+            )
+
     kwargs: Dict[str, Any] = dict(method_kwargs)
     sig = inspect.signature(callable_method)
     if "gantry" in sig.parameters:
