@@ -145,31 +145,6 @@ def test_valid_asmi_scan_semantics_pass():
     assert validate_protocol_semantics(protocol, board, deck) == []
 
 
-def test_legacy_scan_travel_names_are_semantic_violations():
-    """Old top-level travel-Z/action-Z names on `scan` are runtime errors:
-    `entry_travel_z`, `safe_approach_height`, `measurement_height`,
-    `indentation_limit` belong elsewhere (renames or `method_kwargs`)."""
-    board, deck = _board_and_deck()
-    protocol = _protocol({
-        "plate": "plate",
-        "instrument": "asmi",
-        "method": "indentation",
-        "entry_travel_z": 20.0,
-        "safe_approach_height": 70.0,
-        "measurement_height": 73.0,
-        "indentation_limit": 70.0,
-        "method_kwargs": {"step_size": 0.01},
-    })
-
-    violations = validate_protocol_semantics(protocol, board, deck)
-
-    assert len(violations) == 4
-    assert "`entry_travel_z` is no longer supported" in violations[0].message
-    assert "`safe_approach_height` is no longer supported" in violations[1].message
-    assert "`measurement_height` on `scan` is no longer supported" in violations[2].message
-    assert "`indentation_limit` on `scan` is no longer supported" in violations[3].message
-
-
 def test_legacy_asmi_z_limit_is_semantic_violation():
     board, deck = _board_and_deck()
     protocol = _protocol({

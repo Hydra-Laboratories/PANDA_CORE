@@ -23,36 +23,6 @@ def _normalize_scan_args(
     step_index: int,
     args: dict[str, Any],
 ) -> tuple[NormalizedScanArguments | None, list[ProtocolSemanticViolation]]:
-    legacy_messages: list[ProtocolSemanticViolation] = []
-    if "entry_travel_z" in args:
-        legacy_messages.append(ProtocolSemanticViolation(
-            step_index,
-            "scan",
-            "`entry_travel_z` is no longer supported. Use `entry_travel_height`.",
-        ))
-    if "safe_approach_height" in args:
-        legacy_messages.append(ProtocolSemanticViolation(
-            step_index,
-            "scan",
-            "`safe_approach_height` is no longer supported. Use `interwell_travel_height`.",
-        ))
-    if "measurement_height" in args:
-        legacy_messages.append(ProtocolSemanticViolation(
-            step_index,
-            "scan",
-            "Top-level `measurement_height` on `scan` is no longer supported. "
-            "Move it inside `method_kwargs.measurement_height`; scan owns "
-            "travel-Z between wells, per-well action Z lives with the method.",
-        ))
-    if "indentation_limit" in args:
-        legacy_messages.append(ProtocolSemanticViolation(
-            step_index,
-            "scan",
-            "Top-level `indentation_limit` on `scan` is no longer supported. "
-            "Move it inside `method_kwargs.indentation_limit`.",
-        ))
-    if legacy_messages:
-        return (None, legacy_messages)
     try:
         return (
             normalize_scan_arguments(
