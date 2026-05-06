@@ -62,12 +62,6 @@ def normalize_scan_arguments(
     """
     kwargs = dict(method_kwargs or {})
 
-    if "z_limit" in kwargs:
-        raise ValueError(
-            "`z_limit` is no longer supported. Use `indentation_limit` "
-            "inside `method_kwargs`."
-        )
-
     # Type-check numeric kwargs that scan and the dispatch helper consume
     # before they reach motion code, so YAML strings/empty values fail
     # with a clear message instead of an opaque TypeError downstream.

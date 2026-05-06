@@ -145,26 +145,6 @@ def test_valid_asmi_scan_semantics_pass():
     assert validate_protocol_semantics(protocol, board, deck) == []
 
 
-def test_legacy_asmi_z_limit_is_semantic_violation():
-    board, deck = _board_and_deck()
-    protocol = _protocol({
-        "plate": "plate",
-        "instrument": "asmi",
-        "method": "indentation",
-        "interwell_travel_height": 70.0,
-        "method_kwargs": {
-            "measurement_height": 73.0,
-            "z_limit": 70.0,
-            "step_size": 0.01,
-        },
-    })
-
-    violations = validate_protocol_semantics(protocol, board, deck)
-
-    assert len(violations) == 1
-    assert "`z_limit` is no longer supported" in violations[0].message
-
-
 # ─── working-volume bound checks for `move` ──────────────────────────────────
 
 

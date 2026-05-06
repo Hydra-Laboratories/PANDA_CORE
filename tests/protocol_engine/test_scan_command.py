@@ -325,25 +325,6 @@ class TestScanCommand:
         # gantry into closed-loop methods.
         assert all(r["gantry"] is sentinel_gantry for r in results.values())
 
-    def test_legacy_z_limit_is_rejected_at_runtime(self):
-        from protocol_engine.commands.scan import scan
-
-        plate = _make_2x2_plate()
-        sensor = _make_sensor(measurement_height=0.0, safe_approach_height=10.0)
-        ctx = _mock_context(plate=plate, sensor=sensor)
-
-        with pytest.raises(ProtocolExecutionError, match="z_limit"):
-            scan(
-                ctx,
-                plate="plate_1",
-                instrument="uvvis",
-                method="indentation",
-                method_kwargs={
-                    "measurement_height": 73.0,
-                    "z_limit": 75.0,
-                },
-            )
-
     @pytest.mark.parametrize(
         "key,bad_value",
         [
