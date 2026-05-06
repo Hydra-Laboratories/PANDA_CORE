@@ -42,6 +42,7 @@
 - Updated Sterling gantry config and Sterling seed to remove ASMI and expose `potentiostat` + `pipette` (`vendor: opentrons`) with placeholder calibration values.
 - Added larger interactive jog step hotkeys: `6` = 50 mm and `7` = 100 mm. This affects one-instrument and multi-instrument calibration because multi-instrument calibration reuses the shared jog helper.
 - Simplified multi-instrument Step 2/3 flow after hardware feedback: the lowest instrument's first touch now both defines Z and records its X/Y/Z block coordinate. The script no longer immediately re-homes and asks for that same lowest instrument point again; it calibrates only remaining instruments, then re-homes once at the end to measure final working-volume maxima.
+- Updated stale Sterling ASMI protocols/tests after Sterling was changed to potentiostat + pipette: `sterling_park.yaml` and `sterling_vial_scan.yaml` now use `potentiostat`; tests assert potentiostat offline state.
 
 ## Validation
 
@@ -54,6 +55,10 @@
 - `PYTHONPATH=src python - <<'PY' ... load_gantry_from_yaml('configs/gantry/cub_xl_sterling.yaml') ... PY` → Sterling instruments are `pipette`, `potentiostat`
 - `PYTHONPATH=src python - <<'PY' ... load_board_from_gantry_config(..., mock_mode=True) ... PY` → instantiates `Pipette` and `Potentiostat`
 - `PYTHONPATH=src python -m pytest tests/setup/test_calibrate_deck_origin.py tests/setup/test_calibrate_multi_instrument_board.py tests/setup/test_keyboard_input.py -q` → 26 passed
+- `PYTHONPATH=src python setup/validate_setup.py configs/gantry/cub_xl_sterling.yaml configs/deck/sterling_deck.yaml configs/protocol/sterling_vial_scan.yaml` → PASS
+- `PYTHONPATH=src python setup/validate_setup.py configs/gantry/cub_xl_sterling.yaml configs/deck/sterling_deck.yaml configs/protocol/sterling_2_instrument_vial_scan.yaml` → PASS
+- `PYTHONPATH=src python setup/validate_setup.py configs/gantry/cub_xl_sterling.yaml configs/deck/sterling_deck.yaml configs/protocol/sterling_park.yaml` → PASS
+- `PYTHONPATH=src python -m pytest -q` → 1044 passed, 4 subtests passed
 
 ## Hardware validation pending
 
