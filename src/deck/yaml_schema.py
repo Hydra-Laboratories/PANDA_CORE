@@ -35,6 +35,12 @@ class WellPlateYamlEntry(BaseModel):
     length_mm: Optional[float] = None
     width_mm: Optional[float] = None
     height_mm: Optional[float] = None
+    # Inside well depth from rim (calibration anchor) to inside floor where
+    # the sample sits. Distinct from `height_mm` (outer plate height): outer
+    # and inside depth differ by a few millimeters depending on well-bottom
+    # geometry and skirt thickness. External analysis consumers compute the
+    # sample-floor Z as the deck-frame rim Z minus this depth.
+    well_depth_mm: Optional[float] = Field(default=None, gt=0)
     height: Optional[float] = Field(default=None, gt=0)
     # Backward compatibility: top-level A1 is accepted but deprecated.
     a1: Optional[_YamlPoint3D] = None
@@ -71,6 +77,13 @@ class WellPlateYamlEntry(BaseModel):
         if (self.capacity_ul is not None and self.working_volume_ul is not None
                 and self.working_volume_ul > self.capacity_ul):
             raise ValueError("working_volume_ul must be <= capacity_ul.")
+        if (self.well_depth_mm is not None and self.height_mm is not None
+                and self.well_depth_mm > self.height_mm):
+            raise ValueError(
+                f"well_depth_mm ({self.well_depth_mm}) must be <= height_mm "
+                f"({self.height_mm}) — inside floor cannot sit below the plate "
+                f"underside."
+            )
         return self
 
 
@@ -134,6 +147,7 @@ class NestedWellPlateYamlEntry(BaseModel):
     length_mm: Optional[float] = None
     width_mm: Optional[float] = None
     height_mm: Optional[float] = None
+    well_depth_mm: Optional[float] = Field(default=None, gt=0)
     calibration: _YamlCalibrationPoints
     x_offset_mm: float = Field(..., gt=0)
     y_offset_mm: float = Field(..., gt=0)
@@ -171,6 +185,13 @@ class NestedWellPlateYamlEntry(BaseModel):
             and self.working_volume_ul > self.capacity_ul
         ):
             raise ValueError("working_volume_ul must be <= capacity_ul.")
+        if (self.well_depth_mm is not None and self.height_mm is not None
+                and self.well_depth_mm > self.height_mm):
+            raise ValueError(
+                f"well_depth_mm ({self.well_depth_mm}) must be <= height_mm "
+                f"({self.height_mm}) — inside floor cannot sit below the plate "
+                f"underside."
+            )
         return self
 
 
