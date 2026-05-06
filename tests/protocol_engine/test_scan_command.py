@@ -276,7 +276,10 @@ class TestScanCommand:
         move_zs = [c.args[1][2] for c in ctx.board.move.call_args_list]
         assert move_zs == [20.0, 3.0, 20.0, 3.0, 20.0, 3.0, 20.0, 3.0, 20.0]
 
-    def test_measurement_height_defaults_interwell_travel_height(self):
+    def test_method_kwargs_measurement_height_defaults_interwell_travel_height(self):
+        # measurement_height now lives in method_kwargs (not on scan's
+        # signature). Scan still derives an interwell-travel default from
+        # it when interwell_travel_height isn't explicit.
         from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()
@@ -288,31 +291,39 @@ class TestScanCommand:
             plate="plate_1",
             instrument="uvvis",
             method="measure",
-            measurement_height=72.0,
+            method_kwargs={"measurement_height": 72.0},
         )
 
         move_zs = [c.args[1][2] for c in ctx.board.move.call_args_list]
         assert move_zs == [72.0, 72.0, 72.0, 72.0, 72.0, 72.0, 72.0, 72.0, 72.0]
 
-    def test_measurement_height_is_passed_to_method_when_supported(self):
+    def test_method_kwargs_measurement_height_passed_through_to_method(self):
+        # measurement_height in method_kwargs reaches a method that declares
+        # it; gantry is still injected by the dispatch helper.
         from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()
         sensor = _make_sensor(measurement_height=0.0, safe_approach_height=10.0)
         ctx = _mock_context(plate=plate, sensor=sensor)
-        ctx.board.gantry = object()
+        sentinel_gantry = object()
+        ctx.board.gantry = sentinel_gantry
 
         results = scan(
             ctx,
             plate="plate_1",
             instrument="uvvis",
             method="indentation",
-            measurement_height=73.0,
-            indentation_limit=70.0,
+            method_kwargs={
+                "measurement_height": 73.0,
+                "indentation_limit": 70.0,
+            },
         )
 
         assert all(r["measurement_height"] == 73.0 for r in results.values())
         assert all(r["indentation_limit"] == 70.0 for r in results.values())
+        # Regression guard for the dispatch helper: scan must still inject
+        # gantry into closed-loop methods.
+        assert all(r["gantry"] is sentinel_gantry for r in results.values())
 
     def test_legacy_z_limit_is_rejected_at_runtime(self):
         from protocol_engine.commands.scan import scan
@@ -327,8 +338,10 @@ class TestScanCommand:
                 plate="plate_1",
                 instrument="uvvis",
                 method="indentation",
-                measurement_height=73.0,
-                method_kwargs={"z_limit": 75.0},
+                method_kwargs={
+                    "measurement_height": 73.0,
+                    "z_limit": 75.0,
+                },
             )
 
     def test_descent_and_retract_moves_do_not_pass_travel_z(self):

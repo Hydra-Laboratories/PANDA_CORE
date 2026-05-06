@@ -219,3 +219,40 @@ def test_measure_forwards_measurement_height_into_method_when_method_declares_it
 
     assert instr.last_call["gantry"] is sentinel_gantry
     assert instr.last_call["measurement_height"] == 27.0
+
+
+def test_measure_zero_measurement_height_descends_to_zero_not_instrument_default():
+    """Boundary case: `measurement_height=0.0` is a legitimate deck-frame Z,
+    not 'unspecified'. Pin the `is not None` semantic so a future "simplify
+    to truthy check" regression doesn't silently fall back to the instrument
+    default."""
+    instr = _mock_instr(measurement_height=27.0, safe_approach_height=40.0)
+    coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
+    ctx = _ctx(instr, well_coord=coord)
+
+    measure(
+        ctx, instrument="uvvis", position="plate_1.A1",
+        measurement_height=0.0,
+    )
+
+    # Must descend to the explicit 0.0, not back-fall to the instrument's 27.0.
+    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, 0.0))
+
+
+def test_measure_raises_when_method_requires_gantry_but_board_gantry_is_none():
+    """The dispatch helper raises a clear ProtocolExecutionError when a method
+    declares `gantry` but `context.board.gantry` is None — better than the
+    late `AttributeError: 'NoneType'` that would otherwise surface inside
+    the closed-loop method's first `gantry.move(...)`."""
+    instr = _ClosedLoopInstrument()
+    coord = Coordinate3D(x=10.0, y=20.0, z=30.0)
+    board = MagicMock()
+    board.instruments = {"indenter": instr}
+    board.gantry = None
+    deck = MagicMock()
+    deck.resolve = MagicMock(return_value=coord)
+    ctx = ProtocolContext(board=board, deck=deck)
+
+    with pytest.raises(ProtocolExecutionError, match="gantry"):
+        measure(ctx, instrument="indenter", position="plate_1.A1",
+                method="indentation")

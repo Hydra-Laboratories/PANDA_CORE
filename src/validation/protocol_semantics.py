@@ -36,15 +36,28 @@ def _normalize_scan_args(
             "scan",
             "`safe_approach_height` is no longer supported. Use `interwell_travel_height`.",
         ))
+    if "measurement_height" in args:
+        legacy_messages.append(ProtocolSemanticViolation(
+            step_index,
+            "scan",
+            "Top-level `measurement_height` on `scan` is no longer supported. "
+            "Move it inside `method_kwargs.measurement_height`; scan owns "
+            "travel-Z between wells, per-well action Z lives with the method.",
+        ))
+    if "indentation_limit" in args:
+        legacy_messages.append(ProtocolSemanticViolation(
+            step_index,
+            "scan",
+            "Top-level `indentation_limit` on `scan` is no longer supported. "
+            "Move it inside `method_kwargs.indentation_limit`.",
+        ))
     if legacy_messages:
         return (None, legacy_messages)
     try:
         return (
             normalize_scan_arguments(
-                measurement_height=args.get("measurement_height"),
                 entry_travel_height=args.get("entry_travel_height"),
                 interwell_travel_height=args.get("interwell_travel_height"),
-                indentation_limit=args.get("indentation_limit"),
                 method_kwargs=args.get("method_kwargs"),
             ),
             [],
@@ -95,9 +108,10 @@ def _validate_scan_travel_heights(
             ))
             continue
         for well_id, well in plate_obj.wells.items():
+            mh_from_kwargs = normalized.method_kwargs.get("measurement_height")
             action_z = (
-                normalized.measurement_height
-                if normalized.measurement_height is not None
+                mh_from_kwargs
+                if mh_from_kwargs is not None
                 else instr.measurement_height
             )
             if travel_z < action_z:
@@ -184,10 +198,11 @@ def _validate_scan_waypoints(
     if normalized.entry_travel_height != normalized.interwell_travel_height:
         travel_fields.append(("entry_travel_height", normalized.entry_travel_height))
 
+    mh_from_kwargs = normalized.method_kwargs.get("measurement_height")
     for well_id, well in plate_obj.wells.items():
         action_z = (
-            normalized.measurement_height
-            if normalized.measurement_height is not None
+            mh_from_kwargs
+            if mh_from_kwargs is not None
             else instr.measurement_height
         )
         violations.extend(_validate_gantry_waypoint(
@@ -324,11 +339,7 @@ def _validate_asmi_indentation(
         return violations
 
     kwargs = normalized.method_kwargs
-    measurement_height = (
-        normalized.measurement_height
-        if normalized.measurement_height is not None
-        else kwargs.get("measurement_height")
-    )
+    measurement_height = kwargs.get("measurement_height")
     indentation_limit = kwargs.get("indentation_limit")
     step_size = kwargs.get("step_size")
 

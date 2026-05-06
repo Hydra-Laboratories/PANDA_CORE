@@ -94,9 +94,11 @@ def test_asmi_indentation_limit_must_be_below_measurement_height():
         "plate": "plate",
         "instrument": "asmi",
         "method": "indentation",
-        "measurement_height": 73.0,
-        "indentation_limit": 75.0,
-        "method_kwargs": {"step_size": 0.01},
+        "method_kwargs": {
+            "measurement_height": 73.0,
+            "indentation_limit": 75.0,
+            "step_size": 0.01,
+        },
     })
 
     violations = validate_protocol_semantics(protocol, board, deck)
@@ -111,10 +113,12 @@ def test_scan_travel_height_must_not_be_below_action_height():
         "plate": "plate",
         "instrument": "asmi",
         "method": "indentation",
-        "measurement_height": 73.0,
         "interwell_travel_height": 70.0,
-        "indentation_limit": 69.0,
-        "method_kwargs": {"step_size": 0.01},
+        "method_kwargs": {
+            "measurement_height": 73.0,
+            "indentation_limit": 69.0,
+            "step_size": 0.01,
+        },
     })
 
     violations = validate_protocol_semantics(protocol, board, deck)
@@ -129,17 +133,22 @@ def test_valid_asmi_scan_semantics_pass():
         "plate": "plate",
         "instrument": "asmi",
         "method": "indentation",
-        "measurement_height": 73.0,
         "entry_travel_height": 85.0,
         "interwell_travel_height": 80.0,
-        "indentation_limit": 70.0,
-        "method_kwargs": {"step_size": 0.01},
+        "method_kwargs": {
+            "measurement_height": 73.0,
+            "indentation_limit": 70.0,
+            "step_size": 0.01,
+        },
     })
 
     assert validate_protocol_semantics(protocol, board, deck) == []
 
 
 def test_legacy_scan_travel_names_are_semantic_violations():
+    """Old top-level travel-Z/action-Z names on `scan` are runtime errors:
+    `entry_travel_z`, `safe_approach_height`, `measurement_height`,
+    `indentation_limit` belong elsewhere (renames or `method_kwargs`)."""
     board, deck = _board_and_deck()
     protocol = _protocol({
         "plate": "plate",
@@ -154,9 +163,11 @@ def test_legacy_scan_travel_names_are_semantic_violations():
 
     violations = validate_protocol_semantics(protocol, board, deck)
 
-    assert len(violations) == 2
+    assert len(violations) == 4
     assert "`entry_travel_z` is no longer supported" in violations[0].message
     assert "`safe_approach_height` is no longer supported" in violations[1].message
+    assert "`measurement_height` on `scan` is no longer supported" in violations[2].message
+    assert "`indentation_limit` on `scan` is no longer supported" in violations[3].message
 
 
 def test_legacy_asmi_z_limit_is_semantic_violation():
@@ -166,8 +177,11 @@ def test_legacy_asmi_z_limit_is_semantic_violation():
         "instrument": "asmi",
         "method": "indentation",
         "interwell_travel_height": 70.0,
-        "measurement_height": 73.0,
-        "method_kwargs": {"z_limit": 70.0, "step_size": 0.01},
+        "method_kwargs": {
+            "measurement_height": 73.0,
+            "z_limit": 70.0,
+            "step_size": 0.01,
+        },
     })
 
     violations = validate_protocol_semantics(protocol, board, deck)
@@ -287,9 +301,11 @@ def test_scan_well_offset_x_drives_volume_violation():
         "plate": "plate",
         "instrument": "asmi",
         "method": "indentation",
-        "measurement_height": 50.0,
-        "indentation_limit": 40.0,
-        "method_kwargs": {"step_size": 0.01},
+        "method_kwargs": {
+            "measurement_height": 50.0,
+            "indentation_limit": 40.0,
+            "step_size": 0.01,
+        },
     })
 
     violations = validate_protocol_semantics(protocol, board, deck, gantry)
@@ -306,9 +322,11 @@ def test_scan_depth_drives_z_violation():
         "plate": "plate",
         "instrument": "asmi",
         "method": "indentation",
-        "measurement_height": 80.0,
-        "indentation_limit": 70.0,
-        "method_kwargs": {"step_size": 0.01},
+        "method_kwargs": {
+            "measurement_height": 80.0,
+            "indentation_limit": 70.0,
+            "step_size": 0.01,
+        },
     })
 
     violations = validate_protocol_semantics(protocol, board, deck, gantry)

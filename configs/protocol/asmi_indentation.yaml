@@ -15,16 +15,15 @@ protocol:
       plate: plate
       instrument: asmi
       method: indentation
-      # Intended as an absolute first-entry clearance in the deck-origin frame.
-      entry_travel_height: 85.0
-      # Absolute well-to-well travel plane. The estimated well top is z=27.0,
-      # so z=35.0 is 8 mm above the well top.
-      interwell_travel_height: 35.0
-      # Absolute action/start height and lower indentation limit. Downward
-      # indentation decreases Z in the deck-origin frame.
-      measurement_height: 32.0
-      indentation_limit: 30.0
+      # Scan owns travel-Z between wells; per-well action Z and the
+      # ASMI-specific stopping criterion live in method_kwargs below.
+      entry_travel_height: 85.0      # absolute first-entry clearance
+      interwell_travel_height: 35.0  # ~8 mm above the estimated well top (z=27)
       method_kwargs:
+        # Absolute deck-frame action/start Z. Downward indentation
+        # decreases Z; indentation_limit is the deepest reachable Z.
+        measurement_height: 32.0
+        indentation_limit: 30.0
         step_size: 0.1
         force_limit: 10.0
         baseline_samples: 10

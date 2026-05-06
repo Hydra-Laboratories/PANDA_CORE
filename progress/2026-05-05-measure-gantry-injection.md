@@ -1,132 +1,166 @@
-# 2026-05-05 — Inject gantry into `measure` like `scan`
+# 2026-05-05 — Inject gantry into `measure` like `scan`; tighten dispatch
 
 ## Scope
 
-`scan` already inspects the bound instrument method's signature and, if it
-declares a `gantry` parameter, passes `context.board.gantry` to it. That's how
-`ASMI.indentation` (closed-loop Z stepping + force feedback) works under
-`scan`. `measure` was the open-loop sibling — it called the method with only
-the YAML-supplied `method_kwargs`, so any closed-loop method called via
-`measure` blew up with `TypeError: missing 1 required positional argument:
-'gantry'`.
+Two related fixes for closed-loop methods invoked via the `measure` protocol
+command, plus a packaging fix that surfaced during bring-up. Reshapes scan's
+argument surface to match the architectural rule that scan owns multi-well
+travel and nothing per-position.
 
-This change makes `measure` behave like `scan` for that path, and consolidates
-the dispatch logic so the two stay in sync.
+## Commits
 
-## What changed
+### 1. `10d1207` — Inject gantry into `measure` like `scan` via shared helper
 
-- New `src/protocol_engine/commands/_dispatch.py` with
-  `inject_runtime_args(callable_method, method_kwargs, context)`. Returns a
-  fresh kwargs dict; injects `gantry` from `context.board.gantry` when the
-  method's signature declares it. Caller-supplied `gantry` always wins.
-- `measure.py` now calls `inject_runtime_args` between `approach_and_descend`
-  and the method invocation. No protocol YAML changes required.
-- `scan.py` replaces its inline gantry-injection block with the helper. Its
-  scan-only `measurement_height` injection (which depends on
-  `normalize_scan_arguments`) stays inline because it has no analogue in
-  `measure`.
+`scan` already inspected the bound instrument method and injected
+`context.board.gantry` when the method declared a `gantry` parameter. `measure`
+did not, so any closed-loop method called via `measure` failed with
+`TypeError: missing 1 required positional argument: 'gantry'`. This blocked
+single-well indentation tests.
 
-## Tests
+Extracted the inspect-based dispatch into
+`protocol_engine.commands._dispatch.inject_runtime_args` and applied it from
+both commands so they stay in sync.
 
-- New `test_measure_command.py::test_measure_injects_gantry_when_method_signature_declares_it`
-  — uses a real `BaseInstrument` subclass (`MagicMock` doesn't expose real
-  signatures to `inspect.signature`) whose `indentation(gantry, ...)` records
-  the kwargs it was called with. Asserts `gantry` is the sentinel from
-  `context.board.gantry`.
-- New `test_measure_command.py::test_measure_does_not_inject_gantry_when_method_does_not_declare_it`
-  — same fake's open-loop `measure()` is invoked; assertion is implicit (no
-  TypeError on extra kwarg).
-- All 1028 existing tests still pass (`pytest tests/`).
+### 2. `3164b6f` — Add `measurement_height` to `measure`, consolidate scan dispatch
 
-## Hardware impact
-
-- Affects: any protocol step that uses `measure` to invoke a closed-loop
-  instrument method. In practice, ASMI single-well indentation runs.
-- Offline validation: pytest only.
-- Required hardware validation by user: run an ASMI single-well measurement
-  via a `measure` step (e.g. `asmi_indentation_test.yaml` against a known
-  plate) and confirm baseline + descent + force-limit stop behave the same as
-  the per-well behavior under `scan`.
-
-## Update — second commit on this branch
-
-After the first commit, single-well indentation via `measure` still failed
-end-to-end: `measure` had no protocol-level Z override, so
-`approach_and_descend` used `instr.measurement_height` (0.0 in the ASMI board
-config), which drove the gantry to the deck floor before `indentation` even
-started.
+After commit 1, `measure + method=indentation` still failed end-to-end:
+`measure` had no protocol-level Z override, so `approach_and_descend` used
+`instr.measurement_height` (0.0 in ASMI's board YAML), driving the gantry to
+the deck floor before `indentation` started.
 
 Per the design call: `measure` is the per-position primitive, so it owns
 `measurement_height` (action Z); `safe_approach_height` stays scan-only since
-only scan needs to manage inter-well transit Z.
+only scan needs inter-well transit Z.
 
 This commit:
 
-- Adds `measurement_height: float | None = None` parameter to `measure`. It is
-  forwarded to both `approach_and_descend` (for the descent target) *and*
-  through `inject_runtime_args` to the bound method (so closed-loop callees
-  start from the same Z the gantry descended to).
-- Extends `inject_runtime_args` to also handle `measurement_height` injection.
-  `scan` now uses the same call shape as `measure` — the duplicated inline
-  `measurement_height` check has been removed, along with `scan`'s now-unused
-  `inspect` import.
-- Two new measure tests:
-  - `test_measure_uses_protocol_measurement_height_for_descent` — descent goes
-    to the protocol value, not `instr.measurement_height`.
-  - `test_measure_forwards_measurement_height_into_method_when_method_declares_it`
-    — uses a real `BaseInstrument` subclass with `measurement_height` in its
-    method signature; asserts both gantry and `measurement_height` are
-    injected.
+- Added `measurement_height: float | None = None` parameter to `measure`. It
+  is forwarded to both `approach_and_descend` (for the descent target) *and*
+  through `inject_runtime_args` to the bound method, so closed-loop callees
+  start from the same Z the gantry was descended to.
+- Extended `inject_runtime_args` to handle `measurement_height` injection
+  alongside `gantry`. `scan` was consolidated to use the same call shape —
+  the duplicated inline `measurement_height` check and the scan-only
+  `inspect` import were removed.
 
-After both commits, the working YAML for a single-well indent looks like:
+### 3. `84afec1` — Ship deck.labware.definitions data files in the wheel
+
+`pip install`'d cubos crashed when a deck YAML used `load_name:
+sbs_96_wellplate` because `<site-packages>/deck/labware/definitions/registry.yaml`
+was missing. The registry plus per-definition config YAMLs (and CAD models)
+live alongside Python modules but weren't listed in
+`tool.setuptools.package-data`, so they got dropped on the way into the wheel.
+
+Added `deck.labware.definitions` package-data globs (`registry.yaml`,
+`*/*.yaml`, `*/*.glb`, `*/*.stl`, `*/*.step`). New
+`tests/deck/test_definition_packaging.py` mirrors
+`tests/instruments/test_registry_packaging.py`: builds a real wheel + sdist
+via `setuptools.build_meta` and asserts the registry plus a canary
+`SBS96WellPlate.yaml` are present in both.
+
+### 4. (review-fix commit) — Drop `measurement_height` / `indentation_limit` from `scan`; tighten injection
+
+PR review flagged that scan's pre-existing top-level `measurement_height` and
+`indentation_limit` parameters violate the same architectural rule used to
+keep `safe_approach_height` off `measure`: scan owns multi-well orchestration,
+not per-position concerns. Worse, the helper's caller-wins guard from
+commit 2 introduced a regression where YAML `method_kwargs.measurement_height`
+would silently override the protocol-level Z the gantry actually descended to.
+
+Resolution:
+
+- Removed `measurement_height` and `indentation_limit` from `scan()`'s
+  signature. They live in `method_kwargs` now (or fall back to the
+  instrument's board-config default for `measurement_height`).
+- Scan pops `measurement_height` out of `method_kwargs` to drive the descent
+  target, then passes it through the helper, which re-injects it only when
+  the bound method declares it (so methods like open-loop `measure` that
+  don't take it don't TypeError).
+- Tightened `inject_runtime_args`: runtime injection is now always the source
+  of truth for both `gantry` and `measurement_height`. There's no legitimate
+  case for a YAML-supplied gantry handle, and a `method_kwargs.measurement_height`
+  diverging from the protocol command's descent target is the exact footgun
+  this dispatch surface exists to prevent.
+- Added a `ProtocolExecutionError` when the method declares `gantry` but
+  `context.board.gantry` is None — clearer than the late `AttributeError`
+  the closed-loop method would otherwise raise.
+- Added validation messages for top-level `scan.measurement_height` /
+  `scan.indentation_limit` in `protocol_semantics.py` so existing protocols
+  using the old shape get a clear migration message.
+- Migrated `configs/protocol/asmi_indentation.yaml` and affected scan /
+  semantics tests so `measurement_height` / `indentation_limit` live inside
+  `method_kwargs`.
+
+## Tests added / strengthened
+
+- `test_measure_injects_gantry_when_method_signature_declares_it`
+- `test_measure_does_not_inject_gantry_when_method_does_not_declare_it`
+- `test_measure_uses_protocol_measurement_height_for_descent`
+- `test_measure_forwards_measurement_height_into_method_when_method_declares_it`
+- `test_measure_zero_measurement_height_descends_to_zero_not_instrument_default`
+  (boundary `is not None` regression guard)
+- `test_measure_raises_when_method_requires_gantry_but_board_gantry_is_none`
+  (None-gantry guard)
+- `test_method_kwargs_measurement_height_passed_through_to_method` on the
+  scan side, with an explicit gantry-injection assertion guarding the
+  refactor.
+- `tests/deck/test_definition_packaging.py::test_wheel_includes_deck_definition_yamls`
+
+Migrated pre-existing protocol-semantics tests to put `measurement_height` /
+`indentation_limit` inside `method_kwargs`. Updated the legacy-violation test
+to expect the two new top-level rejections.
+
+Full suite: 1033 passed.
+
+## Working YAML after this PR
+
+Single well via `measure`:
 
 ```yaml
 - measure:
     instrument: asmi
     position: plate.E5
     method: indentation
-    measurement_height: 27.0
+    measurement_height: 27.0          # deck-frame action Z (measure-level)
     method_kwargs:
       indentation_limit: 17.0
       step_size: 0.01
       force_limit: 10.0
 ```
 
-## Update — third commit on this branch
+Full plate via `scan`:
 
-Hardware bring-up exposed a packaging bug: a `pip install`'d copy of cubos
-crashed with `[Errno 2] No such file or directory: '<site-packages>/deck/labware/definitions/registry.yaml'`
-the moment a deck YAML used `load_name: sbs_96_wellplate`. The
-`deck.labware.definitions/` subtree contains a registry plus per-definition
-config YAMLs (and CAD models), all of which live alongside Python modules but
-weren't listed in `tool.setuptools.package-data` — so they were dropped on
-the way into the wheel.
-
-Fix: extend `tool.setuptools.package-data` for `deck.labware.definitions`:
-
-```toml
-"deck.labware.definitions" = [
-    "registry.yaml",
-    "*/*.yaml",
-    "*/*.glb",
-    "*/*.stl",
-    "*/*.step",
-]
+```yaml
+- scan:
+    plate: plate
+    instrument: asmi
+    method: indentation
+    entry_travel_height: 85.0
+    interwell_travel_height: 35.0
+    method_kwargs:
+      measurement_height: 32.0        # action Z; lives with the method, not on scan
+      indentation_limit: 30.0
+      step_size: 0.1
+      force_limit: 10.0
 ```
 
-New test `tests/deck/test_definition_packaging.py` mirrors the existing
-`tests/instruments/test_registry_packaging.py`: builds an actual wheel + sdist
-via `setuptools.build_meta` and asserts the registry plus a canary
-`SBS96WellPlate.yaml` are present in both artifacts.
+## Hardware impact
 
-Wheel contents after the fix include `registry.yaml` plus every per-definition
-config YAML, GLB, STL, and STEP file under `deck/labware/definitions/`.
+Touches: any protocol step that uses `measure` to invoke a closed-loop
+instrument method, plus all `scan`-based protocols that previously used
+top-level `scan.measurement_height` / `scan.indentation_limit` — those need
+migration to `method_kwargs`.
+
+Offline validation: pytest only — no live hardware exercised in this branch.
+
+Required hardware validation by user: run an ASMI single-well measurement via
+a `measure` step, and confirm baseline → descent → force-limit stop matches
+per-well behavior under `scan`.
 
 ## Open follow-ups
 
-- Long-term: scan could call `measure` for each well rather than reimplementing
-  the per-well approach/descend/act flow itself. That would make the
-  one-vs-many distinction the only thing scan owns, with measure handling the
-  per-position primitive. Not in scope for this PR.
-- Longer term still, consider moving closed-loop `indentation` out of the ASMI
-  driver and into a protocol-engine compound command.
+- Long-term: scan could call `measure` for each well rather than
+  reimplementing per-well approach/descend/act. Would make scan own only
+  multi-well orchestration; not in scope for this PR.
+- Longer term still, consider moving closed-loop `indentation` out of the
+  ASMI driver and into a protocol-engine compound command.
