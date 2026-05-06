@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from gantry.gantry_driver.driver import Mill, wpos_pattern, mpos_pattern, wco_pattern
+from gantry.gantry_driver.exceptions import StatusReturnError
 from gantry.gantry_driver.instruments import Coordinates
 
 
@@ -30,6 +31,133 @@ class TestWposEnforcement(unittest.TestCase):
         self.assertEqual(coords.x, 10.0)
         self.assertEqual(coords.y, 20.0)
         self.assertEqual(coords.z, 5.0)
+
+    def test_current_coordinates_extracts_status_from_multiline_read(self):
+        mill = self._make_mill()
+        mill.ser_mill.write = MagicMock()
+        mill.read = MagicMock(
+            return_value="ok\n<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>\n"
+        )
+        coords = mill.current_coordinates()
+        self.assertEqual(coords.x, 10.0)
+        self.assertEqual(coords.y, 20.0)
+        self.assertEqual(coords.z, 5.0)
+        mill.ser_mill.write.assert_called_once_with(b"?")
+
+    def test_extract_status_line_ignores_serial_chatter(self):
+        status = Mill._extract_status_line(
+            "ok\n[MSG:Reset to continue]\n<Idle|WPos:1.000,2.000,3.000|FS:0,0>\n"
+        )
+        self.assertEqual(status, "<Idle|WPos:1.000,2.000,3.000|FS:0,0>")
+
+    def test_extract_status_line_ignores_incomplete_status_fragment(self):
+        status = Mill._extract_status_line("<Idle|WPos:1.000,2.000,3")
+        self.assertEqual(status, "")
+
+    def test_extract_status_line_skips_incomplete_fragment_before_complete_status(self):
+        status = Mill._extract_status_line(
+            "<Idle|WPos:1.000,2.000,3\n"
+            "<Idle|WPos:4.000,5.000,6.000|FS:0,0>\n"
+        )
+        self.assertEqual(status, "<Idle|WPos:4.000,5.000,6.000|FS:0,0>")
+
+    def test_current_status_queries_before_reading_status(self):
+        mill = self._make_mill()
+        mill.ser_mill.write = MagicMock()
+        mill.read = MagicMock(
+            return_value="<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>"
+        )
+
+        status = mill.current_status()
+
+        self.assertEqual(status, "<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>")
+        mill.ser_mill.write.assert_called_once_with(b"?")
+
+    def test_current_status_retries_after_incomplete_status_fragment(self):
+        mill = self._make_mill()
+        mill.ser_mill.write = MagicMock()
+        mill.read = MagicMock(
+            side_effect=[
+                "<Idle|WPos:10.000,20.000,5",
+                "<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>",
+            ]
+        )
+
+        status = mill.current_status()
+
+        self.assertEqual(status, "<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>")
+        self.assertEqual(mill.ser_mill.write.call_count, 2)
+        mill.ser_mill.write.assert_called_with(b"?")
+
+    def test_current_coordinates_requeries_after_incomplete_status_fragment(self):
+        mill = self._make_mill()
+        mill.ser_mill.write = MagicMock()
+        mill.read = MagicMock(
+            side_effect=[
+                "<Idle|WPos:10.000,20.000,5",
+                "<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>",
+            ]
+        )
+
+        coords = mill.current_coordinates()
+
+        self.assertEqual(coords.x, 10.0)
+        self.assertEqual(coords.y, 20.0)
+        self.assertEqual(coords.z, 5.0)
+        self.assertEqual(mill.ser_mill.write.call_count, 2)
+        mill.ser_mill.write.assert_called_with(b"?")
+
+    def test_current_status_extracts_status_from_multiline_read(self):
+        mill = self._make_mill()
+        mill.read = MagicMock(
+            return_value="ok\n<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>\n"
+        )
+
+        status = mill.current_status()
+
+        self.assertEqual(status, "<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>")
+
+    def test_current_status_raises_when_chatter_contains_alarm(self):
+        mill = self._make_mill()
+        mill.read = MagicMock(
+            return_value=(
+                "ok\nALARM:2\n"
+                "<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>\n"
+            )
+        )
+
+        with self.assertRaisesRegex(StatusReturnError, "ALARM:2"):
+            mill.current_status()
+
+    def test_current_coordinates_raises_when_chatter_contains_alarm(self):
+        mill = self._make_mill()
+        mill.ser_mill.write = MagicMock()
+        mill.read = MagicMock(
+            return_value=(
+                "ok\nALARM:2\n"
+                "<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>\n"
+            )
+        )
+
+        with self.assertRaisesRegex(StatusReturnError, "ALARM:2"):
+            mill.current_coordinates()
+        self.assertEqual(mill.last_status, mill.read.return_value)
+        mill.ser_mill.write.assert_called_once_with(b"?")
+
+    def test_current_coordinates_raises_when_retry_chatter_contains_error(self):
+        mill = self._make_mill()
+        mill.ser_mill.write = MagicMock()
+        mill.read = MagicMock(
+            side_effect=[
+                "<Idle|WPos:10.000,20.000,5",
+                "error:15\n<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>\n",
+            ]
+        )
+
+        with self.assertRaisesRegex(StatusReturnError, "error:15"):
+            mill.current_coordinates()
+        self.assertEqual(mill.ser_mill.write.call_count, 2)
+        mill.ser_mill.write.assert_called_with(b"?")
 
     def test_current_coordinates_converts_mpos_to_wpos(self):
         mill = self._make_mill()

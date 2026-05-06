@@ -624,13 +624,25 @@ class Mill:
     def current_status(self) -> str:
         """Get the current status of the mill."""
         attempt_limit = 5
+        self.ser_mill.write(b"?")
+        time.sleep(0.05)
         status = self.read()
 
-        while status in ["", "ok"] and attempt_limit > 0:
+        while self._extract_status_line(status) in ["", "ok"] and attempt_limit > 0:
             self.ser_mill.write(b"?")
             time.sleep(0.05)
             status = self.read()
             attempt_limit -= 1
+
+        if re.search(r"\b(error|alarm)\b", status.lower()):
+            self.logger.error("Error in status: %s", status)
+            self.last_status = status
+            if self.interactive_mode:
+                print(f"Error in status: {status}")
+                return ""
+            raise StatusReturnError(f"Error in status: {status}")
+
+        status = self._extract_status_line(status)
 
         if not status:
             raw_lines = self.ser_mill.readlines()
@@ -641,8 +653,9 @@ class Mill:
                     print("Failed to get status from the mill")
                     return ""
                 raise StatusReturnError("Failed to get status from the mill")
-            # Find the first status line (<...>) or join all lines
-            status = next((l for l in lines if l.startswith("<")), "; ".join(lines))
+            status = self._extract_status_line("\n".join(lines))
+            if not status:
+                status = "; ".join(lines)
             if any(re.search(r"\b(error|alarm)\b", item.lower()) for item in lines):
                 self.logger.error("Error in status: %s", status)
                 self.last_status = status
@@ -668,6 +681,29 @@ class Mill:
         msg += self.ser_mill.read_all()
         msg = msg.decode(encoding="ascii")
         return msg
+
+    @staticmethod
+    def _extract_status_line(status: str) -> str:
+        """Return the first complete GRBL status line from a serial read chunk."""
+        if not status:
+            return ""
+        saw_status_fragment = False
+        for line in status.splitlines():
+            line = line.strip()
+            if line.startswith("<"):
+                saw_status_fragment = True
+                if line.endswith(">"):
+                    return line
+        if saw_status_fragment:
+            return ""
+        return status.strip()
+
+    def _raise_if_status_error(self, status: str) -> None:
+        """Raise if a raw GRBL read contains error/alarm chatter."""
+        if status and re.search(r"\b(error|alarm)\b", status.lower()):
+            self.logger.error("Error in status: %s", status)
+            self.last_status = status
+            raise StatusReturnError(f"Error in status: {status}")
 
     def txrx(self, command: str) -> str:
         """Write a command to the mill and read the response."""
@@ -804,16 +840,18 @@ class Mill:
         """
         self.ser_mill.write(b"?")
         time.sleep(0.05)
-        status = self.read()
+        raw_status = self.read()
+        self._raise_if_status_error(raw_status)
+        status = self._extract_status_line(raw_status)
         attempts = 0
         while (not status or status[0] != "<") and attempts < 3:
-            if "alarm" in status.lower() or "error" in status.lower():
-                self.logger.error("Error in status: %s", status)
-                self.last_status = status
-                raise StatusReturnError(f"Error in status: {status}")
             if "ok" in status.lower():
                 self.logger.debug("OK in status: %s", status)
-            status = self.read()
+            self.ser_mill.write(b"?")
+            time.sleep(0.05)
+            raw_status = self.read()
+            self._raise_if_status_error(raw_status)
+            status = self._extract_status_line(raw_status)
             attempts += 1
 
         self.last_status = status
@@ -875,10 +913,16 @@ class Mill:
                 time.sleep(0.2)
                 self.ser_mill.write(b"?")
                 time.sleep(0.2)
-                status = self.read()
+                raw_status = self.read()
+                self._raise_if_status_error(raw_status)
+                status = self._extract_status_line(raw_status)
                 retry_attempts = 0
                 while (not status or status[0] != "<") and retry_attempts < 3:
-                    status = self.read()
+                    self.ser_mill.write(b"?")
+                    time.sleep(0.05)
+                    raw_status = self.read()
+                    self._raise_if_status_error(raw_status)
+                    status = self._extract_status_line(raw_status)
                     retry_attempts += 1
 
         mill_center = Coordinates(x_coord, y_coord, z_coord)
