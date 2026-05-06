@@ -129,6 +129,36 @@ class TestWposEnforcement(unittest.TestCase):
         with self.assertRaisesRegex(StatusReturnError, "ALARM:2"):
             mill.current_status()
 
+    def test_current_coordinates_raises_when_chatter_contains_alarm(self):
+        mill = self._make_mill()
+        mill.ser_mill.write = MagicMock()
+        mill.read = MagicMock(
+            return_value=(
+                "ok\nALARM:2\n"
+                "<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>\n"
+            )
+        )
+
+        with self.assertRaisesRegex(StatusReturnError, "ALARM:2"):
+            mill.current_coordinates()
+        self.assertEqual(mill.last_status, mill.read.return_value)
+        mill.ser_mill.write.assert_called_once_with(b"?")
+
+    def test_current_coordinates_raises_when_retry_chatter_contains_error(self):
+        mill = self._make_mill()
+        mill.ser_mill.write = MagicMock()
+        mill.read = MagicMock(
+            side_effect=[
+                "<Idle|WPos:10.000,20.000,5",
+                "error:15\n<Idle|WPos:10.000,20.000,5.000|Bf:15,127|FS:0,0>\n",
+            ]
+        )
+
+        with self.assertRaisesRegex(StatusReturnError, "error:15"):
+            mill.current_coordinates()
+        self.assertEqual(mill.ser_mill.write.call_count, 2)
+        mill.ser_mill.write.assert_called_with(b"?")
+
     def test_current_coordinates_converts_mpos_to_wpos(self):
         mill = self._make_mill()
         mill.config["$10"] = "1"  # Force MPos mode
