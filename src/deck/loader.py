@@ -428,6 +428,7 @@ def _build_nested_well_plate(
         width_mm=entry.width_mm,
         # Runtime height_mm = absolute deck-frame Z of the plate surface.
         height_mm=resolved_z,
+        well_depth_mm=entry.well_depth_mm,
         rows=entry.rows,
         columns=entry.columns,
         wells=_derive_wells_from_calibration(entry, resolved_z=resolved_z),

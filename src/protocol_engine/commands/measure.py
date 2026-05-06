@@ -6,6 +6,7 @@ from typing import Any, Dict, TYPE_CHECKING
 
 from ..errors import ProtocolExecutionError
 from ..registry import protocol_command
+from ._dispatch import inject_runtime_args
 from ._movement import engage_at_labware
 
 if TYPE_CHECKING:
@@ -59,4 +60,13 @@ def measure(
         "measure: %s.%s(%s) at %s — action_z=%.3f",
         instrument, method, method_kwargs, position, action_z,
     )
-    return getattr(instr, method)(**method_kwargs)
+
+    # Inject gantry + measurement_height for closed-loop methods (e.g.
+    # ASMI.indentation) that drive the gantry themselves. The action_z
+    # we just descended to is the source of truth.
+    callable_method = getattr(instr, method)
+    kwargs = inject_runtime_args(
+        callable_method, method_kwargs, context,
+        measurement_height=action_z,
+    )
+    return callable_method(**kwargs)
