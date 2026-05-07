@@ -43,8 +43,6 @@ instruments:
     offset_x: 99.0
     offset_y: 99.0
     depth: 99.0
-    measurement_height: 10.0
-    safe_approach_height: 50.0
     offline: true
   camera:
     type: uv_curing
@@ -52,8 +50,6 @@ instruments:
     offset_x: 1.0
     offset_y: 2.0
     depth: 3.0
-    measurement_height: 20.0
-    safe_approach_height: 60.0
     offline: true
 """,
         encoding="utf-8",
@@ -444,15 +440,11 @@ def test_multi_instrument_calibration_sets_xy_before_z_and_updates_yaml(tmp_path
         "z_max": 96.0,
     }
     assert written["cnc"]["total_z_height"] == 96.0
-    assert written["grbl_settings"] == {
-        "status_report": 0,
-        "soft_limits": True,
-        "homing_enable": True,
-        "max_travel_x": 398.0,
-        "max_travel_y": 299.0,
-        "max_travel_z": 96.0,
-    }
-    assert written["instruments"]["camera"]["measurement_height"] == 20.0
-    assert written["instruments"]["camera"]["offset_x"] == -15.0
-    assert written["instruments"]["camera"]["offset_y"] == -7.0
-    assert written["instruments"]["camera"]["depth"] == 6.0
+    assert written["grbl_settings"]["max_travel_x"] == 398.0
+    assert written["grbl_settings"]["max_travel_y"] == 299.0
+    assert written["grbl_settings"]["max_travel_z"] == 96.0
+    assert "measurement_height" not in written["instruments"]["camera"]
+    assert written["instruments"]["camera"]["offset_x"] == -323.0
+    assert written["instruments"]["camera"]["offset_y"] == -186.0
+    assert written["instruments"]["camera"]["depth"] == 100.0
+    assert not [call for call in _FakeGantry.instance.calls if call[0] == "move_to"]

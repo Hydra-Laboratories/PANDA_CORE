@@ -903,11 +903,14 @@ labware:
         assert isinstance(plate, WellPlate)
         assert plate.length_mm is None
         assert plate.width_mm is None
+        # height_mm is the plate's physical outer dimension and is None
+        # when the YAML omits it (this fixture omits it). The deck-frame
+        # surface Z lives on each well's coordinate.
         assert plate.height_mm is None
+        assert plate.wells["A1"].z == -5.0
         assert plate.capacity_ul is None
         assert plate.working_volume_ul is None
         assert len(plate.wells) == 6
-        assert "A1" in plate.wells
     finally:
         Path(path).unlink(missing_ok=True)
 

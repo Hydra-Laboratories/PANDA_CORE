@@ -24,9 +24,9 @@ configs/
   protocol/   # Ordered protocol steps
 ```
 
-There are no separate board YAMLs. Mounted instruments, offsets,
-`measurement_height`, and `safe_approach_height` live inside the corresponding
-`configs/gantry/*.yaml` machine file.
+There are no separate board YAMLs. Mounted instruments and offsets live
+inside the corresponding `configs/gantry/*.yaml` machine file. Protocol
+motion heights live on the protocol command (see Height Semantics below).
 
 ## Runnable ASMI Example
 
@@ -63,18 +63,26 @@ PYTHONPATH=src python setup/validate_setup.py \
 
 ## Height Semantics
 
-All protocol and instrument motion heights are absolute deck-frame Z planes:
+`measurement_height` and `safe_approach_height` are **labware-relative
+offsets** above the calibrated well/labware surface Z (positive = above,
+negative = below). At runtime, action and approach planes are computed
+as `well.z + offset`, where `well.z` is the calibration anchor's z (set
+in the deck YAML). Both fields are first-class arguments to the
+protocol command — instruments do not declare them. The plate's
+``height_mm`` is the physical outer dimension (rim → underside), used
+for collision/visualization and for the ``well_depth_mm <= height_mm``
+sanity check, not for motion math.
 
-- instrument `measurement_height`: default action Z
-- instrument `safe_approach_height`: default XY-travel Z for deck-target moves
-- scan `measurement_height`: scan action/start Z
-- scan `entry_travel_height`: first scan transit Z
-- scan `interwell_travel_height`: between-well travel and final retract Z
-- ASMI `indentation_limit`: lower/deeper stopping Z
+- `scan` requires `measurement_height` and `safe_approach_height`
+- `measure` requires `measurement_height`
+- ASMI `indentation_limit` (top-level on `scan`): sign-agnostic
+  *magnitude* — the descent distance below the action plane
+- gantry `safe_z`: absolute deck-frame Z used for inter-labware travel
+  (the only absolute Z in the engagement path)
 
-Runtime motion must not add these values to labware Z. Legacy scan names
-`entry_travel_z`, scan-level `safe_approach_height`, and ASMI `z_limit` are
-rejected before motion.
+Pipette commands engage at the labware reference Z (well bottom, tip
+top) — `measurement_height = 0` implicitly. Unrecognized scan fields are
+rejected at protocol-load time by the command's Pydantic schema.
 
 ## Validation Status
 

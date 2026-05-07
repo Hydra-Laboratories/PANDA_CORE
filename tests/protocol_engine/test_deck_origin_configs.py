@@ -73,29 +73,42 @@ def test_asmi_config_generates_deck_origin_scan_waypoints():
     first_well = deck["plate"].get_well_center("A1")
     second_well = deck["plate"].get_well_center("A2")
     last_well = deck["plate"].get_well_center("H12")
-    entry_travel_height = scan_step.args["entry_travel_height"]
-    interwell_travel_height = scan_step.args["interwell_travel_height"]
+    plate_obj = deck["plate"]
+    instr = board.instruments["asmi"]
+    safe_z = gantry_config.resolved_safe_z
+    safe_approach_height = scan_step.args["safe_approach_height"]
     measurement_height = scan_step.args["measurement_height"]
     indentation_limit = scan_step.args["indentation_limit"]
+    # Heights are labware-relative; ref Z is the well's calibrated Z, not
+    # the plate's outer ``height_mm`` (which is the physical dimension).
+    surface_z = plate_obj.get_well_center("A1").z
+    approach_abs = surface_z + safe_approach_height
+    action_abs = surface_z + measurement_height
 
+    # First well: move_to_labware travels XY at safe_z, then descends to
+    # approach plane, then to action plane.
     assert moves[0].args == pytest.approx(
-        (first_well.x, first_well.y, entry_travel_height)
+        (first_well.x, first_well.y, safe_z)
     )
-    assert moves[0].kwargs == {"travel_z": entry_travel_height}
+    assert moves[0].kwargs == {"travel_z": safe_z}
     assert moves[1].args == pytest.approx(
-        (first_well.x, first_well.y, measurement_height)
+        (first_well.x, first_well.y, approach_abs)
     )
-    assert moves[1].kwargs == {"travel_z": None}
     assert moves[2].args == pytest.approx(
-        (second_well.x, second_well.y, interwell_travel_height)
+        (first_well.x, first_well.y, action_abs)
     )
-    assert moves[2].kwargs == {"travel_z": interwell_travel_height}
+    # Subsequent well: travels at approach plane.
+    assert moves[3].args == pytest.approx(
+        (second_well.x, second_well.y, approach_abs)
+    )
+    assert moves[3].kwargs == {"travel_z": approach_abs}
+    # Final retract.
     assert moves[-1].args == pytest.approx(
-        (last_well.x, last_well.y, interwell_travel_height)
+        (last_well.x, last_well.y, approach_abs)
     )
-    assert moves[-1].kwargs == {"travel_z": None}
+    assert moves[-1].kwargs == {"travel_z": approach_abs}
 
-    assert indentation_calls[0]["measurement_height"] == measurement_height
+    assert indentation_calls[0]["measurement_height"] == action_abs
     assert indentation_calls[0]["indentation_limit"] == indentation_limit
     assert indentation_calls[0]["gantry"] is mock_gantry
 
@@ -143,8 +156,13 @@ def test_filmetrics_deck_origin_config_validates_setup():
 
     assert (a1.x, a1.y, a1.z) == pytest.approx((270.0, 140.0, 70.0))
     assert (a2.x, a2.y, a2.z) == pytest.approx((270.0, 131.0, 70.0))
-    assert board.instruments["filmetrics"].measurement_height == 80.0
-    assert board.instruments["filmetrics"].safe_approach_height == 80.0
+    scan_step = next(step for step in protocol.steps if step.command_name == "scan")
+    assert scan_step.args["measurement_height"] == pytest.approx(10.0)
+    # The well's deck-frame Z (the calibration anchor's z) is the surface
+    # reference. The plate's ``height_mm`` is the physical outer dimension
+    # (from the SBS96 definition).
+    assert a1.z == pytest.approx(70.0)
+    assert plate.height_mm == pytest.approx(14.35)
     assert validate_protocol_semantics(protocol, board, deck, gantry_config) == []
 
     setup_protocol(

@@ -1,4 +1,4 @@
-"""Offline tests for setup.calibrate_gantry single-instrument helpers."""
+"""Offline tests for setup/calibrate_deck_origin.py."""
 
 from __future__ import annotations
 
@@ -10,11 +10,8 @@ from gantry.gantry_driver.exceptions import (
     CommandExecutionError,
     StatusReturnError,
 )
-from setup.calibrate_gantry import (
+from setup.calibrate_deck_origin import (
     DeckOriginCalibrationResult,
-    _interactive_jog_to_reference,
-    _opposite_pull_off_delta,
-    _recover_from_limit_alarm,
     run_calibration,
 )
 
@@ -27,7 +24,7 @@ cnc:
   homing_strategy: standard
   total_z_height: 100.0
   y_axis_motion: head
-  structure_clearance_z: 85.0
+  safe_z: 85.0
 working_volume:
   x_min: {x_min}
   x_max: 400.0
@@ -113,12 +110,6 @@ class _FakeGantry:
     def unlock(self) -> None:
         self.calls.append(("unlock",))
 
-    def reset_and_unlock(self) -> None:
-        self.calls.append(("reset_and_unlock",))
-
-    def get_status(self) -> str:
-        return "Idle"
-
     def set_serial_timeout(self, timeout: float) -> None:
         self.calls.append(("set_serial_timeout", timeout))
 
@@ -182,48 +173,6 @@ class _LimitRecoveringNoReadbackFakeGantry(_LimitRecoveringFakeGantry):
         self.fail_next_recovery_readback = True
 
 
-class _ResetRequiredLimitRecoveringFakeGantry(_LimitRecoveringFakeGantry):
-    def __init__(self, config: dict):
-        super().__init__(config)
-        self.reset_done = False
-
-    def unlock(self) -> None:
-        self.calls.append(("unlock",))
-        raise CommandExecutionError("alarm:1\n[msg:reset to continue]")
-
-    def reset_and_unlock(self) -> None:
-        self.calls.append(("reset_and_unlock",))
-        self.reset_done = True
-
-    def jog(
-        self,
-        x: float = 0,
-        y: float = 0,
-        z: float = 0,
-        feed_rate: float = 2000,
-    ) -> None:
-        if not self.fail_next_jog and not self.reset_done:
-            self.calls.append(("jog", x, y, z, feed_rate))
-            raise CommandExecutionError("Jog failed: alarm:1\n[msg:reset to continue]")
-        super().jog(x=x, y=y, z=z, feed_rate=feed_rate)
-
-
-class _RepeatedLimitAlarmFakeGantry(_FakeGantry):
-    def __init__(self, config: dict):
-        super().__init__(config)
-        self.statuses = iter([
-            "ALARM:1",
-            "<Alarm|Pn:X>",
-            "[MSG:Reset to continue]",
-            "<Alarm|Pn:X>",
-            "<Idle|WPos:0,0,0>",
-        ])
-
-    def get_status(self) -> str:
-        self.calls.append(("get_status",))
-        return next(self.statuses)
-
-
 class _SoftLimitAwareFakeGantry(_FakeGantry):
     def __init__(self, config: dict):
         super().__init__(config)
@@ -278,57 +227,6 @@ def _key_reader(keys):
     return read
 
 
-def test_limit_pull_off_moves_opposite_failed_jog_direction():
-    assert _opposite_pull_off_delta({"x": 1.0, "y": 0.0, "z": 0.0}, 2.0) == {
-        "x": -2.0,
-        "y": 0.0,
-        "z": 0.0,
-    }
-    assert _opposite_pull_off_delta({"x": 0.0, "y": -1.0, "z": 0.0}, 2.0) == {
-        "x": 0.0,
-        "y": 2.0,
-        "z": 0.0,
-    }
-    assert _opposite_pull_off_delta({"x": 0.0, "y": 0.0, "z": 1.0}, 2.0) == {
-        "x": 0.0,
-        "y": 0.0,
-        "z": -2.0,
-    }
-    assert _opposite_pull_off_delta({"x": 0.0, "y": 0.0, "z": -1.0}, 2.0) == {
-        "x": 0.0,
-        "y": 0.0,
-        "z": 2.0,
-    }
-
-
-def test_interactive_jog_supports_50_and_100_mm_steps():
-    gantry = _FakeGantry(config={})
-    messages: list[str] = []
-
-    coords = _interactive_jog_to_reference(
-        gantry,
-        target_description="Jog target",
-        confirmation_description="Confirm target",
-        key_reader=_key_reader([
-            ("6", 1),
-            ("RIGHT", 1),
-            ("7", 1),
-            ("UP", 1),
-            ("\r", 1),
-        ]),
-        output=messages.append,
-        feed_rate=2500.0,
-        initial_step_mm=1.0,
-        limit_pull_off_mm=2.0,
-    )
-
-    assert coords == {"x": 50.0, "y": 100.0, "z": 0.0}
-    assert ("jog", 50.0, 0.0, 0.0, 2500.0) in gantry.calls
-    assert ("jog", 0.0, 100.0, 0.0, 2500.0) in gantry.calls
-    assert any("Jog step set to 50.0 mm." in message for message in messages)
-    assert any("Jog step set to 100.0 mm." in message for message in messages)
-
-
 def test_run_calibration_sets_xy_then_z_and_measures_home(tmp_path):
     path = _write_gantry(tmp_path / "gantry.yaml")
     messages: list[str] = []
@@ -381,6 +279,12 @@ def test_run_calibration_sets_xy_then_z_and_measures_home(tmp_path):
         ("set_serial_timeout", 1.0),
         ("get_coordinates",),
         ("configure_soft_limits_from_spans", 398.5, 299.25, 96.75, 0.25),
+        ("set_serial_timeout", 10.0),
+        ("home",),
+        ("set_serial_timeout", 1.0),
+        ("activate_work_coordinate_system", "G54"),
+        ("set_work_coordinates", 398.5, 299.25, 96.75),
+        ("get_coordinates",),
         ("set_serial_timeout", 0.05),
         ("disconnect",),
     ]
@@ -428,7 +332,7 @@ cnc:
   homing_strategy: standard
   total_z_height: 100.0
   y_axis_motion: head
-  structure_clearance_z: 85.0
+  safe_z: 85.0
 working_volume:
   x_min: 0.0
   x_max: 400.0
@@ -443,7 +347,6 @@ instruments:
   asmi:
     type: asmi
     vendor: vernier
-    measurement_height: 26.0
 """,
         encoding="utf-8",
     )
@@ -463,8 +366,8 @@ instruments:
     assert isinstance(result, DeckOriginCalibrationResult)
     output_text = "\n".join(messages)
     assert "Full gantry YAML to copy/paste:" in output_text
-    assert "dir_invert_mask: 1" not in output_text
-    assert "steps_per_mm_x: 400.0" not in output_text
+    assert "dir_invert_mask: 1" in output_text
+    assert "steps_per_mm_x: 400.0" in output_text
     assert "soft_limits: true" in output_text
     assert "homing_enable: true" in output_text
     assert "max_travel_x: 398.5" in output_text
@@ -644,82 +547,12 @@ def test_run_calibration_recovers_from_limit_alarm_during_jog(tmp_path):
         in _LimitRecoveringFakeGantry.instance.calls
     )
     assert ("jog_cancel",) in _LimitRecoveringFakeGantry.instance.calls
-    assert ("reset_and_unlock",) in _LimitRecoveringFakeGantry.instance.calls
-    assert ("unlock",) not in _LimitRecoveringFakeGantry.instance.calls
+    assert ("unlock",) in _LimitRecoveringFakeGantry.instance.calls
     assert (
-        ("jog", 0.0, 5.0, 0.0, 2500.0)
+        ("jog", 0.0, 2.0, 0.0, 2500.0)
         in _LimitRecoveringFakeGantry.instance.calls
     )
     assert any("Limit alarm detected" in message for message in messages)
-
-
-def test_run_calibration_uses_soft_reset_before_limit_alarm_pull_off(tmp_path):
-    path = _write_gantry(tmp_path / "gantry.yaml")
-    messages: list[str] = []
-
-    result = run_calibration(
-        path,
-        output=messages.append,
-        gantry_factory=_ResetRequiredLimitRecoveringFakeGantry,
-        key_reader=_key_reader(
-            [
-                ("DOWN", 1),
-                ("\r", 1),
-                ("\r", 1),
-            ]
-        ),
-        stdin_flusher=lambda: None,
-        limit_pull_off_mm=2.0,
-    )
-
-    assert isinstance(result, DeckOriginCalibrationResult)
-    calls = _ResetRequiredLimitRecoveringFakeGantry.instance.calls
-    assert ("reset_and_unlock",) in calls
-    assert ("unlock",) not in calls
-    assert calls.index(("reset_and_unlock",)) < calls.index(
-        ("jog", 0.0, 5.0, 0.0, 2500.0)
-    )
-    reset_index = calls.index(("reset_and_unlock",))
-    pull_off_index = calls.index(("jog", 0.0, 5.0, 0.0, 2500.0))
-    assert ("enforce_work_position_reporting",) not in calls[reset_index:pull_off_index]
-    assert ("activate_work_coordinate_system", "G54") not in calls[reset_index:pull_off_index]
-    assert any("Soft-resetting GRBL" in message for message in messages)
-
-
-def test_limit_recovery_retries_soft_reset_unlock_and_pull_off_until_idle():
-    gantry = _RepeatedLimitAlarmFakeGantry(config={})
-    messages: list[str] = []
-
-    coords = _recover_from_limit_alarm(
-        gantry,
-        {"x": 1.0, "y": 0.0, "z": 0.0},
-        pull_off_mm=5.0,
-        feed_rate=2500.0,
-        output=messages.append,
-    )
-
-    assert coords is None
-    assert gantry.calls.count(("reset_and_unlock",)) == 5
-    assert gantry.calls.count(("jog", -5.0, 0.0, 0.0, 2500.0)) == 5
-    assert any("Attempting limit pull-off up to 5 times" in m for m in messages)
-    assert any("attempt 4/5 did not clear; retrying" in m for m in messages)
-
-
-def test_limit_recovery_aborts_after_five_alarm_pull_off_attempts():
-    gantry = _RepeatedLimitAlarmFakeGantry(config={})
-    gantry.statuses = iter(["ALARM:1", "ALARM:1", "ALARM:1", "ALARM:1", "ALARM:1"])
-
-    with pytest.raises(StatusReturnError, match="Limit pull-off did not clear"):
-        _recover_from_limit_alarm(
-            gantry,
-            {"x": 1.0, "y": 0.0, "z": 0.0},
-            pull_off_mm=5.0,
-            feed_rate=2500.0,
-            output=lambda _message: None,
-        )
-
-    assert gantry.calls.count(("reset_and_unlock",)) == 5
-    assert gantry.calls.count(("jog", -5.0, 0.0, 0.0, 2500.0)) == 5
 
 
 def test_run_calibration_temporarily_disables_stale_soft_limits(tmp_path):
@@ -790,23 +623,33 @@ def test_run_calibration_restores_soft_limits_when_jog_aborts(tmp_path):
     assert ("disconnect",) in calls
 
 
-def test_limit_recovery_does_not_read_coordinates_immediately_after_pull_off():
-    gantry = _LimitRecoveringNoReadbackFakeGantry(config={})
-    gantry.fail_next_jog = False
+def test_run_calibration_aborts_when_recovery_readback_is_unavailable(tmp_path):
+    """Recovery readback failure must abort calibration: silently continuing
+    would let the operator zero WPos at an unknown physical pose."""
+    path = _write_gantry(tmp_path / "gantry.yaml")
     messages: list[str] = []
 
-    coords = _recover_from_limit_alarm(
-        gantry,
-        {"x": 0.0, "y": -1.0, "z": 0.0},
-        pull_off_mm=2.0,
-        feed_rate=2500.0,
-        output=messages.append,
-    )
+    with pytest.raises(StatusReturnError):
+        run_calibration(
+            path,
+            output=messages.append,
+            gantry_factory=_LimitRecoveringNoReadbackFakeGantry,
+            key_reader=_key_reader(
+                [
+                    ("DOWN", 1),
+                    ("DOWN", 1),
+                    ("\r", 1),
+                    ("\r", 1),
+                ]
+            ),
+            stdin_flusher=lambda: None,
+            limit_pull_off_mm=2.0,
+        )
 
-    assert coords is None
-    assert ("jog", 0.0, 5.0, 0.0, 2500.0) in gantry.calls
-    assert ("get_coordinates_failed",) not in gantry.calls
-    assert any("position readback will resume" in message for message in messages)
+    assert ("get_coordinates_failed",) in (
+        _LimitRecoveringNoReadbackFakeGantry.instance.calls
+    )
+    assert any("WPos readback after pull-off failed" in message for message in messages)
 
 
 def test_dry_run_prints_commands_without_connecting(tmp_path):

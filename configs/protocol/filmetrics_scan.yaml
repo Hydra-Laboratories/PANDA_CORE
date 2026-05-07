@@ -1,8 +1,13 @@
 # Filmetrics scan protocol for the CubOS deck-origin frame.
-# Uses board-configured absolute deck-frame measurement/safe heights.
+#
+# Heights are labware-relative offsets above the plate surface
+# (`labware.height_mm`). Filmetrics is a non-contact optical instrument:
+# action and approach are at the same height above the plate.
 
 protocol:
   - scan:
       plate: plate_1
       instrument: filmetrics
       method: measure
+      measurement_height: 10.0     # 10 mm above the plate surface
+      safe_approach_height: 10.0   # same plane as action (non-contact)

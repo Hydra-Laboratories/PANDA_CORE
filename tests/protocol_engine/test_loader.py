@@ -34,6 +34,7 @@ protocol:
   - measure:
       instrument: uvvis
       position: plate_1.A1
+      measurement_height: 0.0
 """
 
 VALID_SCAN_WITH_NEW_NAMES = """
@@ -42,9 +43,8 @@ protocol:
       plate: plate_1
       instrument: uvvis
       method: measure
-      measurement_height: 10.0
-      interwell_travel_height: 10.0
-      entry_travel_height: 10.0
+      measurement_height: 0.0
+      safe_approach_height: 10.0
 """
 
 
@@ -101,7 +101,11 @@ def test_loaded_protocol_step_omits_unspecified_default_args():
     try:
         protocol = load_protocol_from_yaml(path)
         args = protocol.steps[0].args
-        assert args == {"instrument": "uvvis", "position": "plate_1.A1"}
+        assert args == {
+            "instrument": "uvvis",
+            "position": "plate_1.A1",
+            "measurement_height": 0.0,
+        }
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -115,10 +119,61 @@ def test_scan_accepts_new_height_names():
             "plate": "plate_1",
             "instrument": "uvvis",
             "method": "measure",
-            "measurement_height": 10.0,
-            "interwell_travel_height": 10.0,
-            "entry_travel_height": 10.0,
+            "measurement_height": 0.0,
+            "safe_approach_height": 10.0,
         }
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_scan_rejects_yaml_missing_measurement_height():
+    """`measurement_height` is required on `scan`. Pin the registry-derived
+    Pydantic schema contract — a future refactor adding a default value
+    would silently re-enable footgun YAMLs without breaking anything else."""
+    yaml = """
+protocol:
+  - scan:
+      plate: plate_1
+      instrument: uvvis
+      method: measure
+      safe_approach_height: 10.0
+"""
+    path = _write_yaml(yaml)
+    try:
+        with pytest.raises(Exception, match="measurement_height"):
+            load_protocol_from_yaml(path)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_scan_rejects_yaml_missing_safe_approach_height():
+    yaml = """
+protocol:
+  - scan:
+      plate: plate_1
+      instrument: uvvis
+      method: measure
+      measurement_height: 0.0
+"""
+    path = _write_yaml(yaml)
+    try:
+        with pytest.raises(Exception, match="safe_approach_height"):
+            load_protocol_from_yaml(path)
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_measure_rejects_yaml_missing_measurement_height():
+    yaml = """
+protocol:
+  - measure:
+      instrument: uvvis
+      position: plate_1.A1
+"""
+    path = _write_yaml(yaml)
+    try:
+        with pytest.raises(Exception, match="measurement_height"):
+            load_protocol_from_yaml(path)
     finally:
         Path(path).unlink(missing_ok=True)
 
@@ -130,6 +185,7 @@ protocol:
       plate: plate_1
       instrument: uvvis
       method: measure
+      measurement_height: 0.0
       safe_approach_height: 10.0
       entry_travel_z: 10.0
 """

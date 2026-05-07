@@ -330,6 +330,10 @@ def _build_well_plate(
     )
     kwargs = _entry_kwargs_for_model(entry, WellPlate)
     kwargs["wells"] = _derive_wells_from_calibration(entry, resolved_z=resolved_z)
+    # ``height_mm`` is the plate's physical outer dimension (rim →
+    # underside), inherited from the labware definition. The deck-frame Z
+    # of the plate surface lives on each well's ``Coordinate3D.z`` (set by
+    # ``_derive_wells_from_calibration`` from the calibration anchor).
     return WellPlate(**kwargs)
 
 

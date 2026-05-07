@@ -34,6 +34,7 @@ serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
   total_z_height: 90.0
+  safe_z: 70.0
 working_volume:
   x_min: 0.0
   x_max: 300.0
@@ -48,7 +49,6 @@ instruments:
     offset_x: 5.0
     offset_y: 0.0
     depth: 3.0
-    measurement_height: 0.0
 """
 
 DECK_YAML = """\
@@ -225,7 +225,6 @@ instruments:
     offset_x: 5.0
     offset_y: 0.0
     depth: 3.0
-    measurement_height: 0.0
 """
         # plate_1 and waste_vial positions are outside tight positive bounds.
         paths = [

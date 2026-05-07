@@ -1,4 +1,11 @@
-"""Scan argument normalization for the Phase 1 scan naming surface."""
+"""Scan argument normalization.
+
+The scan command's required heights (``measurement_height`` and
+``safe_approach_height``) are first-class function parameters and are
+validated by the command itself, not here. This module only handles
+``method_kwargs`` reconciliation: rejecting legacy field names and
+threading ``indentation_limit`` through when present.
+"""
 
 from __future__ import annotations
 
@@ -8,51 +15,60 @@ from typing import Any, Mapping
 
 @dataclass(frozen=True)
 class NormalizedScanArguments:
-    """Runtime scan arguments after resolving compatibility aliases."""
+    """Runtime scan arguments after compatibility checks."""
 
-    measurement_height: float | None
-    entry_travel_height: float | None
-    interwell_travel_height: float | None
     method_kwargs: dict[str, Any]
+
+
+_LEGACY_KWARG_HINTS = {
+    "entry_travel_height": (
+        "`entry_travel_height` is no longer supported. Inter-labware/entry "
+        "travel uses the gantry's `safe_z` (absolute deck-frame Z)."
+    ),
+    "interwell_travel_height": (
+        "`interwell_travel_height` is no longer supported. Use "
+        "`safe_approach_height` (labware-relative offset)."
+    ),
+    "z_limit": (
+        "`z_limit` is no longer supported. Use `indentation_limit`."
+    ),
+    "measurement_height": (
+        "`measurement_height` does not belong in `method_kwargs` — the "
+        "engine resolves it from the top-level `measurement_height` field "
+        "and would silently overwrite this value. Move it to the top level."
+    ),
+    "safe_approach_height": (
+        "`safe_approach_height` does not belong in `method_kwargs`. Move "
+        "it to the top level of the scan command."
+    ),
+}
 
 
 def normalize_scan_arguments(
     *,
-    measurement_height: float | None = None,
-    entry_travel_height: float | None = None,
-    interwell_travel_height: float | None = None,
     indentation_limit: float | None = None,
     method_kwargs: Mapping[str, Any] | None = None,
 ) -> NormalizedScanArguments:
-    """Normalize the supported scan naming surface.
+    """Validate and normalize the scan command's ``method_kwargs``.
 
-    The normalized ``entry_travel_height`` and ``interwell_travel_height`` values are
-    absolute deck-frame Z coordinates consumed by the scan implementation.
+    Raises:
+        ValueError: When legacy fields are present or top-level
+            ``indentation_limit`` conflicts with ``method_kwargs``.
     """
     kwargs = dict(method_kwargs or {})
 
-    if measurement_height is not None and "measurement_height" in kwargs:
-        if kwargs["measurement_height"] != measurement_height:
-            raise ValueError(
-                "Conflicting scan arguments: `measurement_height`="
-                f"{measurement_height!r} and `method_kwargs.measurement_height`="
-                f"{kwargs['measurement_height']!r}. Use only top-level "
-                "`measurement_height`."
-            )
-    if "z_limit" in kwargs:
-        raise ValueError(
-            "`z_limit` is no longer supported. Use `indentation_limit`."
-        )
+    for legacy_key, message in _LEGACY_KWARG_HINTS.items():
+        if legacy_key in kwargs:
+            raise ValueError(message)
 
     method_indentation_limit = kwargs.pop("indentation_limit", None)
     if indentation_limit is not None and method_indentation_limit is not None:
         if indentation_limit != method_indentation_limit:
             raise ValueError(
-                "Conflicting scan arguments: `indentation_limit`="
+                "Conflicting scan arguments: top-level `indentation_limit`="
                 f"{indentation_limit!r} and "
-                "`method_kwargs.indentation_limit`="
-                f"{method_indentation_limit!r}. Use only top-level "
-                "`indentation_limit`."
+                f"`method_kwargs.indentation_limit`={method_indentation_limit!r}. "
+                "Use only the top-level field."
             )
     resolved_limit = (
         indentation_limit
@@ -62,17 +78,4 @@ def normalize_scan_arguments(
     if resolved_limit is not None:
         kwargs["indentation_limit"] = resolved_limit
 
-    # New scan naming keeps common non-contact scans concise.
-    resolved_interwell = interwell_travel_height
-    if resolved_interwell is None and measurement_height is not None:
-        resolved_interwell = measurement_height
-    resolved_entry = entry_travel_height
-    if resolved_entry is None:
-        resolved_entry = resolved_interwell
-
-    return NormalizedScanArguments(
-        measurement_height=measurement_height,
-        entry_travel_height=resolved_entry,
-        interwell_travel_height=resolved_interwell,
-        method_kwargs=kwargs,
-    )
+    return NormalizedScanArguments(method_kwargs=kwargs)
