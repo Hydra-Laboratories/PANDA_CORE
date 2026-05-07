@@ -180,6 +180,8 @@ class TestPipetteDbTracking:
         labware_map = {"plate_1": plate, "vial_1": vial}
         board = MagicMock()
         pipette = MagicMock()
+        pipette.measurement_height = 0.0
+        pipette.safe_approach_height = 0.0
         board.instruments = {"pipette": pipette}
 
         deck = MagicMock()
@@ -203,6 +205,8 @@ class TestPipetteDbTracking:
 
         board = MagicMock()
         pipette = MagicMock()
+        pipette.measurement_height = 0.0
+        pipette.safe_approach_height = 0.0
         pipette.dispense = MagicMock(return_value=None)
         board.instruments = {"pipette": pipette}
 

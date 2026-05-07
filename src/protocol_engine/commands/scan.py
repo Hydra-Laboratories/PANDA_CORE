@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 import json
 import logging
 import sqlite3
@@ -15,6 +14,7 @@ from ..errors import ProtocolExecutionError
 from ..measurements import normalize_measurement
 from ..registry import protocol_command
 from ..scan_args import normalize_scan_arguments
+from ._dispatch import inject_runtime_args
 from ._movement import (
     resolve_height_field,
     resolve_labware_height,
@@ -133,7 +133,6 @@ def scan(
 
     results: Dict[str, Any] = {}
     sorted_wells = sorted(plate_obj.wells, key=_row_major_key)
-    sig = inspect.signature(callable_method)
 
     for i, well_id in enumerate(sorted_wells):
         if i > 0 and delay_s > 0:
@@ -150,11 +149,13 @@ def scan(
             )
         context.board.move(instrument, (well.x, well.y, action_z))
 
-        kwargs: Dict[str, Any] = dict(normalized.method_kwargs)
-        if "measurement_height" in sig.parameters:
-            kwargs["measurement_height"] = action_z
-        if "gantry" in sig.parameters:
-            kwargs["gantry"] = context.board.gantry
+        # Use the shared dispatch helper so closed-loop methods get the
+        # same gantry-injection + None-gantry guard + finite-number guard
+        # as `measure`, instead of scan reimplementing them inline.
+        kwargs = inject_runtime_args(
+            callable_method, normalized.method_kwargs, context,
+            measurement_height=action_z,
+        )
         result = callable_method(**kwargs)
         results[well_id] = result
 

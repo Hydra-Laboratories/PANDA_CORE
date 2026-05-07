@@ -406,6 +406,10 @@ def _mock_context_multi_resolve(has_pipette: bool = True) -> ProtocolContext:
 
     if has_pipette:
         pipette = MagicMock()
+        # Real numeric heights so the dispatch finite-number guards pass;
+        # test fixtures elsewhere set realistic values for engagement math.
+        pipette.measurement_height = 0.0
+        pipette.safe_approach_height = 0.0
         pipette.aspirate.return_value = MagicMock(success=True, volume_ul=100.0)
         pipette.dispense.return_value = MagicMock(success=True, volume_ul=100.0)
         board.instruments = {"pipette": pipette}
@@ -521,6 +525,8 @@ def _serial_transfer_context(
 
     if has_pipette:
         pipette = MagicMock()
+        pipette.measurement_height = 0.0
+        pipette.safe_approach_height = 0.0
         pipette.aspirate.return_value = MagicMock(success=True)
         pipette.dispense.return_value = MagicMock(success=True)
         board.instruments = {"pipette": pipette}

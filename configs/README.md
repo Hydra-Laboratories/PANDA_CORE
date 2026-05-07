@@ -63,19 +63,21 @@ PYTHONPATH=src python setup/validate_setup.py \
 
 ## Height Semantics
 
-All protocol and instrument motion heights are absolute deck-frame Z planes:
+`measurement_height` and `safe_approach_height` on instruments are
+**labware-relative offsets** above the labware's `height_mm` reference
+(positive = above, negative = below). At runtime, action and approach
+planes are computed as `labware.height_mm + offset`.
 
-- instrument `measurement_height`: default action Z
-- instrument `safe_approach_height`: default XY-travel Z for deck-target moves
-- scan `entry_travel_height`: first scan transit Z
-- scan `interwell_travel_height`: between-well travel and final retract Z
-- `method_kwargs.measurement_height`: per-well action/start Z (lives with
-  the method, not on scan)
-- `method_kwargs.indentation_limit`: ASMI lower/deeper stopping Z
+- instrument `measurement_height`: default per-position action offset
+- instrument `safe_approach_height`: default per-position approach offset
+- `method_kwargs.measurement_height`: protocol-level override (still a
+  labware-relative offset; if both sources are set, they must agree)
+- `method_kwargs.indentation_limit`: ASMI deepest-Z stopping offset
+- gantry `safe_z`: absolute deck-frame Z used for inter-labware travel
+  (the only absolute Z in the engagement path)
 
-Runtime motion must not add these values to labware Z. Unrecognized
-top-level scan fields are rejected at protocol-load time by the command's
-Pydantic schema.
+Unrecognized top-level scan fields are rejected at protocol-load time by
+the command's Pydantic schema.
 
 ## Validation Status
 

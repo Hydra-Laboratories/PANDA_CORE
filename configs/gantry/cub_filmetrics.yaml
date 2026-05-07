@@ -53,7 +53,7 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    # measurement_height intentionally omitted — protocol commands supply
-    # the labware-relative offset (XOR rule). Verify on hardware.
+    # measurement_height intentionally omitted here — protocol commands
+    # supply the labware-relative offset. Verify on hardware.
     exe_path: ""
     recipe_name: ""

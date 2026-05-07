@@ -4,8 +4,9 @@ The protocol model:
 
 * ``measurement_height`` and ``safe_approach_height`` are *labware-relative*
   offsets (mm above the labware's ``height_mm`` surface; negative = below).
-* ``measurement_height`` follows an XOR rule: exactly one of the instrument
-  config and the protocol command must set it.
+* ``measurement_height`` follows a dual-source rule: at least one of the
+  instrument config and the protocol command must set it; if both are
+  set, the values must match.
 * ``safe_approach_height`` is required only on ``scan`` commands.
 * ``gantry.safe_z`` is the absolute deck-frame Z used for inter-labware
   travel and the entry approach for the first well of a scan. Resolved

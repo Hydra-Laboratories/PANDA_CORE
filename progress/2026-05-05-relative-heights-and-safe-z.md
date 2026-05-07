@@ -7,10 +7,11 @@ treatment of measurement and approach heights with a clean split:
   `working_volume.z_max`. Used for all inter-labware moves and the entry
   approach for the first well of a scan. Renamed from `structure_clearance_z`.
 - **`measurement_height`**: now relative to `labware.height_mm` (positive =
-  above surface, +Z up). XOR rule — exactly one of:
+  above surface, +Z up). Dual-source rule — at least one of:
   - `gantry.instruments.<name>.measurement_height`
   - protocol `measure` / `scan` command field
-  must be set.
+
+  must be set; if both are set, the values must match.
 - **`safe_approach_height`**: relative to `labware.height_mm`. Required on
   every protocol `scan`. Removed from instrument yaml entirely.
 - ASMI: `well_top_z` derived from `labware.height_mm` at command time;
@@ -32,7 +33,8 @@ Every Z motion in `measure`, `scan`, and inter-labware moves is rewired.
 Wrong sign or wrong reference = collision. Mid-air guards before any motion
 runs:
 
-1. XOR validator (no measurement_height, or two conflicting sources).
+1. Dual-source validator (no measurement_height anywhere, or two
+   conflicting sources).
 2. `labware.height_mm` presence check on every measure/scan target.
 3. Bounds check: resolved absolute Z within `[z_min, z_max]`.
 4. Scan-only: `safe_approach_height >= measurement_height` and
@@ -44,7 +46,7 @@ All existing protocol/gantry configs become invalid and are rewritten.
 
 1. Tests first per phase, then implementation.
 2. Phase 1: schemas — gantry `safe_z`, instrument fields, scan/measure args.
-3. Phase 2: semantic validation (XOR, bounds, height_mm).
+3. Phase 2: semantic validation (dual-source rule, bounds, height_mm).
 4. Phase 3: movement (measure + scan + ASMI).
 5. Phase 4: rewrite configs.
 6. Phase 5: docs.
@@ -58,8 +60,16 @@ or cleanup.
 
 ## Validation log
 
-- `python -m pytest tests/` — **1048 passed, 4 subtests passed** (full
-  test suite, including new XOR/safe_z/sign-agnostic tests).
+- `python -m pytest tests/` — **1077 passed, 4 subtests passed** (full
+  test suite, including new dual-source/safe_z/sign-agnostic tests, plus
+  post-merge additions: gantry-injection in `measure` via
+  `inject_runtime_args`, scan now routed through the same dispatch
+  helper instead of inline injection, `tests/protocol_engine/test_dispatch.py`
+  covers the helper directly, finite-number type-guard in
+  `resolve_height_field`, `KeyError`→`ValueError` translation in
+  `engage_at_labware`, pipette commands wrap `engage_at_labware`'s
+  `ValueError` into `ProtocolExecutionError`, `well_depth_mm` passthrough
+  in nested wellplate builder).
 - `python setup/validate_setup.py configs/gantry/cub_xl_asmi.yaml
   configs/deck/asmi_deck.yaml configs/protocol/asmi_indentation.yaml` —
   **PASS** (96 positions × 1 instrument; semantic validation OK).
@@ -123,6 +133,3 @@ If anything looks off, abort with feed hold (`!`) before any collision.
 - ASMI indentation routine assumes a sign convention today; need to walk
   the math when making the limit sign-agnostic.
 
-## Next steps
-
-- Phase 1 tests + impl for gantry `safe_z`.

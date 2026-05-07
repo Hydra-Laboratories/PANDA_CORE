@@ -31,9 +31,10 @@ protocol:
       # safe_approach_height is the labware-relative XY-travel offset
       # between wells (mm above the plate surface). Required.
       safe_approach_height: 8.0
-      # measurement_height (the action plane offset) may be set here OR on
-      # the instrument config — exactly one place (XOR rule). Here we let
-      # the instrument config supply it.
+      # measurement_height (the action plane offset) may be set here, on
+      # the instrument config, or both. At least one source must define
+      # it; if both set, values must match. Here we let the instrument
+      # config supply it.
       indentation_limit: 5.0   # magnitude: descend 5 mm into the well
       method_kwargs:
         step_size: 0.01

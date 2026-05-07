@@ -21,7 +21,7 @@ Gantry YAML defines:
 - total Z reference height
 - Y-axis motion mode
 - working volume
-- optional structure-clearance Z
+- optional absolute `safe_z` plane (inter-labware travel)
 - optional GRBL settings expectations
 - mounted instruments, offsets, reach depths, action heights, and driver-specific settings
 

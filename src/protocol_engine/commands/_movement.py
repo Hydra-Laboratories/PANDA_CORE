@@ -15,7 +15,25 @@ There is no inter-labware helper. Callers compose the motion explicitly:
 
 from __future__ import annotations
 
+import math
 from typing import Any
+
+
+def _assert_finite_number(value: Any, *, field_name: str, source: str) -> None:
+    """Reject non-numeric / non-finite values reaching the height resolver.
+
+    YAML loads `Dict[str, Any]` paths can carry strings, bools, NaN, or inf
+    that would otherwise hit late `TypeError`s deep in motion arithmetic.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(
+            f"{source}: `{field_name}` must be a finite number, got "
+            f"{type(value).__name__} {value!r}."
+        )
+    if not math.isfinite(float(value)):
+        raise ValueError(
+            f"{source}: `{field_name}` must be a finite number, got {value!r}."
+        )
 
 
 def unpack_xyz(coord: Any) -> tuple[float, float, float]:
@@ -63,6 +81,16 @@ def resolve_height_field(
         command_label: Command name for error messages
             (e.g. ``"measure"``, ``"scan"``).
     """
+    if instrument_value is not None:
+        _assert_finite_number(
+            instrument_value, field_name=field_name,
+            source=f"instrument '{instrument_name}'",
+        )
+    if command_value is not None:
+        _assert_finite_number(
+            command_value, field_name=field_name,
+            source=f"command '{command_label}'",
+        )
     if instrument_value is not None and command_value is not None:
         if instrument_value != command_value:
             raise ValueError(
@@ -107,17 +135,41 @@ def engage_at_labware(
 ) -> float:
     """Travel above *position* at ``safe_z``, descend to the action plane.
 
-    Resolves the labware-relative ``measurement_height`` via the XOR rule
-    against the instrument config, then composes
+    Resolves the labware-relative ``measurement_height`` from two sources
+    (instrument config and protocol command). At least one source must
+    define it; if both are set the values must match. Composes
     ``board.move_to_labware`` (XY at ``safe_z``) followed by a straight
     descent to ``labware.height_mm + measurement_height``.
 
     Returns the resolved absolute action Z.
+
+    Raises:
+        ValueError: missing labware/instrument, missing height_mm on
+            labware, missing or conflicting ``measurement_height``,
+            non-finite numeric values. All command-boundary failures
+            surface as ``ValueError`` so callers can wrap them into
+            ``ProtocolExecutionError`` consistently.
     """
-    instr = context.board.instruments[instrument]
-    coord = context.deck.resolve(position)
+    try:
+        instr = context.board.instruments[instrument]
+    except KeyError as exc:
+        raise ValueError(
+            f"{command_label}: unknown instrument '{instrument}'."
+        ) from exc
+    try:
+        coord = context.deck.resolve(position)
+    except (KeyError, AttributeError, ValueError) as exc:
+        raise ValueError(
+            f"{command_label}: cannot resolve position {position!r} on the "
+            f"deck: {exc}"
+        ) from exc
     labware_key = position.split(".", 1)[0]
-    labware = context.deck[labware_key]
+    try:
+        labware = context.deck[labware_key]
+    except KeyError as exc:
+        raise ValueError(
+            f"{command_label}: labware {labware_key!r} not found on the deck."
+        ) from exc
     ref_z = resolve_labware_height(labware, position)
     relative_offset = resolve_measurement_height(
         instrument_value=instr.measurement_height,

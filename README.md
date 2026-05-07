@@ -10,8 +10,9 @@ Three YAML files define a runnable experiment:
 ### 1. Gantry (`configs/gantry/*.yaml`)
 
 Defines the controller serial port, homing strategy, working volume, optional
-structure-clearance plane, optional GRBL expectations, `cnc.total_z_height`,
-and the instruments mounted on that machine.
+absolute `safe_z` plane (used for inter-labware travel), optional GRBL
+expectations, `cnc.total_z_height`, and the instruments mounted on that
+machine.
 
 Coordinate convention:
 

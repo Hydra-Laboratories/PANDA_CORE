@@ -30,8 +30,9 @@ def measure(
       3. Call ``instrument.method(**method_kwargs)``.
 
     ``measurement_height`` is a labware-relative offset (mm above the
-    labware's ``height_mm`` surface; negative = below). The XOR rule
-    requires it to be set on either the instrument config or this command.
+    labware's ``height_mm`` surface; negative = below). At least one of
+    (instrument config, command parameter) must set it; when both are
+    set the values must match.
     """
     if instrument not in context.board.instruments:
         raise ProtocolExecutionError(

@@ -54,7 +54,8 @@ class Board:
         ``travel_z``, if given, is an instrument-tip Z held during XY
         travel — the gantry lifts/lowers to it before moving XY, then
         descends/ascends to the target Z. ``Board.move_to_labware`` uses
-        this to travel at ``safe_approach_height`` between labware.
+        this to travel at the gantry's absolute ``safe_z`` between
+        labware.
 
         Args:
             instrument: Name (key in ``self.instruments``) or instance.

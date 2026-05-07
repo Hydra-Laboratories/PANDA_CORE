@@ -85,6 +85,8 @@ class TestFullProtocolWithDataStore:
             measurement_height=0.0,
         )
         pipette = MagicMock()
+        pipette.measurement_height = 0.0
+        pipette.safe_approach_height = 0.0
 
         board = MagicMock()
         board.instruments = {"uvvis": sensor, "pipette": pipette}
@@ -172,6 +174,8 @@ class TestFullProtocolWithoutDataStore:
             measurement_height=0.0,
         )
         pipette = MagicMock()
+        pipette.measurement_height = 0.0
+        pipette.safe_approach_height = 0.0
 
         board = MagicMock()
         board.instruments = {"uvvis": sensor, "pipette": pipette}

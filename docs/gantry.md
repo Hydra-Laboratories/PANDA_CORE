@@ -69,7 +69,7 @@ instruments:
     depth: 0.0
     # Labware-relative offset (mm above labware.height_mm; negative = below).
     # Optional here — the protocol scan/measure command may supply it instead.
-    # Exactly one source must set it (XOR rule).
+    # At least one source must set it; if both set, values must match.
     measurement_height: -1.0
 ```
 
