@@ -158,9 +158,7 @@ Once homing, jog direction, and WPos reporting match the target behavior, run
 the operator calibration tutorial:
 
 ```bash
-PYTHONPATH=src python setup/calibrate_deck_origin.py \
-  --gantry configs/gantry/cub_xl_asmi.yaml \
-  --instrument asmi
+PYTHONPATH=src python setup/calibrate_gantry.py configs/gantry/cub_xl_asmi.yaml
 ```
 
 Do not run protocols on a real setup until deck-origin calibration and minimal

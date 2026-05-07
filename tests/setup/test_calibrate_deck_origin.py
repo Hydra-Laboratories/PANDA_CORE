@@ -1,4 +1,4 @@
-"""Offline tests for setup/calibrate_deck_origin.py."""
+"""Offline tests for single-instrument calibration helpers."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from gantry.gantry_driver.exceptions import (
     CommandExecutionError,
     StatusReturnError,
 )
-from setup.calibrate_deck_origin import (
+from setup.calibration.single_instrument_calibration import (
     DeckOriginCalibrationResult,
     run_calibration,
 )
@@ -110,6 +110,9 @@ class _FakeGantry:
 
     def unlock(self) -> None:
         self.calls.append(("unlock",))
+
+    def reset_and_unlock(self) -> None:
+        self.calls.append(("reset_and_unlock",))
 
     def set_serial_timeout(self, timeout: float) -> None:
         self.calls.append(("set_serial_timeout", timeout))
@@ -280,12 +283,6 @@ def test_run_calibration_sets_xy_then_z_and_measures_home(tmp_path):
         ("set_serial_timeout", 1.0),
         ("get_coordinates",),
         ("configure_soft_limits_from_spans", 398.5, 299.25, 96.75, 0.25),
-        ("set_serial_timeout", 10.0),
-        ("home",),
-        ("set_serial_timeout", 1.0),
-        ("activate_work_coordinate_system", "G54"),
-        ("set_work_coordinates", 398.5, 299.25, 96.75),
-        ("get_coordinates",),
         ("set_serial_timeout", 0.05),
         ("disconnect",),
     ]
@@ -549,9 +546,9 @@ def test_run_calibration_recovers_from_limit_alarm_during_jog(tmp_path):
         in _LimitRecoveringFakeGantry.instance.calls
     )
     assert ("jog_cancel",) in _LimitRecoveringFakeGantry.instance.calls
-    assert ("unlock",) in _LimitRecoveringFakeGantry.instance.calls
+    assert ("reset_and_unlock",) in _LimitRecoveringFakeGantry.instance.calls
     assert (
-        ("jog", 0.0, 2.0, 0.0, 2500.0)
+        ("jog", 0.0, 5.0, 0.0, 2500.0)
         in _LimitRecoveringFakeGantry.instance.calls
     )
     assert any("Limit alarm detected" in message for message in messages)
@@ -651,7 +648,7 @@ def test_run_calibration_aborts_when_recovery_readback_is_unavailable(tmp_path):
     assert ("get_coordinates_failed",) in (
         _LimitRecoveringNoReadbackFakeGantry.instance.calls
     )
-    assert any("WPos readback after pull-off failed" in message for message in messages)
+    assert any("Pulled off the limit switch" in message for message in messages)
 
 
 def test_dry_run_prints_commands_without_connecting(tmp_path):
