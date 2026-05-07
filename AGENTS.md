@@ -75,8 +75,9 @@ Use `docs/agent-index.md` for exact files/tests. Common entrypoints:
 
 ## Calibration Scripts
 
-- `setup/calibrate_gantry.py`: user-facing calibration script that requires a seed YAML and output gantry path, then chooses single- or multi-instrument calibration from instrument count.
-- `setup/calibrate_gantry.py`: only supported gantry calibration entrypoint. It contains both the single-instrument and multi-instrument flows and selects the correct path from instrument count in the seed YAML.
+- `setup/calibrate_gantry.py`: only supported user-facing calibration script. It requires a seed YAML and output gantry path, then chooses single- or multi-instrument calibration from instrument count.
+- `setup/calibration/single_instrument_calibration.py`: internal one-instrument flow implementation.
+- `setup/calibration/multi_instrument_calibration.py`: internal multi-instrument flow implementation.
   - Multi-instrument flow prompts the operator to explicitly choose the reference and lowest instruments by number; blank input is not accepted.
   - Starts guided jogging from the homed BRT pose; it does not make an automatic center move.
   - Sets XY with `G10 L20 P1 X0 Y0` only, then later sets Z to the calibration block height with `G10 L20 P1 Z<block_height>` using the lowest instrument.
@@ -99,7 +100,7 @@ When the task is complete, either delete the temporary checkpoint after promotin
 
 ## Documentation Updates
 
-- **`calibrate_gantry.py`**: Preferred user-facing calibration entrypoint. Loads a seed gantry YAML, requires a separate output path, preflights hardware risk and instrument count, then dispatches one-instrument configs to the internal deck-origin flow or multi-instrument configs to the internal board-calibration flow.
+- **`calibrate_gantry.py`**: Preferred user-facing calibration entrypoint. Loads a seed gantry YAML, requires a separate output path, preflights hardware risk and instrument count, then dispatches one-instrument configs to `setup/calibration/single_instrument_calibration.py` or multi-instrument configs to `setup/calibration/multi_instrument_calibration.py`.
     - **Guided usage**: `python setup/calibrate_gantry.py --seed configs/gantry/seeds/<seed>.yaml --output-gantry configs/gantry/<calibrated>.yaml`
     - **Single instrument**: jog the tool to the calibration block at the front-left origin point; X/Y/Z are assigned at the same physical pose, with Z set to the block height.
     - **Multi instrument**: pick the left-most/reference instrument and lowest instrument by number, use a calibration block, then record each instrument's `offset_x`, `offset_y`, and `depth` from the shared block point.

@@ -50,7 +50,7 @@
 - Added 15 mm automatic +Z retract after each instrument contact point is recorded in multi-instrument calibration.
 - Changed instrument selection prompts to numbered menus; operators now enter `1`, `2`, etc. instead of typing instrument names.
 - Added a brief calibration overview before preflight explaining that Step 1 establishes the shared system origin by placing the front-left origin block/artifact and jogging the first/left-most tool over the X mark; Z is set later with the full board attached.
-- Removed the separate internal `setup/calibration/` modules. `setup/calibrate_gantry.py` is now the only calibration script/file and contains both flows, selecting single- vs multi-instrument calibration from the seed YAML.
+- Reintroduced internal calibration modules with clearer names while keeping only one user-facing script: `setup/calibration/single_instrument_calibration.py` and `setup/calibration/multi_instrument_calibration.py`. `setup/calibrate_gantry.py` is now a thin router that selects single- vs multi-instrument calibration from the seed YAML.
 
 ## Validation
 
@@ -72,7 +72,8 @@
 - `PYTHONPATH=src python -m pytest -q` → 1045 passed, 4 subtests passed after 5 mm pull-off/status probe/15 mm retract changes
 - `PYTHONPATH=src python -m pytest -q` → 1045 passed, 4 subtests passed after numbered instrument prompt change
 - `python -m pytest tests/setup/test_calibrate_gantry.py tests/setup/test_calibrate_deck_origin.py tests/setup/test_calibrate_multi_instrument_board.py tests/setup/test_keyboard_input.py -q` → 37 passed after consolidating calibration flows into `setup/calibrate_gantry.py` only
-- `python -m pytest tests/setup/test_setup_imports.py -q` → 2 passed after deleting `setup/calibration/`
+- `python -m pytest tests/setup/test_setup_imports.py -q` → 2 passed after deleting the old calibration modules
+- `python -m pytest tests/setup/test_calibrate_gantry.py tests/setup/test_calibrate_deck_origin.py tests/setup/test_calibrate_multi_instrument_board.py tests/setup/test_setup_imports.py tests/protocol_engine/test_deck_origin_configs.py -q` → 36 passed after splitting implementation into `single_instrument_calibration.py` and `multi_instrument_calibration.py`
 
 ## Hardware validation pending
 

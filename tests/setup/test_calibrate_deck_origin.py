@@ -1,4 +1,4 @@
-"""Offline tests for setup.calibrate_gantry single-instrument helpers."""
+"""Offline tests for single-instrument calibration helpers."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from gantry.gantry_driver.exceptions import (
     CommandExecutionError,
     StatusReturnError,
 )
-from setup.calibrate_gantry import (
+from setup.calibration.single_instrument_calibration import (
     DeckOriginCalibrationResult,
     run_calibration,
 )

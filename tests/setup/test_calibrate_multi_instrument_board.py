@@ -1,4 +1,4 @@
-"""Offline tests for setup.calibrate_gantry multi-instrument helpers."""
+"""Offline tests for multi-instrument calibration helpers."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from setup.calibrate_gantry import (
+from setup.calibration.multi_instrument_calibration import (
     MultiInstrumentCalibrationResult,
     _retract_up_after_contact,
     compute_relative_instrument_calibrations,
