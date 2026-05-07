@@ -36,8 +36,6 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: -10.0
-    measurement_height: 0.0
-    safe_approach_height: 35.0
   pipette:
     type: pipette
     vendor: opentrons

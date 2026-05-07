@@ -9,7 +9,7 @@ cnc:
   total_z_height: 139.0
   y_axis_motion: head
   # Absolute deck-frame Z clearance plane for home/park/edge-risk moves.
-  structure_clearance_z: 85.0
+  safe_z: 85.0
 
 working_volume:
   x_min: 0.0
@@ -42,8 +42,6 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    measurement_height: 0.0
-    safe_approach_height: 35.0
 
   pipette:
     type: pipette
@@ -55,5 +53,3 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    measurement_height: 0.0
-    safe_approach_height: 35.0
