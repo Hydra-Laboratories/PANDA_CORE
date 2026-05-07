@@ -32,6 +32,15 @@ _LEGACY_KWARG_HINTS = {
     "z_limit": (
         "`z_limit` is no longer supported. Use `indentation_limit`."
     ),
+    "measurement_height": (
+        "`measurement_height` does not belong in `method_kwargs` — the "
+        "engine resolves it from the top-level `measurement_height` field "
+        "and would silently overwrite this value. Move it to the top level."
+    ),
+    "safe_approach_height": (
+        "`safe_approach_height` does not belong in `method_kwargs`. Move "
+        "it to the top level of the scan command."
+    ),
 }
 
 

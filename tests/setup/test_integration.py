@@ -49,7 +49,6 @@ instruments:
     offset_x: 5.0
     offset_y: 0.0
     depth: 3.0
-    measurement_height: 0.0
 """
 
 DECK_YAML = """\
@@ -226,7 +225,6 @@ instruments:
     offset_x: 5.0
     offset_y: 0.0
     depth: 3.0
-    measurement_height: 0.0
 """
         # plate_1 and waste_vial positions are outside tight positive bounds.
         paths = [

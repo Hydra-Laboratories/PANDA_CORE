@@ -279,16 +279,6 @@ class TestScanCommand:
         with pytest.raises(ProtocolExecutionError, match="Approach must be at or above"):
             scan(ctx, **_scan_args(measurement_height=5.0, safe_approach_height=2.0))
 
-    def test_height_mm_required(self):
-        from protocol_engine.commands.scan import scan
-
-        plate = _make_2x2_plate()
-        plate.height_mm = None
-        ctx = _mock_context(plate=plate)
-
-        with pytest.raises(ProtocolExecutionError, match="height_mm"):
-            scan(ctx, **_scan_args())
-
     def test_measurement_height_passed_to_method_when_supported(self):
         """When the method signature has ``measurement_height``, the
         resolved absolute action Z is forwarded into method_kwargs."""

@@ -8,7 +8,6 @@ from deck.labware.labware import Coordinate3D
 from protocol_engine.commands._movement import (
     _assert_finite_number,
     engage_at_labware,
-    resolve_labware_height,
     unpack_xyz,
 )
 
@@ -30,18 +29,6 @@ class TestUnpackXyz:
         assert unpack_xyz(obj) == (10.0, 20.0, 30.0)
 
 
-class TestResolveLabwareHeight:
-
-    def test_returns_height_mm(self):
-        labware = MagicMock(height_mm=14.10)
-        assert resolve_labware_height(labware, "plate") == 14.10
-
-    def test_raises_when_height_mm_missing(self):
-        labware = MagicMock(spec=["x", "y"])
-        with pytest.raises(ValueError, match="height_mm"):
-            resolve_labware_height(labware, "plate")
-
-
 class TestAssertFiniteNumber:
 
     def test_accepts_int_and_float(self):
@@ -55,25 +42,27 @@ class TestAssertFiniteNumber:
             _assert_finite_number(bad, field_name="x", source="test")
 
 
-def _mock_ctx_with_labware(height_mm=14.10):
+def _mock_ctx_with_well(well_z=14.10):
+    """Build a context whose deck.resolve returns a coord at *well_z*.
+
+    The well/labware coordinate's Z is the labware-surface reference Z
+    that ``engage_at_labware`` adds ``measurement_height`` to.
+    """
     instr = MagicMock()
     board = MagicMock()
     board.instruments = {"sensor": instr}
-    labware = MagicMock(height_mm=height_mm)
-    labware.x, labware.y, labware.z = 10.0, 20.0, height_mm or 0.0
     deck = MagicMock()
-    deck.resolve.return_value = Coordinate3D(x=10.0, y=20.0, z=height_mm or 0.0)
-    deck.__getitem__.return_value = labware
+    deck.resolve.return_value = Coordinate3D(x=10.0, y=20.0, z=well_z)
     ctx = MagicMock()
     ctx.board = board
     ctx.deck = deck
-    return ctx, instr, labware
+    return ctx, instr
 
 
 class TestEngageAtLabware:
 
-    def test_descends_to_labware_plus_offset(self):
-        ctx, _, _ = _mock_ctx_with_labware(height_mm=14.10)
+    def test_descends_to_well_z_plus_offset(self):
+        ctx, _ = _mock_ctx_with_well(well_z=14.10)
         action_z = engage_at_labware(
             ctx, "sensor", "plate.A1",
             measurement_height=2.0, command_label="measure",
@@ -83,25 +72,16 @@ class TestEngageAtLabware:
         ctx.board.move.assert_called_once_with("sensor", (10.0, 20.0, 16.10))
 
     def test_negative_offset_descends_below_surface(self):
-        ctx, _, _ = _mock_ctx_with_labware(height_mm=14.10)
+        ctx, _ = _mock_ctx_with_well(well_z=14.10)
         action_z = engage_at_labware(
             ctx, "sensor", "plate.A1",
             measurement_height=-1.0, command_label="measure",
         )
         assert action_z == pytest.approx(13.10)
 
-    def test_missing_height_mm_raises(self):
-        ctx, _, labware = _mock_ctx_with_labware(height_mm=None)
-        labware.height_mm = None
-        with pytest.raises(ValueError, match="height_mm"):
-            engage_at_labware(
-                ctx, "sensor", "plate.A1",
-                measurement_height=2.0, command_label="measure",
-            )
-
     @pytest.mark.parametrize("bad", ["", "1.0", float("nan"), True])
     def test_rejects_non_finite_measurement_height(self, bad):
-        ctx, _, _ = _mock_ctx_with_labware(height_mm=14.10)
+        ctx, _ = _mock_ctx_with_well(well_z=14.10)
         with pytest.raises(ValueError, match="finite number"):
             engage_at_labware(
                 ctx, "sensor", "plate.A1",

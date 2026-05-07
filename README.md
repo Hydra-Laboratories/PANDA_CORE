@@ -117,7 +117,7 @@ Protocol motion notes:
   arguments: `scan` requires both `measurement_height` (action plane)
   and `safe_approach_height` (between-wells XY-travel plane, must be at
   or above the action plane); `measure` requires `measurement_height`.
-  Both are mm above `labware.height_mm` (negative = below). Pipette
+  Both are mm above the well/labware calibrated surface Z (negative = below). Pipette
   commands engage at the labware reference Z (well bottom, tip top)
   with no Z offset.
 - The first well of a scan and inter-labware travel use the gantry's
@@ -128,7 +128,7 @@ Protocol motion notes:
 ASMI-specific note:
 
 - `ASMI.indentation()` begins at the resolved action plane
-  (`labware.height_mm + measurement_height`) and descends by
+  (`well.z + measurement_height`) and descends by
   `indentation_limit` mm. `indentation_limit` is sign-agnostic: only its
   magnitude matters.
 

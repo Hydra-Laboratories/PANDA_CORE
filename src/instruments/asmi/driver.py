@@ -52,7 +52,7 @@ class ASMI(BaseInstrument):
         default_force: float = 0.0,
         force_threshold: float = _DEFAULT_FORCE_THRESHOLD,
         sensor_channels: Optional[list[int]] = None,
-        z_target: float = -17.0,
+        default_indentation_limit: float = 0.5,
         step_size: float = 0.01,
         force_limit: float = 15.0,
         baseline_samples: int = 10,
@@ -65,7 +65,13 @@ class ASMI(BaseInstrument):
         self._default_force = default_force
         self._force_threshold = force_threshold
         self._sensor_channels = sensor_channels or list(_DEFAULT_SENSOR_CHANNELS)
-        self._z_target = z_target
+        # Sign-agnostic *magnitude* of the descent below the action plane,
+        # used when ``indentation()`` is called without an explicit
+        # ``indentation_limit`` (e.g. via ``measure``). Renamed from the
+        # legacy ``z_target`` (which encoded an absolute deck-frame Z) so
+        # the new magnitude semantics aren't a silent reinterpretation of
+        # an existing constructor field.
+        self._default_indentation_limit = default_indentation_limit
         self._step_size = step_size
         self._force_limit = force_limit
         self._baseline_samples = baseline_samples
@@ -288,7 +294,11 @@ class ASMI(BaseInstrument):
             ``measurements`` includes a ``direction`` field.
         """
         # Allow protocol method kwargs to override instance defaults.
-        resolved_limit = indentation_limit if indentation_limit is not None else self._z_target
+        resolved_limit = (
+            indentation_limit
+            if indentation_limit is not None
+            else self._default_indentation_limit
+        )
         # ``indentation_limit`` is sign-agnostic: the descent magnitude.
         _limit_magnitude = abs(resolved_limit)
         _step_size = step_size if step_size is not None else self._step_size

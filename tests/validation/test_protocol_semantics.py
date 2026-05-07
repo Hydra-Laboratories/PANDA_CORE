@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from unittest.mock import MagicMock
 
+import pytest
+
 from board.board import Board
 from deck.deck import Deck
 from deck.labware.labware import Coordinate3D
@@ -23,7 +25,9 @@ def _plate() -> WellPlate:
         height_mm=14.10,
         rows=1,
         columns=1,
-        wells={"A1": Coordinate3D(x=0.0, y=0.0, z=73.0)},
+        # Well-surface deck-frame Z = 14.10 (the calibration anchor); the
+        # validator uses this as ref_z, not the plate's outer ``height_mm``.
+        wells={"A1": Coordinate3D(x=0.0, y=0.0, z=14.10)},
         capacity_ul=200.0,
         working_volume_ul=150.0,
     )
@@ -208,6 +212,47 @@ def test_scan_missing_measurement_height_violates():
     violations = validate_protocol_semantics(protocol, board, deck)
 
     assert any("measurement_height" in v.message for v in violations)
+
+
+@pytest.mark.parametrize("bad_value", [float("nan"), float("inf"), True, "1.0"])
+def test_scan_non_finite_measurement_height_names_field(bad_value):
+    board, deck = _board_and_deck()
+    protocol = _protocol(_scan_args(measurement_height=bad_value))
+
+    violations = validate_protocol_semantics(protocol, board, deck)
+
+    assert any(
+        "measurement_height must be a finite number" in v.message
+        for v in violations
+    ), violations
+
+
+@pytest.mark.parametrize("bad_value", [float("nan"), float("inf"), True, "1.0"])
+def test_scan_non_finite_safe_approach_height_names_field(bad_value):
+    board, deck = _board_and_deck()
+    protocol = _protocol(_scan_args(safe_approach_height=bad_value))
+
+    violations = validate_protocol_semantics(protocol, board, deck)
+
+    assert any(
+        "safe_approach_height must be a finite number" in v.message
+        for v in violations
+    ), violations
+
+
+@pytest.mark.parametrize("bad_value", [float("nan"), float("inf"), True, "1.0"])
+def test_measure_non_finite_measurement_height_names_field(bad_value):
+    board, deck = _board_and_deck()
+    protocol = _protocol(
+        _measure_args(measurement_height=bad_value), command_name="measure",
+    )
+
+    violations = validate_protocol_semantics(protocol, board, deck)
+
+    assert any(
+        "measurement_height must be a finite number" in v.message
+        for v in violations
+    ), violations
 
 
 def test_scan_missing_safe_approach_height_violates():

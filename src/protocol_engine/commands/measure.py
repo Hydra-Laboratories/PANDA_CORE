@@ -26,11 +26,11 @@ def measure(
 
     Motion:
       1. Travel at the gantry's ``safe_z`` (absolute) to above the target.
-      2. Descend straight down to ``labware.height_mm + measurement_height``.
+      2. Descend straight down to ``well.z + measurement_height``.
       3. Call ``instrument.method(**method_kwargs)``.
 
     ``measurement_height`` is a required first-class argument: a
-    labware-relative offset (mm above the labware's ``height_mm`` surface;
+    labware-relative offset (mm above the well/labware calibrated surface Z;
     negative = below).
     """
     if instrument not in context.board.instruments:

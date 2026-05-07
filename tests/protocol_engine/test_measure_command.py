@@ -67,17 +67,6 @@ def test_measure_with_negative_offset_descends_below_surface():
     ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, HEIGHT_MM - 1.0))
 
 
-def test_measure_height_mm_required():
-    instr = _mock_instr()
-    ctx = _ctx(instr, height_mm=None)
-
-    with pytest.raises(ProtocolExecutionError, match="height_mm"):
-        measure(
-            ctx, instrument="uvvis", position="plate_1.A1",
-            measurement_height=1.0,
-        )
-
-
 def test_measure_passes_method_kwargs():
     instr = _mock_instr()
     ctx = _ctx(instr)

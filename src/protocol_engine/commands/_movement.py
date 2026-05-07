@@ -3,10 +3,11 @@
 CubOS uses a +Z-up deck frame and labware-relative action heights.
 
 * ``measurement_height`` and ``safe_approach_height`` are *labware-relative*
-  offsets above (positive) or below (negative) the labware's ``height_mm``
-  surface. Both are first-class arguments to the protocol commands that
-  use them (``measure`` and ``scan`` for ``measurement_height``, ``scan``
-  for ``safe_approach_height``). Instruments do not carry them.
+  offsets above (positive) or below (negative) the labware's surface
+  reference Z (the deck-frame Z carried by the resolved well/labware
+  coordinate). Both are first-class arguments to the protocol commands
+  that use them (``measure`` and ``scan`` for ``measurement_height``,
+  ``scan`` for ``safe_approach_height``). Instruments do not carry them.
 * Inter-labware travel uses the gantry's absolute ``safe_z``, exposed on
   ``Board.safe_z``.
 
@@ -45,21 +46,6 @@ def unpack_xyz(coord: Any) -> tuple[float, float, float]:
     return (coord.x, coord.y, coord.z)
 
 
-def resolve_labware_height(labware: Any, position: str) -> float:
-    """Return the labware's ``height_mm`` reference Z, raising if unset.
-
-    All labware-relative scan/measure heights are computed against this Z.
-    """
-    height_mm = getattr(labware, "height_mm", None)
-    if height_mm is None:
-        raise ValueError(
-            f"Labware at {position!r} has no `height_mm` set. Add "
-            "`height_mm` to the deck YAML so labware-relative measurement "
-            "and approach heights can be resolved."
-        )
-    return height_mm
-
-
 def engage_at_labware(
     context: Any,
     instrument: str,
@@ -71,17 +57,18 @@ def engage_at_labware(
     """Travel above *position* at ``safe_z``, descend to the action plane.
 
     ``measurement_height`` is a labware-relative offset (mm above the
-    labware's ``height_mm`` reference). The gantry descends to
-    ``labware.height_mm + measurement_height``.
+    labware's surface reference Z, i.e. the deck-frame Z carried by the
+    resolved coordinate — the well-rim Z for plates, the tip-top Z for
+    tip racks, the vial-rim Z for vials). The gantry descends to
+    ``coord.z + measurement_height``.
 
     Returns the resolved absolute action Z.
 
     Raises:
         ValueError: missing instrument, position, or labware on the deck;
-            missing ``height_mm`` on the target labware; non-finite
-            ``measurement_height``. All command-boundary failures surface
-            as ``ValueError`` so callers can wrap them into
-            ``ProtocolExecutionError`` consistently.
+            non-finite ``measurement_height``. All command-boundary
+            failures surface as ``ValueError`` so callers can wrap them
+            into ``ProtocolExecutionError`` consistently.
     """
     _assert_finite_number(
         measurement_height, field_name="measurement_height",
@@ -100,16 +87,8 @@ def engage_at_labware(
             f"{command_label}: cannot resolve position {position!r} on the "
             f"deck: {exc}"
         ) from exc
-    labware_key = position.split(".", 1)[0]
-    try:
-        labware = context.deck[labware_key]
-    except KeyError as exc:
-        raise ValueError(
-            f"{command_label}: labware {labware_key!r} not found on the deck."
-        ) from exc
-    ref_z = resolve_labware_height(labware, position)
+    x, y, ref_z = unpack_xyz(coord)
     action_z = ref_z + measurement_height
-    x, y, _ = unpack_xyz(coord)
     context.board.move_to_labware(instrument, coord)
     context.board.move(instrument, (x, y, action_z))
     return action_z

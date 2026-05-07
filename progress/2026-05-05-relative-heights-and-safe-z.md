@@ -7,15 +7,23 @@ treatment of measurement and approach heights with a clean split:
   `working_volume.z_max`. Used for all inter-labware moves and the entry
   approach for the first well of a scan. Renamed from
   `structure_clearance_z`.
-- **`measurement_height`**: labware-relative (positive = above
-  `labware.height_mm`, +Z up). First-class arg to the protocol command:
-  required on `measure` and `scan`. Removed from instrument YAML and
-  `BaseInstrument.__init__`.
+- **`measurement_height`**: labware-relative (positive = above the
+  calibrated well/labware surface Z, +Z up). First-class arg to the
+  protocol command: required on `measure` and `scan`. Removed from
+  instrument YAML and `BaseInstrument.__init__`.
 - **`safe_approach_height`**: labware-relative. First-class arg to `scan`,
   required. Must be at or above `measurement_height`. Removed from
   instrument YAML.
-- ASMI: `well_top_z` derived from `labware.height_mm + measurement_height`
-  at command time; `safe_z` instrument field removed (gantry-level now);
+- **`WellPlate.height_mm`** restored to its documented meaning: the
+  plate's *physical outer dimension* (rim → underside). The deck-frame Z
+  of the plate surface lives on each well's calibrated `Coordinate3D.z`.
+  Motion code derives `ref_z` from the resolved well coordinate, not
+  from `height_mm`.
+- ASMI: `well_top_z` is the resolved absolute action Z (`well.z +
+  measurement_height`), injected at the dispatch boundary. The legacy
+  constructor field `z_target` (an absolute deck-frame Z default) is
+  renamed to `default_indentation_limit` (a sign-agnostic magnitude) so
+  the new semantic isn't a silent reinterpretation of an existing field.
   `indentation_limit` is a sign-agnostic magnitude (descent below the
   action plane).
 - Pipette: aspirate/dispense/etc. engage at the labware reference Z (well
@@ -44,13 +52,16 @@ motion runs:
 1. Required-fields validator: `measure` rejects missing
    `measurement_height`; `scan` rejects missing `measurement_height` or
    `safe_approach_height`.
-2. `labware.height_mm` presence check on every measure/scan target.
+2. Calibrated well/labware surface Z presence check (via the resolved
+   coordinate) on every measure/scan target.
 3. Bounds check: resolved absolute Z within `[z_min, z_max]`.
 4. Scan-only: `safe_approach_height >= measurement_height` and
    `height_mm + safe_approach_height <= safe_z`.
 5. Legacy field rejector: `interwell_travel_height`,
    `entry_travel_height`, ASMI `z_limit` are explicit semantic
-   violations.
+   violations. `measurement_height`/`safe_approach_height` are also
+   rejected inside `method_kwargs` and on the instrument YAML — both
+   places where they used to be silently swallowed or overwritten.
 
 ## Validation
 

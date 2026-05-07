@@ -347,7 +347,6 @@ instruments:
   asmi:
     type: asmi
     vendor: vernier
-    measurement_height: 26.0
 """,
         encoding="utf-8",
     )

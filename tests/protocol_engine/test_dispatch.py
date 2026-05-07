@@ -59,7 +59,9 @@ def test_injects_gantry_when_method_signature_declares_it():
     sentinel = object()
     ctx = _ctx(gantry=sentinel)
 
-    kwargs = inject_runtime_args(instr.indentation, {"step_size": 0.02}, ctx)
+    kwargs = inject_runtime_args(
+        instr.indentation, {"step_size": 0.02}, ctx, measurement_height=0.0,
+    )
 
     assert kwargs["gantry"] is sentinel
     assert kwargs["step_size"] == 0.02
@@ -71,7 +73,7 @@ def test_does_not_inject_gantry_when_method_does_not_declare_it():
     instr = _ClosedLoopInstrument()
     ctx = _ctx()
 
-    kwargs = inject_runtime_args(instr.measure, {}, ctx)
+    kwargs = inject_runtime_args(instr.measure, {}, ctx, measurement_height=0.0)
 
     assert "gantry" not in kwargs
 
@@ -83,7 +85,7 @@ def test_raises_when_method_requires_gantry_but_board_gantry_is_none():
     ctx = _ctx(gantry=None)
 
     with pytest.raises(ProtocolExecutionError, match="gantry"):
-        inject_runtime_args(instr.indentation, {}, ctx)
+        inject_runtime_args(instr.indentation, {}, ctx, measurement_height=0.0)
 
 
 # ── measurement_height injection / type guard ─────────────────────────────

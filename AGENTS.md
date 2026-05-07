@@ -51,7 +51,8 @@ Two kinds of Z fields coexist:
 - **Labware-relative offsets** (`measurement_height`,
   `safe_approach_height` on `scan`/`measure`). Positive = above the
   labware's `height_mm` surface; negative = below. Resolved at command
-  time as `labware.height_mm + relative_offset`.
+  time as `well.z + relative_offset`, where `well.z` is the calibrated
+  deck-frame surface Z.
 
 These offsets live on the protocol command, never on instruments. `scan`
 requires both `measurement_height` and `safe_approach_height`; `measure`

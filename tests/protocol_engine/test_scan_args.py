@@ -45,3 +45,18 @@ class TestNormalizeScanArguments:
             normalize_scan_arguments(
                 method_kwargs={"z_limit": 5.0},
             )
+
+    def test_measurement_height_in_method_kwargs_rejected(self):
+        """The dispatch surface silently overwrites a kwargs-supplied value
+        with the top-level field; surface that as a load-time error rather
+        than letting the user's number quietly disappear."""
+        with pytest.raises(ValueError, match="measurement_height"):
+            normalize_scan_arguments(
+                method_kwargs={"measurement_height": 5.0},
+            )
+
+    def test_safe_approach_height_in_method_kwargs_rejected(self):
+        with pytest.raises(ValueError, match="safe_approach_height"):
+            normalize_scan_arguments(
+                method_kwargs={"safe_approach_height": 5.0},
+            )

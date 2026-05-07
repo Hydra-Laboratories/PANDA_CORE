@@ -83,13 +83,14 @@ The `move` command accepts:
 
 The `measure` command requires `instrument`, `position`, and
 `measurement_height`. It travels XY at the gantry's absolute `safe_z`,
-descends to `labware.height_mm + measurement_height`, and calls the
-selected method. The default method is `measure`.
+descends to `well.z + measurement_height` (where `well.z` is the
+calibrated deck-frame surface Z of the resolved position), and calls
+the selected method. The default method is `measure`.
 
 ## Heights on engaging commands
 
-Heights are *labware-relative* offsets above `labware.height_mm`
-(positive = above the surface; negative = below) and are first-class
+Heights are *labware-relative* offsets above the calibrated well/labware
+surface Z (positive = above; negative = below) and are first-class
 command arguments:
 
 - `measurement_height` — required on `measure` and `scan`. Action plane

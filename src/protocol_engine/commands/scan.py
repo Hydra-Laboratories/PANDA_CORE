@@ -15,7 +15,7 @@ from ..measurements import normalize_measurement
 from ..registry import protocol_command
 from ..scan_args import normalize_scan_arguments
 from ._dispatch import inject_runtime_args
-from ._movement import _assert_finite_number, resolve_labware_height
+from ._movement import _assert_finite_number
 
 if TYPE_CHECKING:
     from ..protocol import ProtocolContext
@@ -44,7 +44,8 @@ def scan(
 
     Iterates wells in row-major order (A1, A2, ..., B1, B2, ...).
 
-    Motion per well, with ``ref_z = plate.height_mm``:
+    Motion per well, with ``ref_z`` = the well coordinate's deck-frame Z
+    (the plate-surface Z, set by calibration):
 
     * **First well of the plate.** Travel at the gantry's ``safe_z``
       (absolute) → descend to ``ref_z + safe_approach_height`` →
@@ -59,11 +60,11 @@ def scan(
         instrument:           Name of the instrument registered on the board.
         method:               Method on the instrument to call per well.
         measurement_height:   Required labware-relative offset for the
-                              action plane (mm above ``labware.height_mm``;
+                              action plane (mm above the well-surface Z;
                               negative = below).
         safe_approach_height: Required labware-relative offset for
-                              between-wells XY travel (mm above
-                              ``labware.height_mm``). Must be at or above
+                              between-wells XY travel (mm above the
+                              well-surface Z). Must be at or above
                               ``measurement_height`` in +Z-up.
         indentation_limit:    ASMI indentation stopping bound (magnitude).
         delay_s:              Seconds to pause between wells (default 0.0).
@@ -105,9 +106,12 @@ def scan(
             safe_approach_height, field_name="safe_approach_height",
             source="scan",
         )
-        ref_z = resolve_labware_height(plate_obj, plate)
     except ValueError as exc:
         raise ProtocolExecutionError(str(exc)) from exc
+
+    # ``ref_z`` is the plate-surface deck-frame Z, carried on each well's
+    # calibrated coordinate (uniform across wells of a single plate).
+    ref_z = plate_obj.get_well_center("A1").z
 
     action_z = ref_z + measurement_height
     approach_z = ref_z + safe_approach_height
@@ -165,7 +169,7 @@ def scan(
                     raw_result=result,
                 )
                 context.data_store.log_measurement(exp_id, measurement)
-            except (sqlite3.Error, TypeError, ValueError) as exc:
+            except sqlite3.Error as exc:
                 logger.warning(
                     "Failed to log measurement for well %s: %s", well_id, exc,
                 )

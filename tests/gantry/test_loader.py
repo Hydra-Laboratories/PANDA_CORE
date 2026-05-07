@@ -35,7 +35,6 @@ instruments:
   asmi:
     type: asmi
     vendor: vernier
-    measurement_height: -1.0
     sensor_channels: [1]
 """
 

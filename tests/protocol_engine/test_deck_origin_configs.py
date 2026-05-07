@@ -79,8 +79,11 @@ def test_asmi_config_generates_deck_origin_scan_waypoints():
     safe_approach_height = scan_step.args["safe_approach_height"]
     measurement_height = scan_step.args["measurement_height"]
     indentation_limit = scan_step.args["indentation_limit"]
-    approach_abs = plate_obj.height_mm + safe_approach_height
-    action_abs = plate_obj.height_mm + measurement_height
+    # Heights are labware-relative; ref Z is the well's calibrated Z, not
+    # the plate's outer ``height_mm`` (which is the physical dimension).
+    surface_z = plate_obj.get_well_center("A1").z
+    approach_abs = surface_z + safe_approach_height
+    action_abs = surface_z + measurement_height
 
     # First well: move_to_labware travels XY at safe_z, then descends to
     # approach plane, then to action plane.
@@ -155,7 +158,11 @@ def test_filmetrics_deck_origin_config_validates_setup():
     assert (a2.x, a2.y, a2.z) == pytest.approx((270.0, 131.0, 70.0))
     scan_step = next(step for step in protocol.steps if step.command_name == "scan")
     assert scan_step.args["measurement_height"] == pytest.approx(10.0)
-    assert plate.height_mm == pytest.approx(70.0)
+    # The well's deck-frame Z (the calibration anchor's z) is the surface
+    # reference. The plate's ``height_mm`` is the physical outer dimension
+    # (from the SBS96 definition).
+    assert a1.z == pytest.approx(70.0)
+    assert plate.height_mm == pytest.approx(14.35)
     assert validate_protocol_semantics(protocol, board, deck, gantry_config) == []
 
     setup_protocol(

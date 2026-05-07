@@ -35,6 +35,32 @@ def _violation(step_index: int, command: str, message: str) -> ProtocolSemanticV
     return ProtocolSemanticViolation(step_index, command, message)
 
 
+def _finite_field_violation(
+    step_index: int,
+    command: str,
+    field_name: str,
+    value: Any,
+) -> ProtocolSemanticViolation | None:
+    """Return a per-field finite-number violation, or None when *value* passes.
+
+    Mirrors the message format of ``_movement._assert_finite_number`` so a
+    field name and the offending value (with type) are always surfaced —
+    a single combined "scan heights must be finite" message hides which
+    field is bad and what the bad value was.
+    """
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+    ):
+        return _violation(
+            step_index, command,
+            f"{field_name} must be a finite number, got "
+            f"{type(value).__name__} {value!r}.",
+        )
+    return None
+
+
 def _resolved_safe_z(gantry: GantryConfig | None) -> float | None:
     if gantry is None:
         return None
@@ -107,18 +133,6 @@ def _validate_below_safe_z(
     return []
 
 
-def _resolve_labware_for_target(
-    deck: Deck, position: str,
-) -> WellPlate | Any | None:
-    """Resolve the labware referenced by a measure/move position string."""
-    if not isinstance(position, str):
-        return None
-    labware_key = position.split(".", 1)[0]
-    if labware_key not in deck:
-        return None
-    return deck[labware_key]
-
-
 def _validate_scan_command(
     *,
     step_index: int,
@@ -143,7 +157,7 @@ def _validate_scan_command(
         violations.append(_violation(
             step_index, "scan",
             "`measurement_height` is required on `scan` (labware-relative "
-            "offset, mm above `labware.height_mm`).",
+            "offset, mm above the well's calibrated surface Z).",
         ))
         return violations
     if relative_approach is None:
@@ -162,22 +176,28 @@ def _validate_scan_command(
     if not isinstance(plate_obj, WellPlate):
         return violations
 
-    if plate_obj.height_mm is None:
+    try:
+        ref_z = plate_obj.get_well_center("A1").z
+    except KeyError:
         violations.append(_violation(
             step_index, "scan",
-            f"plate {plate!r} has no `height_mm` set. Add it to the deck "
-            "YAML so labware-relative scan heights resolve.",
+            f"plate {plate!r} has no calibrated A1 well; cannot resolve "
+            "the surface Z reference for labware-relative heights.",
         ))
         return violations
 
-    if not isinstance(relative_action, (int, float)) or isinstance(relative_action, bool) \
-            or not math.isfinite(relative_action) \
-            or not isinstance(relative_approach, (int, float)) or isinstance(relative_approach, bool) \
-            or not math.isfinite(relative_approach):
-        violations.append(_violation(
-            step_index, "scan",
-            "scan heights must be finite.",
-        ))
+    finite_violations = [
+        v for v in (
+            _finite_field_violation(
+                step_index, "scan", "measurement_height", relative_action,
+            ),
+            _finite_field_violation(
+                step_index, "scan", "safe_approach_height", relative_approach,
+            ),
+        ) if v is not None
+    ]
+    if finite_violations:
+        violations.extend(finite_violations)
         return violations
 
     if relative_approach < relative_action:
@@ -188,7 +208,6 @@ def _validate_scan_command(
             "approach must be at or above the action plane.",
         ))
 
-    ref_z = plate_obj.height_mm
     action_abs = ref_z + relative_action
     approach_abs = ref_z + relative_approach
 
@@ -253,37 +272,25 @@ def _validate_measure_command(
         violations.append(_violation(
             step_index, "measure",
             "`measurement_height` is required on `measure` (labware-relative "
-            "offset, mm above `labware.height_mm`).",
+            "offset, mm above the resolved coordinate's surface Z).",
         ))
         return violations
 
     if instrument not in board.instruments:
         return violations
 
-    labware = _resolve_labware_for_target(deck, position)
-    if labware is None:
-        return violations
-    if getattr(labware, "height_mm", None) is None:
-        violations.append(_violation(
-            step_index, "measure",
-            f"labware at {position!r} has no `height_mm` set.",
-        ))
-        return violations
-
-    if (isinstance(relative_action, bool)
-            or not isinstance(relative_action, (int, float))
-            or not math.isfinite(relative_action)):
-        violations.append(_violation(
-            step_index, "measure",
-            "measure measurement_height must be finite.",
-        ))
+    finite_violation = _finite_field_violation(
+        step_index, "measure", "measurement_height", relative_action,
+    )
+    if finite_violation is not None:
+        violations.append(finite_violation)
         return violations
 
     try:
         coord = deck.resolve(position)
     except (KeyError, AttributeError, ValueError):
         return violations
-    action_abs = labware.height_mm + relative_action
+    action_abs = coord.z + relative_action
     violations.extend(_validate_gantry_waypoint(
         step_index=step_index,
         command_name="measure",

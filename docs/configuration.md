@@ -157,8 +157,8 @@ Use this file when:
 - adding measurement or liquid-handling steps
 - adjusting step parameters without changing the machine layout
 
-Protocol heights are labware-relative (mm above `labware.height_mm`)
-and first-class command arguments:
+Protocol heights are labware-relative (mm above the calibrated
+well/labware surface Z) and first-class command arguments:
 
 - `measurement_height` — action plane. Required on `measure` and `scan`.
 - `safe_approach_height` — between-wells XY-travel plane. Required on

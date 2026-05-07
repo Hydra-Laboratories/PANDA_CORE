@@ -132,9 +132,9 @@ gantry-level `safe_z`, not any instrument field.
 
 ## Protocol Height Fields
 
-Labware-relative offsets above `labware.height_mm` (positive = above the
-surface; negative = below) are first-class arguments to the protocol
-commands that consume them:
+Labware-relative offsets above the calibrated well/labware surface Z
+(positive = above; negative = below) are first-class arguments to the
+protocol commands that consume them:
 
 - `measurement_height` — required on `measure` and `scan`. It is the
   action plane offset.

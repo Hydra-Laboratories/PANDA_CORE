@@ -64,10 +64,14 @@ PYTHONPATH=src python setup/validate_setup.py \
 ## Height Semantics
 
 `measurement_height` and `safe_approach_height` are **labware-relative
-offsets** above the labware's `height_mm` reference (positive = above,
+offsets** above the calibrated well/labware surface Z (positive = above,
 negative = below). At runtime, action and approach planes are computed
-as `labware.height_mm + offset`. Both fields are first-class arguments
-to the protocol command — instruments do not declare them.
+as `well.z + offset`, where `well.z` is the calibration anchor's z (set
+in the deck YAML). Both fields are first-class arguments to the
+protocol command — instruments do not declare them. The plate's
+``height_mm`` is the physical outer dimension (rim → underside), used
+for collision/visualization and for the ``well_depth_mm <= height_mm``
+sanity check, not for motion math.
 
 - `scan` requires `measurement_height` and `safe_approach_height`
 - `measure` requires `measurement_height`

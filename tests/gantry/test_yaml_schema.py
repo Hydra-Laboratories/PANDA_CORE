@@ -183,16 +183,30 @@ class TestGantryYamlSchema:
         assert schema.instruments["asmi"].type == "asmi"
         assert schema.instruments["asmi"].model_extra["sensor_channels"] == [1]
 
-    def test_instrument_measurement_height_no_longer_a_field(self):
-        """`measurement_height` belongs on the protocol command, not the
-        instrument config. Schema accepts it as a model_extra (no validation
-        error), but `InstrumentYamlEntry` exposes no first-class attribute."""
+    def test_instrument_measurement_height_rejected_with_migration_hint(self):
+        """A stale `measurement_height:` on the instrument YAML must fail
+        loudly. With ``extra="allow"`` it would otherwise slip through
+        ``**kwargs`` for drivers that accept them, silently doing nothing."""
         data = _valid_gantry_dict()
         data["instruments"] = {
-            "filmetrics": {"type": "filmetrics", "vendor": "kla"},
+            "filmetrics": {
+                "type": "filmetrics", "vendor": "kla",
+                "measurement_height": -1.0,
+            },
         }
-        schema = GantryYamlSchema.model_validate(data)
-        assert not hasattr(schema.instruments["filmetrics"], "measurement_height")
+        with pytest.raises(ValidationError, match="measurement_height"):
+            GantryYamlSchema.model_validate(data)
+
+    def test_instrument_safe_approach_height_rejected_with_migration_hint(self):
+        data = _valid_gantry_dict()
+        data["instruments"] = {
+            "asmi": {
+                "type": "asmi", "vendor": "vernier",
+                "safe_approach_height": 8.0,
+            },
+        }
+        with pytest.raises(ValidationError, match="safe_approach_height"):
+            GantryYamlSchema.model_validate(data)
 
 
 class TestGrblSettingsYaml:
