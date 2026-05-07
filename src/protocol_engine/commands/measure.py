@@ -19,20 +19,18 @@ def measure(
     instrument: str,
     position: str,
     method: str = "measure",
-    measurement_height: float | None = None,
     method_kwargs: Dict[str, Any] = {},
 ) -> Any:
     """Measure at a deck position using *instrument*.
 
     Motion:
       1. Travel at the gantry's ``safe_z`` (absolute) to above the target.
-      2. Descend straight down to ``labware.height_mm + measurement_height``.
+      2. Descend straight down to ``labware.height_mm + instr.measurement_height``.
       3. Call ``instrument.method(**method_kwargs)``.
 
-    ``measurement_height`` is a labware-relative offset (mm above the
-    labware's ``height_mm`` surface; negative = below). At least one of
-    (instrument config, command parameter) must set it; when both are
-    set the values must match.
+    ``measurement_height`` is owned by the instrument config — a
+    labware-relative offset (mm above the labware's ``height_mm`` surface;
+    negative = below). It is not a protocol-command parameter.
     """
     if instrument not in context.board.instruments:
         raise ProtocolExecutionError(
@@ -52,7 +50,6 @@ def measure(
             instrument,
             position,
             command_label="measure",
-            measurement_height=measurement_height,
         )
     except ValueError as exc:
         raise ProtocolExecutionError(str(exc)) from exc
@@ -62,9 +59,8 @@ def measure(
         instrument, method, method_kwargs, position, action_z,
     )
 
-    # Inject gantry + measurement_height for closed-loop methods (e.g.
-    # ASMI.indentation) that drive the gantry themselves. The action_z
-    # we just descended to is the source of truth.
+    # Inject gantry + the resolved absolute action Z into closed-loop
+    # methods (e.g. ASMI.indentation) that drive the gantry themselves.
     callable_method = getattr(instr, method)
     kwargs = inject_runtime_args(
         callable_method, method_kwargs, context,

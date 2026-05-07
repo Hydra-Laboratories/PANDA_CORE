@@ -62,41 +62,12 @@ def test_measure_with_negative_offset_descends_below_surface():
     ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, HEIGHT_MM - 1.0))
 
 
-def test_measure_command_value_overrides_unset_instrument():
-    """XOR: command supplies measurement_height when instrument has none."""
+def test_measure_missing_instrument_measurement_height_rejected():
+    """`measurement_height` is owned by the instrument config — required."""
     instr = _mock_instr(measurement_height=None)
     ctx = _ctx(instr)
 
-    measure(ctx, instrument="uvvis", position="plate_1.A1",
-            measurement_height=2.5)
-
-    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, HEIGHT_MM + 2.5))
-
-
-def test_measure_conflict_when_both_set_with_different_values():
-    instr = _mock_instr(measurement_height=1.0)
-    ctx = _ctx(instr)
-
-    with pytest.raises(ProtocolExecutionError, match="conflicting values"):
-        measure(ctx, instrument="uvvis", position="plate_1.A1",
-                measurement_height=2.0)
-
-
-def test_measure_accepts_matching_values_on_both_sources():
-    instr = _mock_instr(measurement_height=1.5)
-    ctx = _ctx(instr)
-
-    measure(ctx, instrument="uvvis", position="plate_1.A1",
-            measurement_height=1.5)
-
-    ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, HEIGHT_MM + 1.5))
-
-
-def test_measure_xor_violation_when_neither_set():
-    instr = _mock_instr(measurement_height=None)
-    ctx = _ctx(instr)
-
-    with pytest.raises(ProtocolExecutionError, match="not set"):
+    with pytest.raises(ProtocolExecutionError, match="not set on instrument"):
         measure(ctx, instrument="uvvis", position="plate_1.A1")
 
 

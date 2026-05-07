@@ -86,10 +86,12 @@ labware:
 Instrument Z semantics live in the gantry YAML:
 
 - `measurement_height` and `safe_approach_height` are *labware-relative*
-  offsets (mm above `labware.height_mm`; negative = below). Each may be
-  set on the instrument here, on the protocol command, or both — at
-  least one source must define each, and conflicting values across
-  sources are rejected. `safe_approach_height` is consumed only by `scan`.
+  offsets (mm above `labware.height_mm`; negative = below).
+  `measurement_height` is owned by the instrument config (here, in the
+  gantry YAML's `instruments:` block) — protocol commands do not override
+  it. `safe_approach_height` may be set on the instrument here, on the
+  `scan` command, or both; at least one source must define it and
+  conflicting values across sources are rejected.
 - Inter-labware travel uses the gantry-level `safe_z`, not any instrument
   field.
 
@@ -119,12 +121,12 @@ Protocol motion notes:
 - `move` accepts optional `travel_z` for named/literal XYZ targets. That forces
   a retract-first transit: move Z to `travel_z`, travel in XY at that Z, then
   finish at the target position.
-- Scan heights are *labware-relative* offsets above `labware.height_mm`:
-  `measurement_height` (action plane) and `safe_approach_height`
-  (between-wells XY-travel plane; must be at or above `measurement_height`).
-  Each may be set on the instrument config, the protocol command, or
-  both — at least one source must define each; conflicting values across
-  sources are rejected.
+- Scan heights are *labware-relative* offsets above `labware.height_mm`.
+  `measurement_height` (the action plane) is owned by the instrument
+  config; scan does not accept it. `safe_approach_height` (between-wells
+  XY-travel plane; must be at or above `measurement_height`) may be set
+  on the instrument config, the `scan` command, or both — at least one
+  source must define it; conflicting values across sources are rejected.
 - The first well of a scan and inter-labware travel use the gantry's
   absolute `cnc.safe_z` (default `working_volume.z_max`).
 - Legacy names `entry_travel_z`, `entry_travel_height`,

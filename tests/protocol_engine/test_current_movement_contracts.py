@@ -5,8 +5,9 @@ agree on the same motion primitives:
 
 * ``Board.move_to_labware`` travels XY at the gantry's ``safe_z``
   (absolute deck-frame).
-* Engaging commands resolve ``measurement_height`` via the XOR rule and
-  descend to ``labware.height_mm + measurement_height`` (relative).
+* Engaging commands read ``measurement_height`` from the instrument
+  config and descend to ``labware.height_mm + measurement_height``
+  (relative).
 """
 
 from __future__ import annotations

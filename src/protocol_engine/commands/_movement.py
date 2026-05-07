@@ -4,7 +4,8 @@ CubOS uses a +Z-up deck frame and labware-relative action heights.
 
 * ``measurement_height`` and ``safe_approach_height`` are *labware-relative*
   offsets above (positive) or below (negative) the labware's ``height_mm``
-  surface.
+  surface. ``measurement_height`` is owned by the instrument config; protocol
+  commands do not override it.
 * Inter-labware travel uses the gantry's absolute ``safe_z``, exposed on
   ``Board.safe_z``.
 
@@ -58,71 +59,30 @@ def resolve_labware_height(labware: Any, position: str) -> float:
     return height_mm
 
 
-def resolve_height_field(
+def resolve_instrument_measurement_height(
     *,
-    field_name: str,
     instrument_value: float | None,
-    command_value: float | None,
     instrument_name: str,
     command_label: str,
 ) -> float:
-    """Resolve a labware-relative height field from two possible sources.
+    """Return the labware-relative ``measurement_height`` from the instrument
+    config, raising a clear error if unset.
 
-    The field may be set on the instrument config, on the protocol command,
-    or both. At least one source must define it. If both are set, they must
-    agree; conflicting values raise.
-
-    Args:
-        field_name: Name of the field for error messages (e.g.
-            ``"measurement_height"``, ``"safe_approach_height"``).
-        instrument_value: Value from the instrument config (or ``None``).
-        command_value: Value from the protocol command (or ``None``).
-        instrument_name: Instrument name for error messages.
-        command_label: Command name for error messages
-            (e.g. ``"measure"``, ``"scan"``).
+    ``measurement_height`` is owned by the instrument; protocol commands do
+    not override it. This helper exists to centralize the "instrument must
+    declare it" + finite-number checks.
     """
-    if instrument_value is not None:
-        _assert_finite_number(
-            instrument_value, field_name=field_name,
-            source=f"instrument '{instrument_name}'",
-        )
-    if command_value is not None:
-        _assert_finite_number(
-            command_value, field_name=field_name,
-            source=f"command '{command_label}'",
-        )
-    if instrument_value is not None and command_value is not None:
-        if instrument_value != command_value:
-            raise ValueError(
-                f"{command_label}: `{field_name}` is set on instrument "
-                f"'{instrument_name}' ({instrument_value}) and on the "
-                f"command ({command_value}) with conflicting values. "
-                "When both sources are set they must match."
-            )
-        return instrument_value
-    if instrument_value is None and command_value is None:
+    if instrument_value is None:
         raise ValueError(
-            f"{command_label}: `{field_name}` is not set. Provide it on "
-            f"the command or on instrument '{instrument_name}'."
+            f"{command_label}: `measurement_height` is not set on instrument "
+            f"'{instrument_name}'. Set it in the gantry YAML's `instruments:` "
+            f"block as a labware-relative offset."
         )
-    return instrument_value if instrument_value is not None else command_value
-
-
-# Backwards-compatible wrapper for the common ``measurement_height`` case.
-def resolve_measurement_height(
-    *,
-    instrument_value: float | None,
-    command_value: float | None,
-    instrument_name: str,
-    command_label: str,
-) -> float:
-    return resolve_height_field(
-        field_name="measurement_height",
-        instrument_value=instrument_value,
-        command_value=command_value,
-        instrument_name=instrument_name,
-        command_label=command_label,
+    _assert_finite_number(
+        instrument_value, field_name="measurement_height",
+        source=f"instrument '{instrument_name}'",
     )
+    return float(instrument_value)
 
 
 def engage_at_labware(
@@ -131,23 +91,20 @@ def engage_at_labware(
     position: str,
     *,
     command_label: str,
-    measurement_height: float | None = None,
 ) -> float:
     """Travel above *position* at ``safe_z``, descend to the action plane.
 
-    Resolves the labware-relative ``measurement_height`` from two sources
-    (instrument config and protocol command). At least one source must
-    define it; if both are set the values must match. Composes
-    ``board.move_to_labware`` (XY at ``safe_z``) followed by a straight
-    descent to ``labware.height_mm + measurement_height``.
+    Reads the labware-relative ``measurement_height`` from the instrument
+    config (the only source) and descends to
+    ``labware.height_mm + measurement_height``.
 
     Returns the resolved absolute action Z.
 
     Raises:
         ValueError: missing labware/instrument, missing height_mm on
-            labware, missing or conflicting ``measurement_height``,
-            non-finite numeric values. All command-boundary failures
-            surface as ``ValueError`` so callers can wrap them into
+            labware, missing ``instr.measurement_height``, non-finite
+            numeric value. All command-boundary failures surface as
+            ``ValueError`` so callers can wrap them into
             ``ProtocolExecutionError`` consistently.
     """
     try:
@@ -171,9 +128,8 @@ def engage_at_labware(
             f"{command_label}: labware {labware_key!r} not found on the deck."
         ) from exc
     ref_z = resolve_labware_height(labware, position)
-    relative_offset = resolve_measurement_height(
+    relative_offset = resolve_instrument_measurement_height(
         instrument_value=instr.measurement_height,
-        command_value=measurement_height,
         instrument_name=instrument,
         command_label=command_label,
     )

@@ -116,11 +116,13 @@ Offsets are relative to the gantry/router reference point.
 
 `measurement_height` and `safe_approach_height` are *labware-relative*
 offsets (mm above the labware's `height_mm` surface; negative = below).
-Each may be set on the instrument, on the protocol command, or both —
-at least one source must define each, and conflicting values across
-sources are rejected. `safe_approach_height` is consumed only by
-`scan`. Inter-labware and first-well-entry travel use the gantry-level
-`safe_z`, not any instrument field.
+`measurement_height` is owned by the instrument config — protocol
+commands do not accept it. `safe_approach_height` may be set on the
+instrument, on the `scan` command, or both; at least one source must
+define it and conflicting values across sources are rejected.
+`safe_approach_height` is consumed only by `scan`. Inter-labware and
+first-well-entry travel use the gantry-level `safe_z`, not any instrument
+field.
 
 Representative example:
 
@@ -163,13 +165,12 @@ Use this file when:
 
 Protocol scan heights are labware-relative (mm above `labware.height_mm`):
 
-- `measurement_height` — action plane.
+- `measurement_height` — action plane. Owned by the instrument config;
+  the `scan` command does not accept it.
 - `safe_approach_height` — between-wells XY-travel plane (must be at or
-  above `measurement_height`).
-
-Each may be set on the instrument config, the protocol command, or
-both. At least one source must define each; conflicting values across
-sources are rejected.
+  above `measurement_height`). May be set on the instrument config, the
+  `scan` command, or both; at least one source must define it and
+  conflicting values across sources are rejected.
 
 Inter-labware travel uses the gantry's absolute `safe_z`. Legacy names
 `entry_travel_z`, `entry_travel_height`, `interwell_travel_height`, and

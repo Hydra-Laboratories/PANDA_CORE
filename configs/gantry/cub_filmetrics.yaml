@@ -53,7 +53,9 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    # measurement_height intentionally omitted here — protocol commands
-    # supply the labware-relative offset. Verify on hardware.
+    # measurement_height is the labware-relative action offset (mm above
+    # the labware's height_mm reference). For non-contact filmetrics,
+    # 10 mm is a typical probe clearance — verify on hardware.
+    measurement_height: 10.0
     exe_path: ""
     recipe_name: ""

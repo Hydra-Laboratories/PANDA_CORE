@@ -31,10 +31,9 @@ protocol:
       # safe_approach_height is the labware-relative XY-travel offset
       # between wells (mm above the plate surface). Required.
       safe_approach_height: 8.0
-      # measurement_height (the action plane offset) may be set here, on
-      # the instrument config, or both. At least one source must define
-      # it; if both set, values must match. Here we let the instrument
-      # config supply it.
+      # measurement_height (the action plane offset) is owned by the
+      # instrument config — set it in the gantry YAML's `instruments:`
+      # block, not here.
       indentation_limit: 5.0   # magnitude: descend 5 mm into the well
       method_kwargs:
         step_size: 0.01
@@ -87,22 +86,22 @@ The `move` command accepts:
 
 The `measure` command requires `instrument` and `position`. It travels XY
 at the gantry's absolute `safe_z`, descends to
-`labware.height_mm + measurement_height`, and calls the selected method.
-The default method is `measure`. `measurement_height` may be set on the
-command, on the instrument config, or both; at least one source must
-define it and conflicting values across sources are rejected.
+`labware.height_mm + instr.measurement_height`, and calls the selected
+method. The default method is `measure`. `measurement_height` is owned
+by the instrument config (set in the gantry YAML's `instruments:` block);
+the `measure` command does not accept it.
 
 ## Scan Heights
 
 Scan heights are *labware-relative* offsets above `labware.height_mm`
 (positive = above the plate surface; negative = below):
 
-- `measurement_height` is the action plane offset. Set it on the
-  protocol command, the instrument config, or both — at least one source
-  must define it; conflicting values across sources are rejected.
-- `safe_approach_height` is the between-wells XY-travel offset. Same
-  dual-source rule as `measurement_height`. Must be at or above
-  `measurement_height` in +Z-up.
+- `measurement_height` is the action plane offset. Owned by the
+  instrument config; the `scan` command does not accept it.
+- `safe_approach_height` is the between-wells XY-travel offset. May be
+  set on the instrument config, the `scan` command, or both; at least
+  one source must define it and conflicting values across sources are
+  rejected. Must be at or above `measurement_height` in +Z-up.
 - `indentation_limit` is a sign-agnostic *magnitude* — the descent
   distance below the action plane. Legacy ASMI `z_limit` is rejected.
 

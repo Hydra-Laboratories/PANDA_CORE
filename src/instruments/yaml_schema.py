@@ -17,13 +17,15 @@ class InstrumentYamlEntry(BaseModel):
     -----------
     ``measurement_height`` and ``safe_approach_height`` are *labware-relative*
     offsets (mm above the labware's ``height_mm`` surface; negative = below).
-    Each may be set here, on the protocol ``measure``/``scan`` command, or
-    both — but at least one source must define each, and conflicting values
-    between the two sources are rejected.
 
-    ``safe_approach_height`` is consumed by the ``scan`` command only;
-    ``measure`` does not use it. Inter-labware travel uses the gantry-level
-    ``safe_z`` (absolute), not any instrument-level field.
+    ``measurement_height`` is owned here — protocol ``measure``/``scan``
+    commands do not accept it.
+
+    ``safe_approach_height`` may be set here, on the ``scan`` command, or
+    both; at least one source must define it and conflicting values across
+    sources are rejected. ``safe_approach_height`` is consumed by ``scan``
+    only; ``measure`` does not use it. Inter-labware travel uses the
+    gantry-level ``safe_z`` (absolute), not any instrument-level field.
     """
 
     model_config = ConfigDict(extra="allow")

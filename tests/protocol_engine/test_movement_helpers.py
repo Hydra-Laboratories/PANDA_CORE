@@ -7,8 +7,8 @@ import pytest
 from deck.labware.labware import Coordinate3D
 from protocol_engine.commands._movement import (
     engage_at_labware,
+    resolve_instrument_measurement_height,
     resolve_labware_height,
-    resolve_measurement_height,
     unpack_xyz,
 )
 
@@ -42,46 +42,28 @@ class TestResolveLabwareHeight:
             resolve_labware_height(labware, "plate")
 
 
-class TestResolveMeasurementHeight:
+class TestResolveInstrumentMeasurementHeight:
 
-    def test_uses_command_value_when_only_command_set(self):
-        assert resolve_measurement_height(
-            instrument_value=None,
-            command_value=2.5,
-            instrument_name="probe",
-            command_label="measure",
-        ) == 2.5
-
-    def test_uses_instrument_value_when_only_instrument_set(self):
-        assert resolve_measurement_height(
+    def test_returns_instrument_value(self):
+        assert resolve_instrument_measurement_height(
             instrument_value=-1.0,
-            command_value=None,
             instrument_name="probe",
             command_label="measure",
         ) == -1.0
 
-    def test_rejects_when_both_set_with_conflicting_values(self):
-        with pytest.raises(ValueError, match="conflicting values"):
-            resolve_measurement_height(
-                instrument_value=1.0,
-                command_value=2.0,
+    def test_rejects_when_unset(self):
+        with pytest.raises(ValueError, match="not set on instrument"):
+            resolve_instrument_measurement_height(
+                instrument_value=None,
                 instrument_name="probe",
                 command_label="measure",
             )
 
-    def test_accepts_when_both_set_to_same_value(self):
-        assert resolve_measurement_height(
-            instrument_value=1.5,
-            command_value=1.5,
-            instrument_name="probe",
-            command_label="measure",
-        ) == 1.5
-
-    def test_rejects_when_neither_set(self):
-        with pytest.raises(ValueError, match="not set"):
-            resolve_measurement_height(
-                instrument_value=None,
-                command_value=None,
+    @pytest.mark.parametrize("bad_value", ["", "1.0", "abc", float("nan"), float("inf"), True])
+    def test_rejects_non_finite_values(self, bad_value):
+        with pytest.raises(ValueError, match="finite number"):
+            resolve_instrument_measurement_height(
+                instrument_value=bad_value,
                 instrument_name="probe",
                 command_label="measure",
             )
@@ -114,29 +96,19 @@ class TestEngageAtLabware:
         ctx.board.move_to_labware.assert_called_once()
         ctx.board.move.assert_called_once_with("sensor", (10.0, 20.0, 16.10))
 
-    def test_command_value_overrides_unset_instrument_value(self):
-        ctx, _, _ = _mock_ctx_with_labware(measurement_height=None, height_mm=14.10)
+    def test_negative_offset_descends_below_surface(self):
+        ctx, _, _ = _mock_ctx_with_labware(measurement_height=-1.0, height_mm=14.10)
         action_z = engage_at_labware(
-            ctx, "sensor", "plate.A1",
-            command_label="measure", measurement_height=-1.0,
+            ctx, "sensor", "plate.A1", command_label="measure",
         )
         assert action_z == pytest.approx(13.10)
 
-    def test_conflict_when_both_set_with_different_values(self):
-        ctx, _, _ = _mock_ctx_with_labware(measurement_height=2.0, height_mm=14.10)
-        with pytest.raises(ValueError, match="conflicting values"):
+    def test_missing_instrument_measurement_height_raises(self):
+        ctx, _, _ = _mock_ctx_with_labware(measurement_height=None, height_mm=14.10)
+        with pytest.raises(ValueError, match="not set on instrument"):
             engage_at_labware(
-                ctx, "sensor", "plate.A1",
-                command_label="measure", measurement_height=3.0,
+                ctx, "sensor", "plate.A1", command_label="measure",
             )
-
-    def test_accepts_matching_values_on_both_sources(self):
-        ctx, _, _ = _mock_ctx_with_labware(measurement_height=2.0, height_mm=14.10)
-        action_z = engage_at_labware(
-            ctx, "sensor", "plate.A1",
-            command_label="measure", measurement_height=2.0,
-        )
-        assert action_z == pytest.approx(16.10)
 
     def test_missing_height_mm_raises(self):
         ctx, _, labware = _mock_ctx_with_labware(measurement_height=2.0, height_mm=None)

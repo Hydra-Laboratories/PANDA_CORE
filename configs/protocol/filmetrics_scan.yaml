@@ -9,5 +9,6 @@ protocol:
       plate: plate_1
       instrument: filmetrics
       method: measure
-      measurement_height: 10.0     # 10 mm above the plate surface
-      safe_approach_height: 10.0   # same plane (non-contact)
+      # measurement_height is owned by the instrument config (10 mm above
+      # the plate surface). Scan only owns inter-well travel here.
+      safe_approach_height: 10.0   # same plane as action (non-contact)

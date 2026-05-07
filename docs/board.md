@@ -40,12 +40,12 @@ Common optional fields are:
 - `offset_x` and `offset_y` - XY offset from the gantry head reference point
 - `depth` - positive tool depth below the gantry head reference point; in the +Z-up deck frame, gantry Z is computed as target/tool Z plus `depth`
 - `measurement_height` - labware-relative offset (mm above
-  `labware.height_mm`; negative = below). May be set here, on the
-  protocol command, or both — at least one source must define it, and
-  conflicting values across sources are rejected.
+  `labware.height_mm`; negative = below). Owned by the instrument
+  config — protocol commands do not accept it.
 - `safe_approach_height` - labware-relative offset for between-wells XY
-  travel during `scan`. Same dual-source rule as `measurement_height`;
-  consumed only by `scan` (not `measure`).
+  travel during `scan`. May be set here, on the `scan` command, or
+  both; at least one source must define it and conflicting values
+  across sources are rejected. Consumed only by `scan` (not `measure`).
 
 `Board.move_to_labware` travels XY at the gantry-level `safe_z` (absolute
 deck-frame Z, set on `cnc.safe_z`).

@@ -4,9 +4,9 @@ The protocol model:
 
 * ``measurement_height`` and ``safe_approach_height`` are *labware-relative*
   offsets (mm above the labware's ``height_mm`` surface; negative = below).
-* ``measurement_height`` follows a dual-source rule: at least one of the
-  instrument config and the protocol command must set it; if both are
-  set, the values must match.
+* ``measurement_height`` is owned by the instrument config (not on
+  protocol commands). ``safe_approach_height`` may be on either source
+  with a dual-source rule (at least one set; if both, values match).
 * ``safe_approach_height`` is required only on ``scan`` commands.
 * ``gantry.safe_z`` is the absolute deck-frame Z used for inter-labware
   travel and the entry approach for the first well of a scan. Resolved
@@ -163,13 +163,19 @@ def _validate_scan_command(
 
     try:
         normalized = normalize_scan_arguments(
-            measurement_height=args.get("measurement_height"),
             safe_approach_height=args.get("safe_approach_height"),
             indentation_limit=args.get("indentation_limit"),
             method_kwargs=args.get("method_kwargs"),
         )
     except ValueError as exc:
         return [_violation(step_index, "scan", str(exc))]
+    if "measurement_height" in args:
+        return [_violation(
+            step_index, "scan",
+            "Top-level `measurement_height` on `scan` is not supported. "
+            "`measurement_height` is owned by the instrument config; set "
+            "it in the gantry YAML's `instruments:` block.",
+        )]
 
     instrument = args.get("instrument")
     plate = args.get("plate")
@@ -188,16 +194,14 @@ def _validate_scan_command(
         ))
         return violations
 
-    relative_action, error = _resolve_dual_source_height(
-        instrument_value=instr.measurement_height,
-        command_value=normalized.measurement_height,
-    )
-    if error:
+    if instr.measurement_height is None:
         violations.append(_violation(
             step_index, "scan",
-            f"`measurement_height` {error}.",
+            f"`measurement_height` is not set on instrument {instrument!r}. "
+            "Set it in the gantry YAML's `instruments:` block.",
         ))
         return violations
+    relative_action = instr.measurement_height
 
     relative_approach, approach_error = _resolve_dual_source_height(
         instrument_value=getattr(instr, "safe_approach_height", None),
@@ -284,7 +288,15 @@ def _validate_measure_command(
     violations: list[ProtocolSemanticViolation] = []
     instrument = args.get("instrument")
     position = args.get("position")
-    command_height = args.get("measurement_height")
+
+    if "measurement_height" in args:
+        violations.append(_violation(
+            step_index, "measure",
+            "Top-level `measurement_height` on `measure` is not supported. "
+            "`measurement_height` is owned by the instrument config; set "
+            "it in the gantry YAML's `instruments:` block.",
+        ))
+        return violations
 
     if instrument not in board.instruments:
         return violations
@@ -300,16 +312,14 @@ def _validate_measure_command(
         return violations
 
     instr = board.instruments[instrument]
-    relative_action, error = _resolve_dual_source_height(
-        instrument_value=instr.measurement_height,
-        command_value=command_height,
-    )
-    if error:
+    if instr.measurement_height is None:
         violations.append(_violation(
             step_index, "measure",
-            f"`measurement_height` {error}.",
+            f"`measurement_height` is not set on instrument {instrument!r}. "
+            "Set it in the gantry YAML's `instruments:` block.",
         ))
         return violations
+    relative_action = instr.measurement_height
     if not math.isfinite(relative_action):
         violations.append(_violation(
             step_index, "measure",

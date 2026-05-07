@@ -130,10 +130,12 @@ Mounted instruments live under the gantry YAML `instruments` key.
 - `depth` is positive tool depth below the gantry reference point; in the +Z-up
   deck frame, gantry Z is computed as target/tool Z plus `depth`.
 - `measurement_height` and `safe_approach_height` are *labware-relative*
-  offsets (mm above `labware.height_mm`; negative = below). Each may be
-  set here, on the protocol command, or both. At least one source must
-  define each, and conflicting values across sources are rejected.
-  `safe_approach_height` is consumed only by `scan`.
+  offsets (mm above `labware.height_mm`; negative = below).
+  `measurement_height` is owned by the instrument config and is required
+  here for any instrument that engages with labware; protocol commands
+  do not accept it. `safe_approach_height` may be set here, on the
+  `scan` command, or both; at least one source must define it and
+  conflicting values across sources are rejected.
 
 Inter-labware and first-well-entry travel use the gantry-level `safe_z`,
 not any instrument field.
@@ -144,12 +146,12 @@ Protocol heights are *labware-relative* offsets above `labware.height_mm`
 (positive = above the surface; negative = below):
 
 - `measurement_height` is the action plane offset for `measure` and
-  `scan`. Set it on the protocol command, the instrument config, or
-  both — at least one source must define it; conflicting values across
-  sources are rejected.
+  `scan`. It is owned by the instrument config — set it in the gantry
+  YAML's `instruments:` block, not on the protocol command.
 - `safe_approach_height` is the between-wells XY-travel offset for
-  `scan`. Same dual-source rule as `measurement_height`. Must be at or
-  above `measurement_height`.
+  `scan`. May be set on the instrument config, the `scan` command, or
+  both; at least one source must define it and conflicting values
+  across sources are rejected. Must be at or above `measurement_height`.
 - `park_position` is an explicit rest pose (absolute coords, not relative).
 - ASMI `indentation_limit` is a sign-agnostic *magnitude* — the descent
   distance below the action plane.

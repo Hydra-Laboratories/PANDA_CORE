@@ -152,9 +152,8 @@ def test_filmetrics_deck_origin_config_validates_setup():
 
     assert (a1.x, a1.y, a1.z) == pytest.approx((270.0, 140.0, 70.0))
     assert (a2.x, a2.y, a2.z) == pytest.approx((270.0, 131.0, 70.0))
-    # Filmetrics instrument has no instrument-level measurement_height;
-    # the protocol scan command supplies it (XOR rule).
-    assert board.instruments["filmetrics"].measurement_height is None
+    # `measurement_height` is owned by the instrument config — required.
+    assert board.instruments["filmetrics"].measurement_height == pytest.approx(10.0)
     assert plate.height_mm == pytest.approx(70.0)
     assert validate_protocol_semantics(protocol, board, deck, gantry_config) == []
 

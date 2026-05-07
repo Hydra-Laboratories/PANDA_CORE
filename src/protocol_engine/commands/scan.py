@@ -16,9 +16,8 @@ from ..registry import protocol_command
 from ..scan_args import normalize_scan_arguments
 from ._dispatch import inject_runtime_args
 from ._movement import (
-    resolve_height_field,
+    resolve_instrument_measurement_height,
     resolve_labware_height,
-    resolve_measurement_height,
 )
 
 if TYPE_CHECKING:
@@ -39,7 +38,6 @@ def scan(
     instrument: str,
     method: str,
     safe_approach_height: float | None = None,
-    measurement_height: float | None = None,
     indentation_limit: float | None = None,
     delay_s: float = 0.0,
     method_kwargs: Dict[str, Any] | None = None,
@@ -52,10 +50,10 @@ def scan(
 
     * **First well of the plate.** Travel at the gantry's ``safe_z``
       (absolute) → descend to ``ref_z + safe_approach_height`` →
-      descend to ``ref_z + measurement_height`` → act.
+      descend to ``ref_z + instr.measurement_height`` → act.
     * **Subsequent wells.** Rise to ``ref_z + safe_approach_height`` at
       the current XY → travel XY at that height → descend to
-      ``ref_z + measurement_height`` → act.
+      ``ref_z + instr.measurement_height`` → act.
 
     Args:
         context:              Runtime context (board, deck, logger).
@@ -67,9 +65,6 @@ def scan(
                               May be set here or on the instrument config;
                               at least one source must define it, and
                               conflicting values across sources are rejected.
-        measurement_height:   Labware-relative offset for the action plane.
-                              Same dual-source rule as
-                              ``safe_approach_height``.
         indentation_limit:    ASMI indentation stopping bound (magnitude).
         delay_s:              Seconds to pause between wells (default 0.0).
         method_kwargs:        Keyword arguments passed per well.
@@ -99,25 +94,38 @@ def scan(
 
     try:
         normalized = normalize_scan_arguments(
-            measurement_height=measurement_height,
             safe_approach_height=safe_approach_height,
             indentation_limit=indentation_limit,
             method_kwargs=method_kwargs,
         )
         ref_z = resolve_labware_height(plate_obj, plate)
-        relative_action = resolve_measurement_height(
+        relative_action = resolve_instrument_measurement_height(
             instrument_value=instr.measurement_height,
-            command_value=normalized.measurement_height,
             instrument_name=instrument,
             command_label="scan",
         )
-        relative_approach = resolve_height_field(
-            field_name="safe_approach_height",
-            instrument_value=getattr(instr, "safe_approach_height", None),
-            command_value=normalized.safe_approach_height,
-            instrument_name=instrument,
-            command_label="scan",
-        )
+        # safe_approach_height may still be on either source; reuse a small
+        # local dual-source check rather than dragging the resolver back.
+        instr_approach = getattr(instr, "safe_approach_height", None)
+        cmd_approach = normalized.safe_approach_height
+        if instr_approach is not None and cmd_approach is not None:
+            if instr_approach != cmd_approach:
+                raise ValueError(
+                    f"scan: `safe_approach_height` set on instrument "
+                    f"'{instrument}' ({instr_approach}) and on the command "
+                    f"({cmd_approach}) with conflicting values. When both "
+                    "sources are set they must match."
+                )
+            relative_approach = float(instr_approach)
+        elif instr_approach is None and cmd_approach is None:
+            raise ValueError(
+                f"scan: `safe_approach_height` is not set. Provide it on "
+                f"the command or on instrument '{instrument}'."
+            )
+        else:
+            relative_approach = float(
+                instr_approach if instr_approach is not None else cmd_approach
+            )
     except ValueError as exc:
         raise ProtocolExecutionError(str(exc)) from exc
 

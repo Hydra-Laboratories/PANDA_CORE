@@ -253,15 +253,15 @@ class TestScanCommand:
         assert position == (10.0, 8.0, APPROACH_ABS)
         assert last_move.kwargs.get("travel_z") == APPROACH_ABS
 
-    def test_command_measurement_height_overrides_no_instrument_default(self):
-        """XOR: command supplies measurement_height when instrument has none."""
+    def test_uses_instrument_measurement_height(self):
+        """`measurement_height` is owned by the instrument config."""
         from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()
-        sensor = _make_sensor(measurement_height=None)
+        sensor = _make_sensor(measurement_height=2.0)
         ctx = _mock_context(plate=plate, sensor=sensor)
 
-        scan(ctx, **_scan_args(measurement_height=2.0))
+        scan(ctx, **_scan_args())
 
         action_zs = [
             c.args[1][2] for c in ctx.board.move.call_args_list
@@ -270,35 +270,14 @@ class TestScanCommand:
         # 4 wells worth of action descents.
         assert len(action_zs) == 4
 
-    def test_conflict_when_both_measurement_heights_set_differently(self):
-        from protocol_engine.commands.scan import scan
-
-        plate = _make_2x2_plate()
-        sensor = _make_sensor(measurement_height=1.0)
-        ctx = _mock_context(plate=plate, sensor=sensor)
-
-        with pytest.raises(ProtocolExecutionError, match="conflicting values"):
-            scan(ctx, **_scan_args(measurement_height=2.0))
-
-    def test_accepts_matching_values_on_both_sources(self):
-        """Both instrument and command set to the same value is allowed."""
-        from protocol_engine.commands.scan import scan
-
-        plate = _make_2x2_plate()
-        sensor = _make_sensor(measurement_height=MEASUREMENT)
-        ctx = _mock_context(plate=plate, sensor=sensor)
-
-        # No exception, motion proceeds normally.
-        scan(ctx, **_scan_args(measurement_height=MEASUREMENT))
-
-    def test_xor_violation_when_neither_set(self):
+    def test_missing_instrument_measurement_height_rejected(self):
         from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()
         sensor = _make_sensor(measurement_height=None)
         ctx = _mock_context(plate=plate, sensor=sensor)
 
-        with pytest.raises(ProtocolExecutionError, match="not set"):
+        with pytest.raises(ProtocolExecutionError, match="not set on instrument"):
             scan(ctx, **_scan_args())
 
     def test_safe_approach_below_measurement_rejected(self):
@@ -328,14 +307,13 @@ class TestScanCommand:
         from protocol_engine.commands.scan import scan
 
         plate = _make_2x2_plate()
-        sensor = _make_sensor(measurement_height=None)
+        sensor = _make_sensor(measurement_height=2.0)
         ctx = _mock_context(plate=plate, sensor=sensor)
         ctx.board.gantry = object()
 
         results = scan(
             ctx, plate="plate_1", instrument="uvvis", method="indentation",
             safe_approach_height=SAFE_APPROACH,
-            measurement_height=2.0,
             indentation_limit=5.0,
         )
 
