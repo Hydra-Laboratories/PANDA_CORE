@@ -29,10 +29,10 @@ Gantry YAML defines:
 - total Z reference height
 - Y-axis motion mode
 - working volume
-- optional `structure_clearance_z`
+- optional `safe_z` (absolute deck-frame travel ceiling)
 - optional fixed `machine_structures`
 - optional GRBL settings expectations
-- mounted instruments, offsets, reach depths, action heights, and driver settings
+- mounted instruments, offsets, reach depths, and driver settings
 
 Representative example:
 
@@ -42,7 +42,9 @@ cnc:
   homing_strategy: standard
   total_z_height: 87.0
   y_axis_motion: head
-  structure_clearance_z: 85.0
+  # Absolute deck-frame Z used for inter-labware travel and the entry
+  # approach to the first well of a scan. Defaults to working_volume.z_max.
+  safe_z: 85.0
 
 working_volume:
   x_min: 0.0
@@ -75,8 +77,6 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    measurement_height: 26.0
-    safe_approach_height: 35.0
 ```
 
 Use this file when:
@@ -99,9 +99,11 @@ directly as the deck-frame Z value.
 `y_axis_motion` is optional and defaults to `head`. Use `head` when the gantry
 head moves along Y, and `bed` when the machine bed moves along Y.
 
-`structure_clearance_z` is optional. When set, validation requires first-entry
-scan travel and explicit named/literal move `travel_z` values to meet or exceed
-that absolute Z plane before entering home/park/edge-risk regions.
+`safe_z` is optional and defaults to `working_volume.z_max`. It is the
+absolute deck-frame Z used for inter-labware travel and the entry approach
+for the first well of a scan. Validation requires every resolved approach
+and action Z to satisfy `z <= safe_z` so the gantry can always retract
+above the deck.
 
 `machine_structures` is optional. Use it for fixed gantry-level hardware, such
 as the Cub XL right X-max rail, that must be forbidden during protocol setup
@@ -141,25 +143,31 @@ Mounted instruments live under the gantry YAML `instruments` key.
   reference point.
 - `depth` is positive tool depth below the gantry reference point; in the +Z-up
   deck frame, gantry Z is computed as target/tool Z plus `depth`.
-- `measurement_height` is the default absolute deck-frame action Z.
-- `safe_approach_height` is the default absolute deck-frame XY-travel Z and
-  must be at or above `measurement_height`.
+
+Instrument blocks carry only physical mounting state. Labware-relative
+motion heights live on the protocol command — see "Protocol Height
+Fields" below. Inter-labware and first-well-entry travel use the
+gantry-level `safe_z`, not any instrument field.
 
 ## Protocol Height Fields
 
-Protocol movement names describe absolute deck-frame Z planes:
+Labware-relative offsets above the calibrated well/labware surface Z
+(positive = above; negative = below) are first-class arguments to the
+protocol commands that consume them:
 
-- `measurement_height` is where an instrument performs its action. For ASMI,
-  this is the indentation start height.
-- `interwell_travel_height` is the scan travel height between wells and
-  defaults to `measurement_height` when omitted.
-- `entry_travel_height` is the first scan transit height.
-- `park_position` is an explicit rest pose.
-- ASMI `indentation_limit` is the lower/deeper stopping Z, so a downward
-  indentation has `indentation_limit < measurement_height`.
+- `measurement_height` — required on `measure` and `scan`. It is the
+  action plane offset.
+- `safe_approach_height` — required on `scan`. It is the between-wells
+  XY-travel offset and must be at or above `measurement_height`.
 
-Legacy names `entry_travel_z`, scan-level `safe_approach_height`, and ASMI
-`z_limit` are rejected before motion.
+Pipette commands (aspirate/dispense/etc.) engage at the labware reference
+Z (well bottom, tip top) — i.e. `measurement_height = 0` implicitly.
+- `park_position` is an explicit rest pose (absolute coords, not relative).
+- ASMI `indentation_limit` is a sign-agnostic *magnitude* — the descent
+  distance below the action plane.
+
+Legacy names `entry_travel_z`, `entry_travel_height`,
+`interwell_travel_height`, and ASMI `z_limit` are rejected before motion.
 
 ## Controller Bring-Up
 

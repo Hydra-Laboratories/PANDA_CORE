@@ -15,7 +15,7 @@ from ..measurements import normalize_measurement
 from ..registry import protocol_command
 from ..scan_args import normalize_scan_arguments
 from ._dispatch import inject_runtime_args
-from ._movement import approach_and_descend
+from ._movement import _assert_finite_number
 
 if TYPE_CHECKING:
     from ..protocol import ProtocolContext
@@ -34,47 +34,41 @@ def scan(
     plate: str,
     instrument: str,
     method: str,
+    measurement_height: float,
+    safe_approach_height: float,
+    indentation_limit: float | None = None,
     delay_s: float = 0.0,
-    entry_travel_height: float | None = None,
-    interwell_travel_height: float | None = None,
     method_kwargs: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """Scan every well on *plate* using *instrument*'s *method*.
 
-    Iterates wells in row-major order (A1, A2, ..., B1, B2, ...). For each
-    well, uses :func:`approach_and_descend` to safely travel above the
-    well (at ``interwell_travel_height``) and descend to the per-well
-    action Z, then calls the method.
+    Iterates wells in row-major order (A1, A2, ..., B1, B2, ...).
 
-    Scan owns travel-Z between positions; everything per-position
-    (action/start Z and any method-specific stopping criteria) lives in
-    ``method_kwargs`` or on the instrument's board config. The one
-    method-side knob scan understands is ``method_kwargs.measurement_height``:
-    when set, the gantry descends to that absolute deck-frame Z at every
-    well and the same value is forwarded into the bound method (so
-    closed-loop callees start from there). When omitted, the gantry
-    descends to ``instr.measurement_height`` from the board config.
+    Motion per well, with ``ref_z`` = the well coordinate's deck-frame Z
+    (the plate-surface Z, set by calibration):
 
-    When a ``DataStore`` is configured on *context*, each measurement
-    is persisted as an experiment + measurement row in the database.
+    * **First well of the plate.** Travel at the gantry's ``safe_z``
+      (absolute) → descend to ``ref_z + safe_approach_height`` →
+      descend to ``ref_z + measurement_height`` → act.
+    * **Subsequent wells.** Rise to ``ref_z + safe_approach_height`` at
+      the current XY → travel XY at that height → descend to
+      ``ref_z + measurement_height`` → act.
 
     Args:
-        context:       Runtime context (board, deck, logger).
-        plate:         Deck key of the well plate (e.g. "plate_1").
-        instrument:    Name of the instrument registered on the board.
-        method:        Name of the method on the instrument to call per well.
-        delay_s:       Seconds to pause between wells (default 0.0).
-        entry_travel_height:
-                       Optional absolute Z used only for the initial
-                       transit into the first well of the scan.
-        interwell_travel_height:
-                       Optional absolute Z used between wells. When omitted,
-                       defaults to ``method_kwargs.measurement_height`` if
-                       set, otherwise scan delegates to
-                       ``Board.move_to_labware``'s default approach
-                       (``instr.safe_approach_height``).
-        method_kwargs: Keyword arguments passed to the instrument method
-                       on each well.
+        context:              Runtime context (board, deck, logger).
+        plate:                Deck key of the well plate.
+        instrument:           Name of the instrument registered on the board.
+        method:               Method on the instrument to call per well.
+        measurement_height:   Required labware-relative offset for the
+                              action plane (mm above the well-surface Z;
+                              negative = below).
+        safe_approach_height: Required labware-relative offset for
+                              between-wells XY travel (mm above the
+                              well-surface Z). Must be at or above
+                              ``measurement_height`` in +Z-up.
+        indentation_limit:    ASMI indentation stopping bound (magnitude).
+        delay_s:              Seconds to pause between wells (default 0.0).
+        method_kwargs:        Keyword arguments passed per well.
 
     Returns:
         Mapping of well ID to the result of each method call.
@@ -82,7 +76,8 @@ def scan(
     plate_obj = context.deck[plate]
     if not isinstance(plate_obj, WellPlate):
         raise ProtocolExecutionError(
-            f"scan requires a WellPlate, but '{plate}' is {type(plate_obj).__name__}."
+            f"scan requires a WellPlate, but '{plate}' is "
+            f"{type(plate_obj).__name__}."
         )
 
     if instrument not in context.board.instruments:
@@ -97,48 +92,61 @@ def scan(
             f"Instrument '{instrument}' has no method '{method}'."
         )
     callable_method = getattr(instr, method)
+
     try:
         normalized = normalize_scan_arguments(
-            entry_travel_height=entry_travel_height,
-            interwell_travel_height=interwell_travel_height,
+            indentation_limit=indentation_limit,
             method_kwargs=method_kwargs,
+        )
+        _assert_finite_number(
+            measurement_height, field_name="measurement_height",
+            source="scan",
+        )
+        _assert_finite_number(
+            safe_approach_height, field_name="safe_approach_height",
+            source="scan",
         )
     except ValueError as exc:
         raise ProtocolExecutionError(str(exc)) from exc
 
-    # `measurement_height` in method_kwargs is a hybrid: it's the scan-level
-    # descent target *and*, for closed-loop methods like ASMI.indentation,
-    # the start Z passed into the method. Pop it out so we don't blindly
-    # forward it to methods that don't declare the parameter (e.g. open-loop
-    # `measure` would TypeError on the unexpected kwarg). The dispatch
-    # helper re-injects it via signature inspection.
-    forwarded_kwargs = dict(normalized.method_kwargs)
-    per_well_measurement_height = forwarded_kwargs.pop("measurement_height", None)
+    # ``ref_z`` is the plate-surface deck-frame Z, carried on each well's
+    # calibrated coordinate (uniform across wells of a single plate).
+    ref_z = plate_obj.get_well_center("A1").z
+
+    action_z = ref_z + measurement_height
+    approach_z = ref_z + safe_approach_height
+
+    if approach_z < action_z:
+        raise ProtocolExecutionError(
+            f"scan: safe_approach_height ({safe_approach_height}) resolves "
+            f"below measurement_height ({measurement_height}) for plate "
+            f"'{plate}'. Approach must be at or above the action plane."
+        )
 
     results: Dict[str, Any] = {}
     sorted_wells = sorted(plate_obj.wells, key=_row_major_key)
+
     for i, well_id in enumerate(sorted_wells):
         if i > 0 and delay_s > 0:
             context.logger.info("Pausing %.1fs between wells", delay_s)
             time.sleep(delay_s)
 
         well = plate_obj.get_well_center(well_id)
-        approach_z = (
-            normalized.entry_travel_height
-            if i == 0 and normalized.entry_travel_height is not None
-            else normalized.interwell_travel_height
-        )
-        approach_and_descend(
-            context,
-            instrument,
-            well,
-            safe_approach_height=approach_z,
-            measurement_height=per_well_measurement_height,
-        )
+        if i == 0:
+            context.board.move_to_labware(instrument, well)
+            context.board.move(instrument, (well.x, well.y, approach_z))
+        else:
+            context.board.move(
+                instrument, (well.x, well.y, approach_z), travel_z=approach_z,
+            )
+        context.board.move(instrument, (well.x, well.y, action_z))
 
+        # Use the shared dispatch helper so closed-loop methods get the
+        # same gantry-injection + None-gantry guard + finite-number guard
+        # as `measure`, instead of scan reimplementing them inline.
         kwargs = inject_runtime_args(
-            callable_method, forwarded_kwargs, context,
-            measurement_height=per_well_measurement_height,
+            callable_method, normalized.method_kwargs, context,
+            measurement_height=action_z,
         )
         result = callable_method(**kwargs)
         results[well_id] = result
@@ -161,18 +169,16 @@ def scan(
                     raw_result=result,
                 )
                 context.data_store.log_measurement(exp_id, measurement)
-            except (sqlite3.Error, TypeError, ValueError) as exc:
+            except sqlite3.Error as exc:
                 logger.warning(
                     "Failed to log measurement for well %s: %s", well_id, exc,
                 )
 
     if sorted_wells:
         last_well = plate_obj.get_well_center(sorted_wells[-1])
-        final_approach_z = (
-            normalized.interwell_travel_height
-            if normalized.interwell_travel_height is not None
-            else instr.safe_approach_height
+        context.board.move(
+            instrument, (last_well.x, last_well.y, approach_z),
+            travel_z=approach_z,
         )
-        context.board.move(instrument, (last_well.x, last_well.y, final_approach_z))
 
     return results

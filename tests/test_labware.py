@@ -200,6 +200,8 @@ def test_vial_dimensions_and_location_lookup():
 
 
 def test_well_plate_exposes_shared_bounding_box_geometry():
+    """``WellPlate.height_mm`` is the absolute deck-frame surface Z, not a
+    bounding-box dimension; ``geometry`` only carries XY footprint metadata."""
     plate = WellPlate(
         name="SBS_96",
         model_name="test_model",
@@ -216,8 +218,8 @@ def test_well_plate_exposes_shared_bounding_box_geometry():
     assert plate.geometry == BoundingBoxGeometry(
         length_mm=127.71,
         width_mm=85.43,
-        height_mm=14.10,
     )
+    assert plate.height_mm == 14.10
 
 
 def test_vial_requires_positive_diameter():

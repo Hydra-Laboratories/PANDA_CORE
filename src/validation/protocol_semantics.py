@@ -1,106 +1,75 @@
-"""Semantic validation for protocol runtime movement assumptions."""
+"""Semantic validation for protocol runtime movement assumptions.
+
+The protocol model:
+
+* ``measurement_height`` and ``safe_approach_height`` are *labware-relative*
+  offsets (mm above the labware's ``height_mm`` surface; negative = below)
+  and are first-class arguments to the protocol commands that use them.
+* ``measurement_height`` is required on ``measure`` and ``scan``.
+* ``safe_approach_height`` is required on ``scan``.
+* Instruments do not declare these heights.
+* ``gantry.safe_z`` is the absolute deck-frame Z used for inter-labware
+  travel and the entry approach for the first well of a scan. Resolved
+  approach planes must satisfy ``height_mm + safe_approach_height <= safe_z``.
+"""
 
 from __future__ import annotations
 
 import math
 from typing import Any
 
+from board.board import Board
+from deck.deck import Deck
 from deck.labware.well_plate import WellPlate
+from gantry.gantry_config import GantryConfig, MachineStructureBox
 from protocol_engine.protocol import Protocol
 from protocol_engine.scan_args import (
     NormalizedScanArguments,
     normalize_scan_arguments,
 )
-from board.board import Board
-from deck.deck import Deck
-from gantry.gantry_config import GantryConfig, MachineStructureBox
 
 from .errors import ProtocolSemanticViolation
 
 Point3D = tuple[float, float, float]
 
 
-def _normalize_scan_args(
-    *,
+def _violation(step_index: int, command: str, message: str) -> ProtocolSemanticViolation:
+    return ProtocolSemanticViolation(step_index, command, message)
+
+
+def _finite_field_violation(
     step_index: int,
-    args: dict[str, Any],
-) -> tuple[NormalizedScanArguments | None, list[ProtocolSemanticViolation]]:
-    try:
-        return (
-            normalize_scan_arguments(
-                entry_travel_height=args.get("entry_travel_height"),
-                interwell_travel_height=args.get("interwell_travel_height"),
-                method_kwargs=args.get("method_kwargs"),
-            ),
-            [],
+    command: str,
+    field_name: str,
+    value: Any,
+) -> ProtocolSemanticViolation | None:
+    """Return a per-field finite-number violation, or None when *value* passes.
+
+    Mirrors the message format of ``_movement._assert_finite_number`` so a
+    field name and the offending value (with type) are always surfaced.
+    """
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+    ):
+        return _violation(
+            step_index,
+            command,
+            f"{field_name} must be a finite number, got "
+            f"{type(value).__name__} {value!r}.",
         )
-    except ValueError as exc:
-        return (
-            None,
-            [ProtocolSemanticViolation(step_index, "scan", str(exc))],
-        )
+    return None
+
+
+def _resolved_safe_z(gantry: GantryConfig | None) -> float | None:
+    if gantry is None:
+        return None
+    return gantry.resolved_safe_z
 
 
 def _row_major_key(well_id: str) -> tuple[str, int]:
     return (well_id[0], int(well_id[1:]))
-
-
-def _validate_scan_travel_heights(
-    *,
-    step_index: int,
-    args: dict[str, Any],
-    normalized: NormalizedScanArguments,
-    board: Board,
-    deck: Deck,
-) -> list[ProtocolSemanticViolation]:
-    violations: list[ProtocolSemanticViolation] = []
-    instrument = args.get("instrument")
-    plate = args.get("plate")
-
-    if instrument not in board.instruments:
-        return violations
-    if plate not in deck:
-        return violations
-
-    plate_obj = deck[plate]
-    if not isinstance(plate_obj, WellPlate):
-        return violations
-
-    instr = board.instruments[instrument]
-    travel_fields = [(
-        "interwell_travel_height",
-        normalized.interwell_travel_height,
-    )]
-    if normalized.entry_travel_height != normalized.interwell_travel_height:
-        travel_fields.append(("entry_travel_height", normalized.entry_travel_height))
-    for field_name, travel_z in travel_fields:
-        if travel_z is None:
-            continue
-        if not math.isfinite(float(travel_z)):
-            violations.append(ProtocolSemanticViolation(
-                step_index,
-                "scan",
-                f"{field_name} must be finite, got {travel_z!r}.",
-            ))
-            continue
-        for well_id, well in plate_obj.wells.items():
-            mh_from_kwargs = normalized.method_kwargs.get("measurement_height")
-            action_z = (
-                mh_from_kwargs
-                if mh_from_kwargs is not None
-                else instr.measurement_height
-            )
-            if travel_z < action_z:
-                violations.append(ProtocolSemanticViolation(
-                    step_index,
-                    "scan",
-                    f"{field_name} ({travel_z}) is below action_z ({action_z}) "
-                    f"for {plate}.{well_id} under the deck-origin +Z-up "
-                    "convention.",
-                ))
-                break
-
-    return violations
 
 
 def _gantry_xyz_for_tip(
@@ -163,10 +132,11 @@ def _validate_machine_structure_point(
 ) -> list[ProtocolSemanticViolation]:
     if gantry is None:
         return []
+
     violations: list[ProtocolSemanticViolation] = []
     for name, box in gantry.machine_structures.items():
         if box.contains(x, y, z):
-            violations.append(ProtocolSemanticViolation(
+            violations.append(_violation(
                 step_index,
                 command_name,
                 f"{label} instrument point ({x}, {y}, {z}) overlaps "
@@ -188,10 +158,11 @@ def _validate_machine_structure_segment(
 ) -> list[ProtocolSemanticViolation]:
     if gantry is None:
         return []
+
     violations: list[ProtocolSemanticViolation] = []
     for name, box in gantry.machine_structures.items():
         if _segment_intersects_box(start, end, box):
-            violations.append(ProtocolSemanticViolation(
+            violations.append(_violation(
                 step_index,
                 command_name,
                 f"{label} travel segment from {start} to {end} intersects "
@@ -218,6 +189,34 @@ def _transit_segments(
         ("travel_z final Z", y_done, target),
     ]
     return [segment for segment in segments if segment[1] != segment[2]]
+
+
+def _validate_known_transit(
+    *,
+    step_index: int,
+    command_name: str,
+    gantry: GantryConfig | None,
+    label: str,
+    instrument: str,
+    current: Point3D | None,
+    target: Point3D,
+    travel_z: float,
+) -> list[ProtocolSemanticViolation]:
+    if current is None:
+        return []
+
+    violations: list[ProtocolSemanticViolation] = []
+    for segment_label, start, end in _transit_segments(current, target, travel_z):
+        violations.extend(_validate_machine_structure_segment(
+            step_index=step_index,
+            command_name=command_name,
+            gantry=gantry,
+            label=f"{label} {segment_label}",
+            instrument=instrument,
+            start=start,
+            end=end,
+        ))
+    return violations
 
 
 def _home_pose_for_instrument(
@@ -284,12 +283,13 @@ def _validate_gantry_waypoint(
         ("z", gz, volume.z_min, volume.z_max),
     ):
         if value < low or value > high:
-            violations.append(ProtocolSemanticViolation(
+            violations.append(_violation(
                 step_index,
                 command_name,
                 f"{label} gantry {axis}={value} is outside working volume "
                 f"[{low}, {high}] for instrument {instrument!r}.",
             ))
+
     violations.extend(_validate_machine_structure_point(
         step_index=step_index,
         command_name=command_name,
@@ -303,41 +303,55 @@ def _validate_gantry_waypoint(
     return violations
 
 
-def _validate_scan_waypoints(
+def _validate_below_safe_z(
     *,
     step_index: int,
-    args: dict[str, Any],
-    normalized: NormalizedScanArguments,
-    board: Board,
-    deck: Deck,
+    command_name: str,
+    label: str,
+    z: float | None,
     gantry: GantryConfig | None,
-    current_poses: dict[str, Point3D],
+) -> list[ProtocolSemanticViolation]:
+    """Verify that absolute Z *z* is at or below ``safe_z`` (the ceiling)."""
+    safe_z = _resolved_safe_z(gantry)
+    if safe_z is None or z is None:
+        return []
+    if z > safe_z:
+        return [_violation(
+            step_index,
+            command_name,
+            f"{label} ({z}) is above the gantry's safe_z ({safe_z}). "
+            "All resolved action and approach Z values must satisfy "
+            "z <= safe_z so the gantry can retract above them.",
+        )]
+    return []
+
+
+def _validate_scan_points(
+    *,
+    step_index: int,
+    plate: str,
+    instrument: str,
+    board: Board,
+    gantry: GantryConfig | None,
+    wells: list[tuple[str, Any]],
+    action_abs: float,
+    approach_abs: float,
+    safe_z: float | None,
 ) -> list[ProtocolSemanticViolation]:
     violations: list[ProtocolSemanticViolation] = []
-    instrument = args.get("instrument")
-    plate = args.get("plate")
-
-    if instrument not in board.instruments or plate not in deck:
-        return violations
-    plate_obj = deck[plate]
-    if not isinstance(plate_obj, WellPlate):
-        return violations
-
-    instr = board.instruments[instrument]
-    travel_fields = [(
-        "interwell_travel_height",
-        normalized.interwell_travel_height,
-    )]
-    if normalized.entry_travel_height != normalized.interwell_travel_height:
-        travel_fields.append(("entry_travel_height", normalized.entry_travel_height))
-
-    mh_from_kwargs = normalized.method_kwargs.get("measurement_height")
-    for well_id, well in plate_obj.wells.items():
-        action_z = (
-            mh_from_kwargs
-            if mh_from_kwargs is not None
-            else instr.measurement_height
-        )
+    for well_index, (well_id, well) in enumerate(wells):
+        if well_index == 0 and safe_z is not None:
+            violations.extend(_validate_gantry_waypoint(
+                step_index=step_index,
+                command_name="scan",
+                gantry=gantry,
+                label=f"{plate}.{well_id} safe_z",
+                instrument=instrument,
+                board=board,
+                x=well.x,
+                y=well.y,
+                z=safe_z,
+            ))
         violations.extend(_validate_gantry_waypoint(
             step_index=step_index,
             command_name="scan",
@@ -347,62 +361,74 @@ def _validate_scan_waypoints(
             board=board,
             x=well.x,
             y=well.y,
-            z=action_z,
+            z=action_abs,
         ))
-        for field_name, travel_z in travel_fields:
-            if travel_z is None:
-                continue
-            violations.extend(_validate_gantry_waypoint(
+        violations.extend(_validate_gantry_waypoint(
+            step_index=step_index,
+            command_name="scan",
+            gantry=gantry,
+            label=f"{plate}.{well_id} approach_z",
+            instrument=instrument,
+            board=board,
+            x=well.x,
+            y=well.y,
+            z=approach_abs,
+        ))
+    return violations
+
+
+def _validate_scan_segments(
+    *,
+    step_index: int,
+    plate: str,
+    instrument: str,
+    gantry: GantryConfig | None,
+    wells: list[tuple[str, Any]],
+    current: Point3D | None,
+    action_abs: float,
+    approach_abs: float,
+    safe_z: float | None,
+) -> tuple[list[ProtocolSemanticViolation], Point3D | None]:
+    violations: list[ProtocolSemanticViolation] = []
+    pose = current
+
+    for well_index, (well_id, well) in enumerate(wells):
+        approach = (well.x, well.y, approach_abs)
+        action = (well.x, well.y, action_abs)
+
+        if well_index == 0 and safe_z is not None:
+            entry = (well.x, well.y, safe_z)
+            violations.extend(_validate_known_transit(
                 step_index=step_index,
                 command_name="scan",
                 gantry=gantry,
-                label=f"{plate}.{well_id} {field_name}",
+                label=f"{plate}.{well_id} safe_z",
                 instrument=instrument,
-                board=board,
-                x=well.x,
-                y=well.y,
-                z=travel_z,
+                current=pose,
+                target=entry,
+                travel_z=safe_z,
+            ))
+            violations.extend(_validate_machine_structure_segment(
+                step_index=step_index,
+                command_name="scan",
+                gantry=gantry,
+                label=f"{plate}.{well_id} safe_z to approach_z",
+                instrument=instrument,
+                start=entry,
+                end=approach,
+            ))
+        elif well_index > 0:
+            violations.extend(_validate_known_transit(
+                step_index=step_index,
+                command_name="scan",
+                gantry=gantry,
+                label=f"{plate}.{well_id} approach_z",
+                instrument=instrument,
+                current=pose,
+                target=approach,
+                travel_z=approach_abs,
             ))
 
-    current = current_poses.get(instrument)
-    sorted_wells = sorted(
-        plate_obj.wells.items(),
-        key=lambda item: _row_major_key(item[0]),
-    )
-    for well_index, (well_id, well) in enumerate(sorted_wells):
-        action_z = (
-            mh_from_kwargs
-            if mh_from_kwargs is not None
-            else instr.measurement_height
-        )
-        if well_index == 0 and normalized.entry_travel_height is not None:
-            approach_z = normalized.entry_travel_height
-            approach_label = "entry_travel_height"
-        elif normalized.interwell_travel_height is not None:
-            approach_z = normalized.interwell_travel_height
-            approach_label = "interwell_travel_height"
-        else:
-            approach_z = instr.safe_approach_height
-            approach_label = "safe_approach_height"
-
-        approach = (well.x, well.y, approach_z)
-        action = (well.x, well.y, action_z)
-        if current is not None:
-            for segment_label, start, end in _transit_segments(
-                current, approach, approach_z,
-            ):
-                violations.extend(_validate_machine_structure_segment(
-                    step_index=step_index,
-                    command_name="scan",
-                    gantry=gantry,
-                    label=(
-                        f"{plate}.{well_id} {approach_label} "
-                        f"{segment_label}"
-                    ),
-                    instrument=instrument,
-                    start=start,
-                    end=end,
-                ))
         violations.extend(_validate_machine_structure_segment(
             step_index=step_index,
             command_name="scan",
@@ -412,51 +438,254 @@ def _validate_scan_waypoints(
             start=approach,
             end=action,
         ))
-        current = action
+        pose = action
 
-    if sorted_wells:
-        last_well_id, last_well = sorted_wells[-1]
-        final_approach_z = (
-            normalized.interwell_travel_height
-            if normalized.interwell_travel_height is not None
-            else instr.safe_approach_height
+    if wells and pose is not None:
+        last_well_id, last_well = wells[-1]
+        final_approach = (last_well.x, last_well.y, approach_abs)
+        violations.extend(_validate_machine_structure_segment(
+            step_index=step_index,
+            command_name="scan",
+            gantry=gantry,
+            label=f"{plate}.{last_well_id} final approach_z",
+            instrument=instrument,
+            start=pose,
+            end=final_approach,
+        ))
+        pose = final_approach
+
+    return violations, pose
+
+
+def _validate_scan_command(
+    *,
+    step_index: int,
+    args: dict[str, Any],
+    board: Board,
+    deck: Deck,
+    gantry: GantryConfig | None,
+    current_poses: dict[str, Point3D],
+) -> list[ProtocolSemanticViolation]:
+    violations: list[ProtocolSemanticViolation] = []
+
+    try:
+        normalized = normalize_scan_arguments(
+            indentation_limit=args.get("indentation_limit"),
+            method_kwargs=args.get("method_kwargs"),
         )
-        final_approach = (last_well.x, last_well.y, final_approach_z)
-        if current is not None:
-            violations.extend(_validate_machine_structure_segment(
-                step_index=step_index,
-                command_name="scan",
-                gantry=gantry,
-                label=f"{plate}.{last_well_id} final approach",
-                instrument=instrument,
-                start=current,
-                end=final_approach,
-            ))
-        current_poses[instrument] = final_approach
+    except ValueError as exc:
+        return [_violation(step_index, "scan", str(exc))]
 
+    relative_action = args.get("measurement_height")
+    relative_approach = args.get("safe_approach_height")
+    if relative_action is None:
+        violations.append(_violation(
+            step_index,
+            "scan",
+            "`measurement_height` is required on `scan` (labware-relative "
+            "offset, mm above the well's calibrated surface Z).",
+        ))
+        return violations
+    if relative_approach is None:
+        violations.append(_violation(
+            step_index,
+            "scan",
+            "`safe_approach_height` is required on `scan` (labware-relative "
+            "offset for between-wells XY travel).",
+        ))
+        return violations
+
+    instrument = args.get("instrument")
+    plate = args.get("plate")
+    if instrument not in board.instruments or plate not in deck:
+        return violations
+    plate_obj = deck[plate]
+    if not isinstance(plate_obj, WellPlate):
+        return violations
+
+    try:
+        ref_z = plate_obj.get_well_center("A1").z
+    except KeyError:
+        violations.append(_violation(
+            step_index,
+            "scan",
+            f"plate {plate!r} has no calibrated A1 well; cannot resolve "
+            "the surface Z reference for labware-relative heights.",
+        ))
+        return violations
+
+    finite_violations = [
+        v for v in (
+            _finite_field_violation(
+                step_index, "scan", "measurement_height", relative_action,
+            ),
+            _finite_field_violation(
+                step_index, "scan", "safe_approach_height", relative_approach,
+            ),
+        ) if v is not None
+    ]
+    if finite_violations:
+        violations.extend(finite_violations)
+        return violations
+
+    if relative_approach < relative_action:
+        violations.append(_violation(
+            step_index,
+            "scan",
+            f"safe_approach_height ({relative_approach}) is below "
+            f"measurement_height ({relative_action}). In +Z-up, the "
+            "approach must be at or above the action plane.",
+        ))
+
+    action_abs = ref_z + relative_action
+    approach_abs = ref_z + relative_approach
+
+    safe_z = _resolved_safe_z(gantry)
+    if safe_z is not None and approach_abs > safe_z:
+        violations.append(_violation(
+            step_index,
+            "scan",
+            f"resolved approach Z ({approach_abs:.3f} = "
+            f"{ref_z}+{relative_approach}) is above the gantry's safe_z "
+            f"({safe_z}). Lower `safe_approach_height` or raise `safe_z`.",
+        ))
+
+    sorted_wells = sorted(
+        plate_obj.wells.items(),
+        key=lambda item: _row_major_key(item[0]),
+    )
+    violations.extend(_validate_scan_points(
+        step_index=step_index,
+        plate=plate,
+        instrument=instrument,
+        board=board,
+        gantry=gantry,
+        wells=sorted_wells,
+        action_abs=action_abs,
+        approach_abs=approach_abs,
+        safe_z=safe_z,
+    ))
+
+    segment_violations, final_pose = _validate_scan_segments(
+        step_index=step_index,
+        plate=plate,
+        instrument=instrument,
+        gantry=gantry,
+        wells=sorted_wells,
+        current=current_poses.get(instrument),
+        action_abs=action_abs,
+        approach_abs=approach_abs,
+        safe_z=safe_z,
+    )
+    violations.extend(segment_violations)
+    if final_pose is not None:
+        current_poses[instrument] = final_pose
+
+    violations.extend(_validate_asmi_indentation(
+        step_index=step_index,
+        args=args,
+        ref_z=ref_z,
+        relative_action=relative_action,
+        normalized=normalized,
+        gantry=gantry,
+    ))
     return violations
 
 
-def _validate_structure_clearance(
+def _validate_measure_command(
     *,
     step_index: int,
-    command_name: str,
-    label: str,
-    z: float | None,
+    args: dict[str, Any],
+    board: Board,
+    deck: Deck,
     gantry: GantryConfig | None,
+    current_poses: dict[str, Point3D],
 ) -> list[ProtocolSemanticViolation]:
-    clearance = getattr(gantry, "structure_clearance_z", None)
-    if clearance is None or z is None:
-        return []
-    if z < clearance:
-        return [ProtocolSemanticViolation(
+    violations: list[ProtocolSemanticViolation] = []
+    instrument = args.get("instrument")
+    position = args.get("position")
+    relative_action = args.get("measurement_height")
+
+    if relative_action is None:
+        violations.append(_violation(
             step_index,
-            command_name,
-            f"{label} ({z}) is below configured structure_clearance_z "
-            f"({clearance}). Use a higher absolute Z before entering "
-            "home/park/edge-risk regions.",
-        )]
-    return []
+            "measure",
+            "`measurement_height` is required on `measure` (labware-relative "
+            "offset, mm above the resolved coordinate's surface Z).",
+        ))
+        return violations
+
+    if instrument not in board.instruments:
+        return violations
+
+    finite_violation = _finite_field_violation(
+        step_index, "measure", "measurement_height", relative_action,
+    )
+    if finite_violation is not None:
+        violations.append(finite_violation)
+        return violations
+
+    try:
+        coord = deck.resolve(position)
+    except (KeyError, AttributeError, ValueError):
+        return violations
+
+    action_abs = coord.z + relative_action
+    action = (coord.x, coord.y, action_abs)
+    safe_z = _resolved_safe_z(gantry)
+    if safe_z is not None:
+        safe_pose = (coord.x, coord.y, safe_z)
+        violations.extend(_validate_gantry_waypoint(
+            step_index=step_index,
+            command_name="measure",
+            gantry=gantry,
+            label=f"measure {position!r} safe_z",
+            instrument=instrument,
+            board=board,
+            x=safe_pose[0],
+            y=safe_pose[1],
+            z=safe_pose[2],
+        ))
+        violations.extend(_validate_known_transit(
+            step_index=step_index,
+            command_name="measure",
+            gantry=gantry,
+            label=f"measure {position!r} safe_z",
+            instrument=instrument,
+            current=current_poses.get(instrument),
+            target=safe_pose,
+            travel_z=safe_z,
+        ))
+        violations.extend(_validate_machine_structure_segment(
+            step_index=step_index,
+            command_name="measure",
+            gantry=gantry,
+            label=f"measure {position!r} action_z descend",
+            instrument=instrument,
+            start=safe_pose,
+            end=action,
+        ))
+
+    violations.extend(_validate_gantry_waypoint(
+        step_index=step_index,
+        command_name="measure",
+        gantry=gantry,
+        label=f"measure {position!r} action_z",
+        instrument=instrument,
+        board=board,
+        x=coord.x,
+        y=coord.y,
+        z=action_abs,
+    ))
+    violations.extend(_validate_below_safe_z(
+        step_index=step_index,
+        command_name="measure",
+        label=f"measure {position!r} action_z",
+        z=action_abs,
+        gantry=gantry,
+    ))
+    current_poses[instrument] = action
+    return violations
 
 
 def _validate_move_waypoints(
@@ -488,16 +717,32 @@ def _validate_move_waypoints(
         try:
             coord = deck.resolve(position)
         except (KeyError, AttributeError, ValueError) as exc:
-            violations.append(ProtocolSemanticViolation(
+            violations.append(_violation(
                 step_index,
                 "move",
                 f"position {position!r} cannot be resolved on the deck: {exc}",
             ))
             return violations
-        approach_z = board.instruments[instrument].safe_approach_height
-        target = (coord.x, coord.y, approach_z)
-        target_label = f"move safe_approach_height for {position!r}"
-        transit_z = approach_z
+        if travel_z is not None:
+            violations.append(_violation(
+                step_index,
+                "move",
+                "travel_z is only supported for literal/named XYZ targets, "
+                f"not deck target {position!r}.",
+            ))
+            return violations
+        safe_z = _resolved_safe_z(gantry)
+        if safe_z is None:
+            violations.append(_violation(
+                step_index,
+                "move",
+                f"deck-target move to {position!r} requires gantry `safe_z` "
+                "to be configured.",
+            ))
+            return violations
+        target = (coord.x, coord.y, safe_z)
+        target_label = f"move safe_z for {position!r}"
+        transit_z = safe_z
 
     if target is None:
         return violations
@@ -526,26 +771,24 @@ def _validate_move_waypoints(
             y=y,
             z=travel_z,
         ))
-        violations.extend(_validate_structure_clearance(
+        violations.extend(_validate_below_safe_z(
             step_index=step_index,
             command_name="move",
             label=f"move travel_z for {position!r}",
             z=travel_z,
             gantry=gantry,
         ))
-    if transit_z is not None and instrument in current_poses:
-        for segment_label, start, end in _transit_segments(
-            current_poses[instrument], target, transit_z,
-        ):
-            violations.extend(_validate_machine_structure_segment(
-                step_index=step_index,
-                command_name="move",
-                gantry=gantry,
-                label=f"{target_label} {segment_label}",
-                instrument=instrument,
-                start=start,
-                end=end,
-            ))
+    if transit_z is not None:
+        violations.extend(_validate_known_transit(
+            step_index=step_index,
+            command_name="move",
+            gantry=gantry,
+            label=target_label,
+            instrument=instrument,
+            current=current_poses.get(instrument),
+            target=target,
+            travel_z=transit_z,
+        ))
     current_poses[instrument] = target
     return violations
 
@@ -554,36 +797,43 @@ def _validate_asmi_indentation(
     *,
     step_index: int,
     args: dict[str, Any],
+    ref_z: float,
+    relative_action: float,
     normalized: NormalizedScanArguments,
+    gantry: GantryConfig | None,
 ) -> list[ProtocolSemanticViolation]:
+    """Bounds-check ASMI indentation against the working volume.
+
+    ``indentation_limit`` is treated as a magnitude (sign-agnostic): the
+    deepest absolute Z reached during the descent is
+    ``ref_z + relative_action - |indentation_limit|``.
+    """
     violations: list[ProtocolSemanticViolation] = []
     if args.get("instrument") != "asmi" or args.get("method") != "indentation":
         return violations
 
     kwargs = normalized.method_kwargs
-    measurement_height = kwargs.get("measurement_height")
     indentation_limit = kwargs.get("indentation_limit")
     step_size = kwargs.get("step_size")
 
     if step_size is not None and step_size <= 0:
-        violations.append(ProtocolSemanticViolation(
+        violations.append(_violation(
             step_index,
             "scan",
             f"ASMI step_size must be positive, got {step_size}.",
         ))
 
-    if measurement_height is None or indentation_limit is None:
+    if indentation_limit is None or gantry is None:
         return violations
-
-    if indentation_limit >= measurement_height:
-        violations.append(ProtocolSemanticViolation(
+    deepest_abs = ref_z + relative_action - abs(indentation_limit)
+    if deepest_abs < gantry.working_volume.z_min:
+        violations.append(_violation(
             step_index,
             "scan",
-            "ASMI indentation_limit must be less than measurement_height under the "
-            f"deck-origin +Z-up convention; got measurement_height="
-            f"{measurement_height}, indentation_limit={indentation_limit}.",
+            f"ASMI indentation deepest absolute Z ({deepest_abs:.3f}) is "
+            f"below working_volume.z_min ({gantry.working_volume.z_min}). "
+            "Reduce indentation_limit, raise the labware, or adjust z_min.",
         ))
-
     return violations
 
 
@@ -604,8 +854,7 @@ def validate_protocol_semantics(
                 gantry=gantry,
                 current_poses=current_poses,
             ))
-            continue
-        if step.command_name == "move":
+        elif step.command_name == "move":
             violations.extend(_validate_move_waypoints(
                 step_index=step.index,
                 args=step.args,
@@ -615,42 +864,22 @@ def validate_protocol_semantics(
                 gantry=gantry,
                 current_poses=current_poses,
             ))
-            continue
-        if step.command_name != "scan":
-            continue
-        normalized, normalization_violations = _normalize_scan_args(
-            step_index=step.index,
-            args=step.args,
-        )
-        violations.extend(normalization_violations)
-        if normalized is None:
-            continue
-        violations.extend(_validate_scan_travel_heights(
-            step_index=step.index,
-            args=step.args,
-            normalized=normalized,
-            board=board,
-            deck=deck,
-        ))
-        violations.extend(_validate_scan_waypoints(
-            step_index=step.index,
-            args=step.args,
-            normalized=normalized,
-            board=board,
-            deck=deck,
-            gantry=gantry,
-            current_poses=current_poses,
-        ))
-        violations.extend(_validate_structure_clearance(
-            step_index=step.index,
-            command_name="scan",
-            label="entry_travel_height",
-            z=normalized.entry_travel_height,
-            gantry=gantry,
-        ))
-        violations.extend(_validate_asmi_indentation(
-            step_index=step.index,
-            args=step.args,
-            normalized=normalized,
-        ))
+        elif step.command_name == "measure":
+            violations.extend(_validate_measure_command(
+                step_index=step.index,
+                args=step.args,
+                board=board,
+                deck=deck,
+                gantry=gantry,
+                current_poses=current_poses,
+            ))
+        elif step.command_name == "scan":
+            violations.extend(_validate_scan_command(
+                step_index=step.index,
+                args=step.args,
+                board=board,
+                deck=deck,
+                gantry=gantry,
+                current_poses=current_poses,
+            ))
     return violations

@@ -14,8 +14,9 @@ cnc:
   homing_strategy: standard
   total_z_height: 87.0
   y_axis_motion: head
-  # Absolute deck-frame Z clearance plane for home/park/edge-risk moves.
-  structure_clearance_z: 85.0
+  # Absolute deck-frame Z used for inter-labware travel and the entry
+  # approach to the first well of a scan.
+  safe_z: 85.0
 
 working_volume:
   x_min: 0.0
@@ -58,11 +59,7 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    # Deck-origin convention: measurement_height and safe_approach_height are
-    # absolute deck-frame Z planes, not labware-relative offsets. The estimated
-    # plate/well top is z=27.0, so measurement_height=26.0 starts 1 mm below it.
-    measurement_height: 26.0
-    safe_approach_height: 35.0
-    # Sensor hardware.
+    # Labware-relative motion heights (`measurement_height`,
+    # `safe_approach_height`) live on the protocol command, not here.
     force_threshold: -50
     sensor_channels: [1]

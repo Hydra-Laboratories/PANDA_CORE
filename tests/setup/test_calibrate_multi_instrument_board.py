@@ -42,8 +42,6 @@ instruments:
     offset_x: 99.0
     offset_y: 99.0
     depth: 99.0
-    measurement_height: 10.0
-    safe_approach_height: 50.0
     offline: true
   camera:
     type: uv_curing
@@ -51,8 +49,6 @@ instruments:
     offset_x: 1.0
     offset_y: 2.0
     depth: 3.0
-    measurement_height: 20.0
-    safe_approach_height: 60.0
     offline: true
 """,
         encoding="utf-8",
@@ -270,7 +266,7 @@ def test_multi_instrument_calibration_sets_xy_before_z_and_updates_yaml(tmp_path
     assert written["grbl_settings"]["max_travel_x"] == 398.0
     assert written["grbl_settings"]["max_travel_y"] == 299.0
     assert written["grbl_settings"]["max_travel_z"] == 96.0
-    assert written["instruments"]["camera"]["measurement_height"] == 20.0
+    assert "measurement_height" not in written["instruments"]["camera"]
     assert written["instruments"]["camera"]["offset_x"] == -323.0
     assert written["instruments"]["camera"]["offset_y"] == -186.0
     assert written["instruments"]["camera"]["depth"] == 100.0

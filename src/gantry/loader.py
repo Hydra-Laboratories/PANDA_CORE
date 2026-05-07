@@ -32,7 +32,11 @@ def _format_loader_exception(path: Path, error: Exception) -> str:
         if "missing" in error_type or "Field required" in detail:
             guidance = "Add the missing required YAML field shown in the error location."
         elif "extra_forbidden" in error_type or "Extra inputs are not permitted" in detail:
-            guidance = "Remove unknown YAML fields; only 'serial_port', 'cnc', 'working_volume', 'grbl_settings', 'machine_structures', and 'instruments' are allowed at root."
+            guidance = (
+                "Remove unknown YAML fields; only 'serial_port', 'cnc', "
+                "'working_volume', 'grbl_settings', 'machine_structures', "
+                "and 'instruments' are allowed at root."
+            )
         else:
             guidance = "Review the YAML values against the gantry schema."
 
@@ -94,7 +98,7 @@ def load_gantry_from_yaml(path: str | Path) -> GantryConfig:
         serial_port=schema.serial_port,
         homing_strategy=HomingStrategy(schema.cnc.homing_strategy),
         total_z_height=schema.cnc.total_z_height,
-        structure_clearance_z=schema.cnc.structure_clearance_z,
+        safe_z=schema.safe_z,
         working_volume=WorkingVolume(
             x_min=schema.working_volume.x_min,
             x_max=schema.working_volume.x_max,

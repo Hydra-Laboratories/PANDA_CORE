@@ -11,8 +11,9 @@ cnc:
   homing_strategy: standard
   total_z_height: 90.0
   y_axis_motion: head
-  # Absolute deck-frame Z clearance plane for home/park/edge-risk moves.
-  structure_clearance_z: 80.0
+  # Absolute deck-frame Z used for inter-labware travel and the entry
+  # approach to the first well of a scan.
+  safe_z: 80.0
 
 working_volume:
   x_min: 0.0
@@ -52,9 +53,6 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    # Placeholder carried forward from the prior mock Filmetrics setup. Validate
-    # this absolute deck-frame height on hardware before real motion.
-    measurement_height: 80.0
-    safe_approach_height: 80.0
+    # Labware-relative motion heights live on the protocol command.
     exe_path: ""
     recipe_name: ""

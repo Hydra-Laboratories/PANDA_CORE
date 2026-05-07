@@ -92,7 +92,7 @@ class GantryConfig:
     total_z_height: float
     working_volume: WorkingVolume
     y_axis_motion: YAxisMotion = YAxisMotion.HEAD
-    structure_clearance_z: Optional[float] = None
+    safe_z: Optional[float] = None
     expected_grbl_settings: Optional[Dict[str, float]] = field(default=None)
     instruments: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     machine_structures: Dict[str, MachineStructureBox] = field(
@@ -104,13 +104,18 @@ class GantryConfig:
             raise ValueError(
                 f"total_z_height ({self.total_z_height}) must be > 0"
             )
-        if self.structure_clearance_z is not None:
+        if self.safe_z is not None:
             if not (
                 self.working_volume.z_min
-                <= self.structure_clearance_z
+                <= self.safe_z
                 <= self.working_volume.z_max
             ):
                 raise ValueError(
-                    "structure_clearance_z must be within the configured "
+                    "safe_z must be within the configured "
                     "working-volume Z bounds."
                 )
+
+    @property
+    def resolved_safe_z(self) -> float:
+        """Effective safe travel Z: explicit ``safe_z`` or ``working_volume.z_max``."""
+        return self.safe_z if self.safe_z is not None else self.working_volume.z_max

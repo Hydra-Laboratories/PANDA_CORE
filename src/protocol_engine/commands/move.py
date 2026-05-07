@@ -25,9 +25,8 @@ def move(
            same raw move treatment.
         3. Deck target string (e.g. ``"plate_1.A1"``) → safe
            ``move_to_labware`` that retracts (if needed), travels XY at
-           the instrument's ``safe_approach_height``, and ends above the
-           target (no descent — use ``measure``/``aspirate``/etc. to
-           engage).
+           the gantry's absolute ``safe_z``, and ends above the target
+           (no descent — use ``measure``/``aspirate``/etc. to engage).
 
     Args:
         context:    Runtime context (board, deck, logger).
@@ -63,8 +62,9 @@ def move(
             context.board.move(instrument, target, travel_z=travel_z)
         return
 
-    # Deck target — route through move_to_labware so safe_approach_height
-    # is applied consistently with measure/aspirate at the same position.
+    # Deck target — route through move_to_labware so the gantry's
+    # absolute safe_z is applied consistently with measure/aspirate at
+    # the same position.
     # If resolution fails AND the string doesn't look like a deck target
     # (no '.'), surface a clearer error that lists both namespaces so a
     # typo in a named position doesn't masquerade as a missing labware.

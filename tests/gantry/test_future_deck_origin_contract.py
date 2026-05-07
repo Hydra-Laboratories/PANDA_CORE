@@ -22,16 +22,14 @@ def test_gantry_move_to_sends_deck_origin_z_without_sign_flip(mock_mill_cls):
     )
 
 
-def test_board_move_to_labware_uses_positive_clearance_above_deck():
+def test_board_move_to_labware_uses_safe_z_above_deck():
     instr = MagicMock()
     instr.name = "probe"
     instr.offset_x = 0.0
     instr.offset_y = 0.0
     instr.depth = 0.0
-    instr.measurement_height = 0.0
-    instr.safe_approach_height = 20.0
     gantry = MagicMock()
-    board = Board(gantry=gantry, instruments={"probe": instr})
+    board = Board(gantry=gantry, instruments={"probe": instr}, safe_z=20.0)
     labware = MagicMock()
     labware.x = 1.0
     labware.y = 2.0

@@ -29,51 +29,42 @@ def _rail() -> MachineStructureBox:
     )
 
 
-def _gantry() -> GantryConfig:
+def _gantry(
+    *,
+    x_max: float = 600.0,
+    z_max: float = 160.0,
+    safe_z: float | None = None,
+) -> GantryConfig:
     return GantryConfig(
         serial_port="/dev/ttyUSB0",
         homing_strategy=HomingStrategy.STANDARD,
-        total_z_height=160.0,
+        total_z_height=z_max,
         working_volume=WorkingVolume(
             x_min=0.0,
-            x_max=600.0,
+            x_max=x_max,
             y_min=0.0,
             y_max=300.0,
             z_min=0.0,
-            z_max=160.0,
+            z_max=z_max,
         ),
+        safe_z=safe_z,
         machine_structures={"right_x_max_rail": _rail()},
     )
 
 
-def _instrument(
-    *,
-    measurement_height: float = 50.0,
-    safe_approach_height: float = 120.0,
-):
+def _instrument(*, name: str = "asmi", offset_x: float = 0.0):
     instr = MagicMock()
-    instr.name = "asmi"
-    instr.offset_x = 0.0
+    instr.name = name
+    instr.offset_x = offset_x
     instr.offset_y = 0.0
     instr.depth = 0.0
-    instr.measurement_height = measurement_height
-    instr.safe_approach_height = safe_approach_height
     return instr
 
 
-def _board(
-    *,
-    measurement_height: float = 50.0,
-    safe_approach_height: float = 120.0,
-) -> Board:
+def _board() -> Board:
     return Board(
         gantry=MagicMock(),
-        instruments={
-            "asmi": _instrument(
-                measurement_height=measurement_height,
-                safe_approach_height=safe_approach_height,
-            )
-        },
+        instruments={"asmi": _instrument()},
     )
 
 
@@ -102,9 +93,10 @@ def _move_step(
     index: int,
     *,
     position,
+    instrument: str = "asmi",
     travel_z: float | None = None,
 ) -> ProtocolStep:
-    args = {"instrument": "asmi", "position": position}
+    args = {"instrument": instrument, "position": position}
     if travel_z is not None:
         args["travel_z"] = travel_z
     return ProtocolStep(
@@ -112,6 +104,15 @@ def _move_step(
         command_name="move",
         handler=lambda *a, **k: None,
         args=args,
+    )
+
+
+def _home_step(index: int) -> ProtocolStep:
+    return ProtocolStep(
+        index=index,
+        command_name="home",
+        handler=lambda *a, **k: None,
+        args={},
     )
 
 
@@ -149,17 +150,58 @@ def test_travel_segment_crossing_machine_structure_at_low_z_fails():
     ), violations
 
 
-def test_deck_target_move_validates_safe_approach_pose():
+def test_home_over_rail_passes_but_lowering_while_over_rail_fails():
+    gantry = _gantry(x_max=400.0, z_max=130.0)
+    board = Board(
+        gantry=MagicMock(),
+        instruments={
+            "asmi": _instrument(name="asmi"),
+            "pipette": _instrument(name="pipette", offset_x=100.0),
+        },
+    )
+    protocol = _protocol(
+        _home_step(0),
+        _move_step(
+            1,
+            instrument="pipette",
+            position=(460.0, 150.0, 120.0),
+            travel_z=80.0,
+        ),
+    )
+
+    violations = validate_protocol_semantics(protocol, board, _deck(), gantry)
+
+    messages = [violation.message for violation in violations]
+    assert not any("home pose" in message for message in messages), messages
+    assert any("travel_z lift/lower" in message for message in messages), messages
+    assert any("right_x_max_rail" in message for message in messages), messages
+
+
+def test_home_over_rail_at_rail_height_fails():
+    gantry = _gantry(x_max=400.0, z_max=100.0)
+    board = Board(
+        gantry=MagicMock(),
+        instruments={"pipette": _instrument(name="pipette", offset_x=100.0)},
+    )
+    protocol = _protocol(_home_step(0))
+
+    violations = validate_protocol_semantics(protocol, board, _deck(), gantry)
+
+    assert any("home pose" in v.message for v in violations), violations
+    assert any("right_x_max_rail" in v.message for v in violations), violations
+
+
+def test_deck_target_move_validates_safe_z_pose():
     protocol = _protocol(_move_step(0, position="plate.A1"))
 
     violations = validate_protocol_semantics(
         protocol,
-        _board(safe_approach_height=50.0),
+        _board(),
         _deck(),
-        _gantry(),
+        _gantry(safe_z=50.0),
     )
 
-    assert any("safe_approach_height" in v.message for v in violations), violations
+    assert any("safe_z" in v.message for v in violations), violations
 
 
 def test_scan_action_z_inside_machine_structure_fails():
@@ -172,13 +214,10 @@ def test_scan_action_z_inside_machine_structure_fails():
                 "plate": "plate",
                 "instrument": "asmi",
                 "method": "indentation",
-                "entry_travel_height": 120.0,
-                "interwell_travel_height": 120.0,
-                "method_kwargs": {
-                    "measurement_height": 50.0,
-                    "indentation_limit": 40.0,
-                    "step_size": 0.1,
-                },
+                "measurement_height": 10.0,
+                "safe_approach_height": 80.0,
+                "indentation_limit": 20.0,
+                "method_kwargs": {"step_size": 0.1},
             },
         )
     ])

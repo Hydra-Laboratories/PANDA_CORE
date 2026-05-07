@@ -16,23 +16,28 @@ from protocol_engine.protocol import ProtocolContext
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
+PIPETTE_HEIGHT_MM = 14.10
+
+
 def _mock_context(
     resolve_return: Coordinate3D | None = None,
     has_pipette: bool = True,
+    height_mm: float | None = PIPETTE_HEIGHT_MM,
 ) -> ProtocolContext:
-    coord = resolve_return or Coordinate3D(x=100.0, y=50.0, z=20.0)
+    coord = resolve_return or Coordinate3D(x=100.0, y=50.0, z=PIPETTE_HEIGHT_MM)
 
     board = MagicMock()
     deck = MagicMock()
     deck.resolve.return_value = coord
+    labware = MagicMock(height_mm=height_mm)
+    deck.__getitem__ = MagicMock(return_value=labware)
 
     if has_pipette:
         pipette = MagicMock()
         pipette.aspirate.return_value = MagicMock(success=True, volume_ul=100.0)
         pipette.dispense.return_value = MagicMock(success=True, volume_ul=100.0)
         pipette.mix.return_value = MagicMock(success=True, volume_ul=50.0, repetitions=3)
-        # measurement_height is added to labware.z to get the descent target.
-        pipette.measurement_height = 0.0
+        # Default: pipette's instrument-config measurement_height is 0 (well surface).
         board.instruments = {"pipette": pipette}
     else:
         board.instruments = {}
@@ -125,16 +130,18 @@ class TestAspirateCommand:
         aspirate(ctx, position="plate_1.A1", volume_ul=100.0)
         ctx.board.move_to_labware.assert_called_once_with("pipette", coord)
 
-    def test_descends_to_action_z_after_approach(self):
-        """aspirate: descent raw-move must target absolute measurement_height."""
+    def test_descends_to_well_bottom_after_approach(self):
+        """aspirate descends to ``height_mm + 0`` (the labware reference Z,
+        i.e. the well bottom). Pipette commands engage at the labware
+        surface — per-command Z offsets aren't surfaced yet."""
         from protocol_engine.commands.pipette import aspirate
 
-        coord = Coordinate3D(x=10.0, y=20.0, z=75.0)
+        coord = Coordinate3D(x=10.0, y=20.0, z=PIPETTE_HEIGHT_MM)
         ctx = _mock_context(resolve_return=coord)
-        # Contact pipette uses a low absolute deck-frame action plane.
-        _get_pipette(ctx).measurement_height = -5.0
         aspirate(ctx, position="plate_1.A1", volume_ul=100.0)
-        ctx.board.move.assert_called_once_with("pipette", (10.0, 20.0, -5.0))
+        ctx.board.move.assert_called_once_with(
+            "pipette", (10.0, 20.0, PIPETTE_HEIGHT_MM),
+        )
 
     def test_approach_then_descend_then_aspirate(self):
         """Ordering: approach (move_to_labware) -> descent (move) -> aspirate."""
@@ -398,6 +405,8 @@ def _mock_context_multi_resolve(has_pipette: bool = True) -> ProtocolContext:
 
     if has_pipette:
         pipette = MagicMock()
+        # Real numeric heights so the dispatch finite-number guards pass;
+        # test fixtures elsewhere set realistic values for engagement math.
         pipette.aspirate.return_value = MagicMock(success=True, volume_ul=100.0)
         pipette.dispense.return_value = MagicMock(success=True, volume_ul=100.0)
         board.instruments = {"pipette": pipette}

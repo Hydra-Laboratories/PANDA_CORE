@@ -10,9 +10,9 @@ Three YAML files define a runnable experiment:
 ### 1. Gantry (`configs/gantry/*.yaml`)
 
 Defines the controller serial port, homing strategy, working volume, optional
-structure-clearance plane, fixed machine structures, optional GRBL
-expectations, `cnc.total_z_height`, and the instruments mounted on that
-machine.
+absolute `safe_z` plane (used for inter-labware travel), fixed machine
+structures, optional GRBL expectations, `cnc.total_z_height`, and the
+instruments mounted on that machine.
 
 Coordinate convention:
 
@@ -27,7 +27,9 @@ serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
   total_z_height: 87.0
-  structure_clearance_z: 85.0
+  # Absolute deck-frame Z used for inter-labware travel and the entry
+  # approach to the first well of a scan. Defaults to working_volume.z_max.
+  safe_z: 85.0
 
 working_volume:
   x_min: 0.0
@@ -54,8 +56,6 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    measurement_height: 26.0
-    safe_approach_height: 35.0
 ```
 
 Included examples:
@@ -91,13 +91,11 @@ labware:
     y_offset_mm: 9.0
 ```
 
-Instrument Z semantics live in the gantry YAML:
-
-- `measurement_height` is the instrument's absolute deck-frame action Z.
-- `safe_approach_height` is the instrument's absolute deck-frame XY-travel Z
-  and must be at or above `measurement_height`.
-- These fields are used by generic deck-target motion such as `move` to a deck
-  target, `measure`, `scan`, and pipette commands.
+Instrument blocks carry only physical mounting state (offsets, depth,
+hardware-specific config). Labware-relative motion heights
+(`measurement_height`, `safe_approach_height`) live on the protocol
+command — see the Protocol section below. Inter-labware travel uses the
+gantry-level `safe_z`, not any instrument field.
 
 `machine_structures` are fixed gantry-level safety obstacles, not deck labware.
 They can live outside `working_volume`; protocol validation rejects commanded
@@ -129,21 +127,24 @@ Protocol motion notes:
 - `move` accepts optional `travel_z` for named/literal XYZ targets. That forces
   a retract-first transit: move Z to `travel_z`, travel in XY at that Z, then
   finish at the target position.
-- `scan.entry_travel_height` is the absolute deck-frame Z used only for the
-  first move into the first well.
-- `scan.interwell_travel_height` is the absolute deck-frame Z used for
-  well-to-well travel and final scan retract.
-- Legacy scan names `entry_travel_z`, scan-level `safe_approach_height`, and
-  ASMI `z_limit` are rejected before motion.
+- Scan and measure take labware-relative heights as first-class command
+  arguments: `scan` requires both `measurement_height` (action plane)
+  and `safe_approach_height` (between-wells XY-travel plane, must be at
+  or above the action plane); `measure` requires `measurement_height`.
+  Both are mm above the well/labware calibrated surface Z (negative = below). Pipette
+  commands engage at the labware reference Z (well bottom, tip top)
+  with no Z offset.
+- The first well of a scan and inter-labware travel use the gantry's
+  absolute `cnc.safe_z` (default `working_volume.z_max`).
+- Legacy names `entry_travel_z`, `entry_travel_height`,
+  `interwell_travel_height`, and ASMI `z_limit` are rejected before motion.
 
 ASMI-specific note:
 
-- Gantry YAML `measurement_height` is the generic absolute instrument action Z
-  used by shared movement helpers.
-- Scan-level `measurement_height` is the absolute deck-frame Z where
-  `ASMI.indentation()` begins.
-- `indentation_limit` is the lower stopping Z; downward indentation requires
-  `indentation_limit < measurement_height`.
+- `ASMI.indentation()` begins at the resolved action plane
+  (`well.z + measurement_height`) and descends by
+  `indentation_limit` mm. `indentation_limit` is sign-agnostic: only its
+  magnitude matters.
 
 ## Setup and Execution
 
