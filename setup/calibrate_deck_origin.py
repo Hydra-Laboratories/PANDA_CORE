@@ -590,38 +590,31 @@ def _opposite_pull_off_delta(
     for axis, value in delta.items():
         if value == 0:
             continue
-        if axis == "z":
-            # During calibration, Z limit alarms almost always mean the user
-            # descended too far into the lower switch/contact direction. A
-            # stale GRBL alarm can make the next attempted jog fail regardless
-            # of its sign, so using "opposite of the failed command" can pull
-            # deeper into the lower switch if the operator was trying to jog up
-            # to recover. Always pull upward in the CubOS deck frame.
-            pull_off[axis] = pull_off_mm
-        elif value > 0:
+        if value > 0:
             pull_off[axis] = -pull_off_mm
         else:
             pull_off[axis] = pull_off_mm
     return pull_off
 
 
-def _reset_controller_after_limit_alarm(
+def _soft_reset_and_unlock_after_limit_alarm(
     gantry: _GantryLike,
     *,
     output: Callable[[str], None],
 ) -> None:
     reset_and_unlock = getattr(gantry, "reset_and_unlock", None)
+    if not callable(reset_and_unlock):
+        raise CommandExecutionError(
+            "Limit recovery requires gantry.reset_and_unlock() so GRBL gets "
+            "a soft reset (Ctrl-X) before $X unlock."
+        )
     try:
-        if callable(reset_and_unlock):
-            output("Soft-resetting GRBL, then unlocking before pull-off.")
-            reset_and_unlock()
-        else:
-            output("Unlocking GRBL before pull-off.")
-            gantry.unlock()
+        output("Soft-resetting GRBL, then unlocking before pull-off.")
+        reset_and_unlock()
     except MillConnectionError:
         raise
     except (CommandExecutionError, StatusReturnError) as exc:
-        output(f"Reset/unlock during limit recovery failed: {exc}")
+        output(f"Soft reset/unlock during limit recovery failed: {exc}")
         output("Use the controller/E-stop reset path before continuing.")
         raise
 
@@ -647,6 +640,34 @@ def _probe_for_limit_status_after_jog(gantry: _GantryLike) -> None:
     _raise_if_limit_status(str(get_status()))
 
 
+def _read_limit_recovery_status(gantry: _GantryLike) -> str | None:
+    get_status = getattr(gantry, "get_status", None)
+    if not callable(get_status):
+        return None
+    try:
+        return str(get_status())
+    except Exception:
+        return None
+
+
+def _needs_another_limit_pull_off(status: str | None) -> bool:
+    if status is None:
+        return False
+    lower = status.lower()
+    return any(
+        token in lower
+        for token in (
+            "alarm",
+            "reset to continue",
+            "hard limit",
+            "limit",
+            "pn:",
+            "statusqueryfailed",
+            "failed",
+        )
+    )
+
+
 def _recover_from_limit_alarm(
     gantry: _GantryLike,
     delta: dict[str, float],
@@ -655,11 +676,11 @@ def _recover_from_limit_alarm(
     feed_rate: float,
     output: Callable[[str], None],
 ) -> dict[str, float] | None:
-    pull_off = _opposite_pull_off_delta(delta, pull_off_mm)
+    effective_pull_off_mm = max(5.0, float(pull_off_mm))
+    pull_off = _opposite_pull_off_delta(delta, effective_pull_off_mm)
     output(
-        "Limit alarm detected. Resetting/unlocking GRBL and pulling off the "
-        f"switch by {pull_off_mm:g} mm. Z-axis recovery always pulls upward "
-        "(+Z in the CubOS deck frame)."
+        "Limit alarm detected. Soft-resetting/unlocking GRBL and pulling off the "
+        f"switch by {effective_pull_off_mm:g} mm opposite the failed jog direction."
     )
     try:
         gantry.jog_cancel()
@@ -670,25 +691,48 @@ def _recover_from_limit_alarm(
         output("Aborting calibration; use E-stop and rerun before continuing.")
         raise
 
-    _reset_controller_after_limit_alarm(gantry, output=output)
+    max_pull_off_attempts = 5
+    output(
+        f"Attempting limit pull-off up to {max_pull_off_attempts} times; "
+        "soft-resetting/unlocking between attempts."
+    )
+    for attempt in range(1, max_pull_off_attempts + 1):
+        _soft_reset_and_unlock_after_limit_alarm(gantry, output=output)
+        try:
+            gantry.jog(feed_rate=feed_rate, **pull_off)
+        except MillConnectionError:
+            raise
+        except (CommandExecutionError, StatusReturnError) as exc:
+            if attempt >= max_pull_off_attempts:
+                output(f"Limit pull-off failed after {max_pull_off_attempts} attempts: {exc}")
+                output("Aborting calibration; gantry position is unknown.")
+                raise
+            output(
+                f"Limit pull-off attempt {attempt}/{max_pull_off_attempts} did not clear; retrying."
+            )
+            continue
 
-    try:
-        gantry.jog(feed_rate=feed_rate, **pull_off)
-    except MillConnectionError:
-        raise
-    except (CommandExecutionError, StatusReturnError) as exc:
-        output(f"Automatic pull-off jog failed: {exc}")
-        output("Aborting calibration; gantry position is unknown.")
-        raise
-
-    try:
-        return gantry.get_coordinates()
-    except MillConnectionError:
-        raise
-    except (CommandExecutionError, StatusReturnError) as exc:
-        output(f"WPos readback after pull-off failed: {exc}")
-        output("Aborting calibration; gantry position is unknown.")
-        raise
+        status = _read_limit_recovery_status(gantry)
+        if not _needs_another_limit_pull_off(status):
+            break
+        if attempt >= max_pull_off_attempts:
+            output(
+                "Pull-off jog still left the controller in a limit/alarm state "
+                f"after {max_pull_off_attempts} attempts. Use E-stop/power reset "
+                "and manually clear the switch before continuing."
+            )
+            raise StatusReturnError(
+                "Limit pull-off did not clear the alarm after repeated attempts."
+            )
+        output(
+            f"Limit pull-off attempt {attempt}/{max_pull_off_attempts} did not clear; retrying."
+        )
+    output(
+        "Pulled off the limit switch. Skipping immediate WPos readback because "
+        "GRBL may not report coordinates reliably right after a limit reset; "
+        "position readback will resume on the next operator confirmation."
+    )
+    return None
 
 
 def _interactive_jog_to_reference(

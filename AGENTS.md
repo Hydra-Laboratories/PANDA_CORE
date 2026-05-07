@@ -65,6 +65,10 @@ Use `docs/agent-index.md` for exact files/tests. Common entrypoints:
     - `offset_y = artifact_y - gantry_y`
     - `depth = gantry_z - artifact_z`
 
+## Debugging Mode
+
+If the user explicitly says they are debugging, or if their intent is clearly active debugging, prioritize fast diagnosis over the normal TDD loop. Do not add or run unit tests during the live debugging cycle unless the user asks for them or the bug is already fixed and ready to lock down. Temporary instrumentation is acceptable, but tag it clearly and remove it before finalizing.
+
 ## Progress / Checkpoints
 
 Create a temporary checkpoint under `progress/` for large refactors, hardware-facing motion changes, long tasks, or tasks likely to be handed off. Keep it current with scope, changed files, validation, hardware impact, open risks, and next steps.

@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import copy
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Protocol, Sequence
@@ -336,6 +337,30 @@ def _move_to_xy_center(
     return dict(gantry.get_coordinates())
 
 
+def _wait_until_idle_if_available(
+    gantry: _GantryLike,
+    *,
+    timeout_s: float = 10.0,
+    poll_interval_s: float = 0.1,
+) -> None:
+    status_reader = getattr(gantry, "get_status", None)
+    if not callable(status_reader):
+        return
+
+    deadline = time.monotonic() + timeout_s
+    last_status = ""
+    while time.monotonic() < deadline:
+        last_status = str(status_reader())
+        if "idle" in last_status.lower():
+            return
+        time.sleep(poll_interval_s)
+
+    raise RuntimeError(
+        "Timed out waiting for gantry to become idle after jog; "
+        f"last status: {last_status}"
+    )
+
+
 def _retract_up_after_contact(
     gantry: _GantryLike,
     *,
@@ -349,6 +374,7 @@ def _retract_up_after_contact(
         f"Raising Z by {retract_z_mm:g} mm before moving to the next tool/reference step."
     )
     gantry.jog(z=retract_z_mm, feed_rate=feed_rate)
+    _wait_until_idle_if_available(gantry)
 
 
 def run_multi_instrument_calibration(
@@ -361,7 +387,7 @@ def run_multi_instrument_calibration(
     dry_run: bool = False,
     tolerance_mm: float = 0.25,
     jog_step_mm: float = 1.0,
-    jog_feed_rate: float = 2500.0,
+    jog_feed_rate: float = 2000.0,
     post_contact_retract_z_mm: float = 15.0,
     skip_soft_limit_config: bool = False,
     write_gantry_yaml: bool = False,
@@ -794,7 +820,7 @@ def main() -> None:
     parser.add_argument("--output-gantry", type=Path, default=None)
     parser.add_argument("--tolerance-mm", type=float, default=0.25, help=argparse.SUPPRESS)
     parser.add_argument("--jog-step-mm", type=float, default=1.0, help=argparse.SUPPRESS)
-    parser.add_argument("--jog-feed-rate", type=float, default=2500.0, help=argparse.SUPPRESS)
+    parser.add_argument("--jog-feed-rate", type=float, default=2000.0, help=argparse.SUPPRESS)
     parser.add_argument("--post-contact-retract-z-mm", type=float, default=15.0, help=argparse.SUPPRESS)
     parser.add_argument("--homing-serial-timeout-s", type=float, default=10.0, help=argparse.SUPPRESS)
     parser.add_argument("--jog-serial-timeout-s", type=float, default=1.0, help=argparse.SUPPRESS)

@@ -8,6 +8,7 @@ import yaml
 
 from setup.calibrate_multi_instrument_board import (
     MultiInstrumentCalibrationResult,
+    _retract_up_after_contact,
     compute_relative_instrument_calibrations,
     run_multi_instrument_calibration,
 )
@@ -201,6 +202,21 @@ def _key_reader(keys):
         return next(iterator)
 
     return read
+
+
+def test_retract_waits_for_idle_before_returning():
+    gantry = _FakeGantry(config={})
+    statuses = iter(["Jog", "Run", "Idle"])
+    gantry.get_status = lambda: next(statuses)  # type: ignore[attr-defined]
+
+    _retract_up_after_contact(
+        gantry,
+        retract_z_mm=15.0,
+        feed_rate=2000.0,
+        output=lambda _message: None,
+    )
+
+    assert gantry.calls == [("jog", 0, 0, 15.0, 2000.0)]
 
 
 def test_compute_relative_instrument_calibrations_uses_shared_block_point():
@@ -402,7 +418,7 @@ def test_multi_instrument_calibration_sets_xy_before_z_and_updates_yaml(tmp_path
     assert move_calls == [("move_to", 199.0, 149.5, 88.0, None)]
     retract_calls = [
         call for call in _FakeGantry.instance.calls
-        if call == ("jog", 0, 0, 15.0, 2500.0)
+        if call == ("jog", 0, 0, 15.0, 2000.0)
     ]
     assert len(retract_calls) == 2
 
