@@ -75,7 +75,7 @@ Use `docs/agent-index.md` for exact files/tests. Common entrypoints:
 
 ## Calibration Scripts
 
-- `setup/calibrate_gantry.py`: only supported user-facing calibration script. It requires a seed YAML and output gantry path, then chooses single- or multi-instrument calibration from instrument count.
+- `setup/calibrate_gantry.py`: only supported user-facing calibration script. It requires an input gantry YAML and chooses single- or multi-instrument calibration from instrument count. With no `--output-gantry`, it prompts before overwriting the input file; with `--output-gantry`, it writes the explicit output path without an extra overwrite prompt.
 - `setup/calibration/single_instrument_calibration.py`: internal one-instrument flow implementation.
 - `setup/calibration/multi_instrument_calibration.py`: internal multi-instrument flow implementation.
   - Multi-instrument flow prompts the operator to explicitly choose the reference and lowest instruments by number; blank input is not accepted.
@@ -100,8 +100,8 @@ When the task is complete, either delete the temporary checkpoint after promotin
 
 ## Documentation Updates
 
-- **`calibrate_gantry.py`**: Preferred user-facing calibration entrypoint. Loads a seed gantry YAML, requires a separate output path, preflights hardware risk and instrument count, then dispatches one-instrument configs to `setup/calibration/single_instrument_calibration.py` or multi-instrument configs to `setup/calibration/multi_instrument_calibration.py`.
-    - **Guided usage**: `python setup/calibrate_gantry.py --seed configs/gantry/seeds/<seed>.yaml --output-gantry configs/gantry/<calibrated>.yaml`
+- **`calibrate_gantry.py`**: Preferred user-facing calibration entrypoint. Loads an input gantry YAML, preflights hardware risk and instrument count, then dispatches one-instrument configs to `setup/calibration/single_instrument_calibration.py` or multi-instrument configs to `setup/calibration/multi_instrument_calibration.py`.
+    - **Guided usage**: `python setup/calibrate_gantry.py configs/gantry/<gantry>.yaml` to overwrite after confirmation, or add `--output-gantry configs/gantry/<calibrated>.yaml` to write a calibrated copy.
     - **Single instrument**: jog the tool to the calibration block at the front-left origin point; X/Y/Z are assigned at the same physical pose, with Z set to the block height.
     - **Multi instrument**: pick the left-most/reference instrument and lowest instrument by number, use a calibration block, then record each instrument's `offset_x`, `offset_y`, and `depth` from the shared block point.
     - **Safety**: this changes G54 WPos and may program GRBL soft limits; validate offline first and calibrate slowly with clear E-stop access.

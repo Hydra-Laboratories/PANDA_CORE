@@ -37,10 +37,8 @@ def _enter_only(prompt: str) -> str:
 
 
 def test_auto_calibration_routes_single_instrument_to_deck_origin(monkeypatch, tmp_path):
-    seed_dir = tmp_path / "seeds"
-    seed_dir.mkdir()
     path = _write_gantry(
-        seed_dir / "single.yaml",
+        tmp_path / "single.yaml",
         "  asmi:\n    type: asmi\n    vendor: vernier\n",
     )
     out_path = tmp_path / "calibrated.yaml"
@@ -67,6 +65,7 @@ def test_auto_calibration_routes_single_instrument_to_deck_origin(monkeypatch, t
 
     assert result == "single-result"
     assert [call[0] for call in calls] == ["single"]
+    assert calls[0][1][0] == path.resolve()
     assert calls[0][2]["instrument_name"] == "asmi"
     assert calls[0][2]["z_reference_mode"] == "block"
     assert calls[0][2]["write_gantry_yaml"] is True
@@ -76,10 +75,8 @@ def test_auto_calibration_routes_single_instrument_to_deck_origin(monkeypatch, t
 
 
 def test_auto_calibration_routes_multiple_instruments_to_board_calibration(monkeypatch, tmp_path):
-    seed_dir = tmp_path / "seeds"
-    seed_dir.mkdir()
     path = _write_gantry(
-        seed_dir / "multi.yaml",
+        tmp_path / "multi.yaml",
         "  left_probe:\n    type: asmi\n    vendor: vernier\n"
         "  camera:\n    type: uv_curing\n    vendor: excelitas\n",
     )
@@ -107,6 +104,7 @@ def test_auto_calibration_routes_multiple_instruments_to_board_calibration(monke
 
     assert result == "multi-result"
     assert [call[0] for call in calls] == ["multi"]
+    assert calls[0][1][0] == path.resolve()
     assert any("Detected instruments:    2" in message for message in messages)
     assert any("multi-instrument board calibration" in message for message in messages)
 
@@ -118,17 +116,7 @@ def test_auto_calibration_requires_at_least_one_instrument(tmp_path):
         calibrate_gantry.run_auto_calibration(path, output_gantry_path=tmp_path / "out.yaml")
 
 
-def test_auto_calibration_refuses_to_overwrite_seed(tmp_path):
-    path = _write_gantry(
-        tmp_path / "single.yaml",
-        "  asmi:\n    type: asmi\n    vendor: vernier\n",
-    )
-
-    with pytest.raises(ValueError, match="Refusing to overwrite"):
-        calibrate_gantry.run_auto_calibration(path, output_gantry_path=path)
-
-
-def test_auto_calibration_confirms_non_seed_input(monkeypatch, tmp_path):
+def test_auto_calibration_prompts_before_overwriting_input(monkeypatch, tmp_path):
     path = _write_gantry(
         tmp_path / "single.yaml",
         "  asmi:\n    type: asmi\n    vendor: vernier\n",
@@ -145,8 +133,57 @@ def test_auto_calibration_confirms_non_seed_input(monkeypatch, tmp_path):
     with pytest.raises(RuntimeError, match="cancelled"):
         calibrate_gantry.run_auto_calibration(
             path,
-            output_gantry_path=tmp_path / "out.yaml",
             output=lambda message: None,
             input_reader=lambda prompt: next(responses),
         )
     assert calls == []
+
+
+def test_auto_calibration_overwrites_input_after_confirmation(monkeypatch, tmp_path):
+    path = _write_gantry(
+        tmp_path / "single.yaml",
+        "  asmi:\n    type: asmi\n    vendor: vernier\n",
+    )
+    calls: list[tuple] = []
+    responses = iter(["y", ""])
+
+    def fake_single(*args, **kwargs):
+        calls.append((args, kwargs))
+        return "single-result"
+
+    monkeypatch.setattr(calibrate_gantry, "run_calibration", fake_single)
+
+    result = calibrate_gantry.run_auto_calibration(
+        path,
+        output=lambda message: None,
+        input_reader=lambda prompt: next(responses),
+    )
+
+    assert result == "single-result"
+    assert calls[0][1]["output_gantry_path"] == path.resolve()
+
+
+def test_auto_calibration_does_not_prompt_for_explicit_output(monkeypatch, tmp_path):
+    path = _write_gantry(
+        tmp_path / "single.yaml",
+        "  asmi:\n    type: asmi\n    vendor: vernier\n",
+    )
+    out_path = tmp_path / "existing.yaml"
+    out_path.write_text("existing", encoding="utf-8")
+    prompts: list[str] = []
+
+    monkeypatch.setattr(
+        calibrate_gantry,
+        "run_calibration",
+        lambda *args, **kwargs: "single-result",
+    )
+
+    result = calibrate_gantry.run_auto_calibration(
+        path,
+        output_gantry_path=out_path,
+        output=lambda message: None,
+        input_reader=lambda prompt: prompts.append(prompt) or "",
+    )
+
+    assert result == "single-result"
+    assert prompts == ["Press ENTER to connect to hardware and start calibration, or Ctrl-C to abort: "]

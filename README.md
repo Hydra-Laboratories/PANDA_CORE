@@ -151,13 +151,19 @@ pip install -e ".[potentiostat]"
 
 Calibrate the deck-origin work frame before trusting real motion. The wrapper
 below chooses the single-instrument or multi-instrument calibration flow from
-the number of mounted instruments in the seed YAML, then writes a calibrated
-gantry YAML:
+the number of mounted instruments in the gantry YAML. With only an input path,
+it prompts before overwriting that file:
+
+```bash
+PYTHONPATH=src python setup/calibrate_gantry.py configs/gantry/cub_xl_asmi.yaml
+```
+
+To write a calibrated copy instead, provide `--output-gantry`:
 
 ```bash
 PYTHONPATH=src python setup/calibrate_gantry.py \
-  --seed configs/gantry/seeds/cub_xl_asmi.yaml \
-  --output-gantry configs/gantry/cub_xl_asmi.yaml
+  configs/gantry/cub_xl_asmi.yaml \
+  --output-gantry configs/gantry/cub_xl_asmi_calibrated.yaml
 ```
 
 For a multi-instrument gantry config, the guided board calibration prompts you

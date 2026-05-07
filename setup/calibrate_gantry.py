@@ -2,16 +2,15 @@
 
 Examples:
 
-    python setup/calibrate_gantry.py \
-      --seed configs/gantry/seeds/cub_xl_asmi.yaml \
-      --output-gantry configs/gantry/cub_xl_asmi.yaml
+    python setup/calibrate_gantry.py configs/gantry/cub_xl_asmi.yaml
 
     python setup/calibrate_gantry.py \
-      --seed configs/gantry/seeds/cub_xl_sterling_3_instrument.yaml \
-      --output-gantry configs/gantry/cub_xl_sterling_3_instrument.yaml
+      configs/gantry/cub_xl_sterling_3_instrument.yaml \
+      --output-gantry configs/gantry/cub_xl_sterling_3_instrument_calibrated.yaml
 
-The script reads the seed YAML, counts mounted instruments, and chooses the
-single- or multi-instrument calibration flow.
+The script reads the input gantry YAML, counts mounted instruments, and chooses
+single- or multi-instrument calibration. If no output path is provided, it asks
+for confirmation before overwriting the input gantry YAML.
 """
 
 from __future__ import annotations
@@ -40,20 +39,20 @@ from setup.calibration.multi_instrument_calibration import (  # noqa: E402
 InstrumentInfo = tuple[str, str | None]
 
 
-def _load_seed_config(seed_path: Path) -> dict[str, Any]:
-    if not seed_path.exists():
-        raise ValueError(f"Seed gantry YAML does not exist: {seed_path}")
-    with seed_path.open(encoding="utf-8") as handle:
+def _load_gantry_config(gantry_path: Path) -> dict[str, Any]:
+    if not gantry_path.exists():
+        raise ValueError(f"Input gantry YAML does not exist: {gantry_path}")
+    with gantry_path.open(encoding="utf-8") as handle:
         raw: Any = yaml.safe_load(handle)
     if not isinstance(raw, dict):
-        raise ValueError(f"Seed gantry YAML is empty or invalid: {seed_path}")
+        raise ValueError(f"Input gantry YAML is empty or invalid: {gantry_path}")
     return raw
 
 
 def _instrument_info(raw_config: dict[str, Any]) -> tuple[InstrumentInfo, ...]:
     instruments = raw_config.get("instruments")
     if not isinstance(instruments, dict) or not instruments:
-        raise ValueError("Seed gantry YAML must define at least one mounted instrument.")
+        raise ValueError("Input gantry YAML must define at least one mounted instrument.")
     info: list[InstrumentInfo] = []
     for name, config in instruments.items():
         instrument_type = config.get("type") if isinstance(config, dict) else None
@@ -61,25 +60,20 @@ def _instrument_info(raw_config: dict[str, Any]) -> tuple[InstrumentInfo, ...]:
     return tuple(info)
 
 
-def _validate_seed_config(raw_config: dict[str, Any], *, seed_path: Path, output_path: Path) -> None:
+def _validate_gantry_config(raw_config: dict[str, Any], *, output_path: Path) -> None:
     missing = [key for key in ("serial_port", "cnc", "working_volume", "instruments") if key not in raw_config]
     if missing:
-        raise ValueError("Seed gantry YAML is missing required section(s): " + ", ".join(missing))
-
-    if seed_path.resolve() == output_path.resolve():
-        raise ValueError(
-            "Refusing to overwrite the input seed. Use a different --output-gantry path."
-        )
+        raise ValueError("Input gantry YAML is missing required section(s): " + ", ".join(missing))
 
     working_volume = raw_config.get("working_volume")
     if not isinstance(working_volume, dict):
-        raise ValueError("Seed gantry YAML must contain a working_volume mapping.")
+        raise ValueError("Input gantry YAML must contain a working_volume mapping.")
     for key in ("x_min", "x_max", "y_min", "y_max", "z_min", "z_max"):
         if key not in working_volume:
-            raise ValueError(f"Seed gantry YAML working_volume is missing {key}.")
+            raise ValueError(f"Input gantry YAML working_volume is missing {key}.")
     for low, high in (("x_min", "x_max"), ("y_min", "y_max"), ("z_min", "z_max")):
         if float(working_volume[high]) <= float(working_volume[low]):
-            raise ValueError(f"Seed gantry YAML has invalid working_volume {low}/{high}.")
+            raise ValueError(f"Input gantry YAML has invalid working_volume {low}/{high}.")
 
     output_parent = output_path.resolve().parent
     if not output_parent.exists():
@@ -102,8 +96,9 @@ def _confirm(prompt: str, *, input_reader: Callable[[str], str]) -> bool:
 
 def _preflight(
     *,
-    seed_path: Path,
+    input_path: Path,
     output_path: Path,
+    overwrite_input: bool,
     instruments: tuple[InstrumentInfo, ...],
     flow_name: str,
     input_reader: Callable[[str], str],
@@ -112,7 +107,7 @@ def _preflight(
     output("")
     output("Calibration preflight")
     output("=====================")
-    output(f"Input seed:              {seed_path}")
+    output(f"Input gantry YAML:       {input_path}")
     output(f"Output calibrated YAML:  {output_path}")
     output(f"Detected instruments:    {len(instruments)}")
     for line in _format_instruments(instruments):
@@ -126,16 +121,9 @@ def _preflight(
     output("  - Do not run protocols from the output YAML until validation passes.")
     output("")
 
-    seed_parts = seed_path.resolve().parts
-    if "seeds" not in seed_parts:
+    if overwrite_input:
         if not _confirm(
-            "Input path does not look like configs/gantry/seeds/*.yaml. Continue? [y/N]: ",
-            input_reader=input_reader,
-        ):
-            raise RuntimeError("Calibration cancelled before hardware connection.")
-    if output_path.exists():
-        if not _confirm(
-            f"Output file already exists and will be overwritten: {output_path}. Continue? [y/N]: ",
+            f"No --output-gantry was provided; calibration will overwrite {input_path}. Continue? [y/N]: ",
             input_reader=input_reader,
         ):
             raise RuntimeError("Calibration cancelled before hardware connection.")
@@ -185,18 +173,25 @@ def _print_end_summary(
 
 
 def run_auto_calibration(
-    seed_path: Path,
+    gantry_path: Path,
     *,
-    output_gantry_path: Path,
+    output_gantry_path: Path | None = None,
     output: Callable[[str], None] = print,
     input_reader: Callable[[str], str] = input,
 ):
-    """Run calibration from a seed YAML and write a calibrated gantry YAML."""
-    seed_path = seed_path.resolve()
-    output_gantry_path = output_gantry_path.resolve()
-    raw_config = _load_seed_config(seed_path)
+    """Run calibration and write a calibrated gantry YAML.
+
+    If ``output_gantry_path`` is omitted, the input gantry YAML is overwritten
+    after an explicit operator confirmation.
+    """
+    gantry_path = gantry_path.resolve()
+    overwrite_input = output_gantry_path is None
+    resolved_output_path = (
+        gantry_path if output_gantry_path is None else output_gantry_path.resolve()
+    )
+    raw_config = _load_gantry_config(gantry_path)
     instruments = _instrument_info(raw_config)
-    _validate_seed_config(raw_config, seed_path=seed_path, output_path=output_gantry_path)
+    _validate_gantry_config(raw_config, output_path=resolved_output_path)
 
     flow_name = (
         "single-instrument deck-origin calibration"
@@ -204,8 +199,9 @@ def run_auto_calibration(
         else "multi-instrument board calibration"
     )
     _preflight(
-        seed_path=seed_path,
-        output_path=output_gantry_path,
+        input_path=gantry_path,
+        output_path=resolved_output_path,
+        overwrite_input=overwrite_input,
         instruments=instruments,
         flow_name=flow_name,
         input_reader=input_reader,
@@ -216,53 +212,55 @@ def run_auto_calibration(
         instrument_name = instruments[0][0]
         output(f"Using single-instrument flow for {instrument_name!r}.")
         result = run_calibration(
-            seed_path,
+            gantry_path,
             instrument_name=instrument_name,
             z_reference_mode="block",
             write_gantry_yaml=True,
-            output_gantry_path=output_gantry_path,
+            output_gantry_path=resolved_output_path,
             output=output,
             input_reader=input_reader,
         )
     else:
         output(f"Using multi-instrument flow for {len(instruments)} mounted instruments.")
         result = run_multi_instrument_calibration(
-            seed_path,
+            gantry_path,
             write_gantry_yaml=True,
-            output_gantry_path=output_gantry_path,
+            output_gantry_path=resolved_output_path,
             output=output,
             input_reader=input_reader,
         )
 
-    _print_end_summary(result, output_path=output_gantry_path, output=output)
+    _print_end_summary(result, output_path=resolved_output_path, output=output)
     return result
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Calibrate a gantry from a seed YAML and write a calibrated gantry YAML.",
+        description="Calibrate a gantry YAML in place or write a calibrated copy.",
         epilog=(
             "Examples:\n"
             "  PYTHONPATH=src python setup/calibrate_gantry.py "
-            "--seed configs/gantry/seeds/cub_xl_asmi.yaml "
-            "--output-gantry configs/gantry/cub_xl_asmi.yaml\n"
+            "configs/gantry/cub_xl_asmi.yaml\n"
             "  PYTHONPATH=src python setup/calibrate_gantry.py "
-            "--seed configs/gantry/seeds/cub_xl_sterling_3_instrument.yaml "
-            "--output-gantry configs/gantry/cub_xl_sterling_3_instrument.yaml"
+            "configs/gantry/cub_xl_sterling_3_instrument.yaml "
+            "--output-gantry configs/gantry/cub_xl_sterling_3_instrument_calibrated.yaml"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--seed", type=Path, required=True, help="Input seed gantry YAML.")
+    parser.add_argument("gantry", type=Path, help="Input gantry YAML to calibrate.")
     parser.add_argument(
         "--output-gantry",
         type=Path,
-        required=True,
-        help="Output path for calibrated gantry YAML. Must differ from --seed.",
+        default=None,
+        help=(
+            "Optional output path for calibrated gantry YAML. If omitted, "
+            "the input gantry YAML is overwritten after confirmation."
+        ),
     )
     args = parser.parse_args()
 
     try:
-        run_auto_calibration(args.seed, output_gantry_path=args.output_gantry)
+        run_auto_calibration(args.gantry, output_gantry_path=args.output_gantry)
     except KeyboardInterrupt:
         print("\nAborted.")
         sys.exit(130)

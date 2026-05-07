@@ -50,16 +50,17 @@ prints PASS/FAIL.
 
 ## Calibration
 
-For a real setup, calibrate from a seed YAML before running protocols:
+For a real setup, calibrate the gantry YAML before running protocols. With only
+an input path, the script prompts before overwriting that file:
 
 ```bash
-PYTHONPATH=src python setup/calibrate_gantry.py \
-  --seed configs/gantry/seeds/cub_xl_asmi.yaml \
-  --output-gantry configs/gantry/cub_xl_asmi.yaml
+PYTHONPATH=src python setup/calibrate_gantry.py configs/gantry/cub_xl_asmi.yaml
 ```
 
-The calibration script counts mounted instruments in the seed and chooses the
-single- or multi-instrument flow. Single-instrument calibration uses a
+To write a calibrated copy, provide `--output-gantry`.
+
+The calibration script counts mounted instruments in the gantry YAML and chooses
+the single- or multi-instrument flow. Single-instrument calibration uses a
 calibration block at the front-left origin point and assigns X/Y/Z at the same
 physical pose. Multi-instrument calibration uses a shared block point to compute
 per-instrument `offset_x`, `offset_y`, and `depth`.
