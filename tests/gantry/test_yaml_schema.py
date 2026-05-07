@@ -11,6 +11,7 @@ from gantry.yaml_schema import GantryYamlSchema
 def _valid_gantry_dict() -> dict:
     return {
         "serial_port": "/dev/cu.usbserial-2130",
+        "gantry_type": "cub_xl",
         "cnc": {"homing_strategy": "standard", "total_z_height": 90.0},
         "working_volume": {
             "x_min": 0.0,
@@ -30,6 +31,7 @@ class TestGantryYamlSchema:
         schema = GantryYamlSchema.model_validate(data)
 
         assert schema.serial_port == "/dev/cu.usbserial-2130"
+        assert schema.gantry_type == "cub_xl"
         assert schema.cnc.homing_strategy == "standard"
         assert schema.cnc.total_z_height == 90.0
         assert schema.working_volume.x_min == 0.0
@@ -54,6 +56,24 @@ class TestGantryYamlSchema:
         data = _valid_gantry_dict()
         del data["serial_port"]
         with pytest.raises(ValidationError, match="serial_port"):
+            GantryYamlSchema.model_validate(data)
+
+    def test_missing_gantry_type_raises(self):
+        data = _valid_gantry_dict()
+        del data["gantry_type"]
+        with pytest.raises(ValidationError, match="gantry_type"):
+            GantryYamlSchema.model_validate(data)
+
+    def test_cub_gantry_type_is_accepted(self):
+        data = _valid_gantry_dict()
+        data["gantry_type"] = "cub"
+        schema = GantryYamlSchema.model_validate(data)
+        assert schema.gantry_type == "cub"
+
+    def test_unknown_gantry_type_rejected(self):
+        data = _valid_gantry_dict()
+        data["gantry_type"] = "other_machine"
+        with pytest.raises(ValidationError, match="gantry_type"):
             GantryYamlSchema.model_validate(data)
 
     def test_missing_cnc_section_raises(self):
@@ -150,6 +170,23 @@ class TestGantryYamlSchema:
         data = _valid_gantry_dict()
         data["cnc"]["structure_clearance_z"] = 75.0
         with pytest.raises(ValidationError):
+            GantryYamlSchema.model_validate(data)
+
+    def test_machine_structures_yaml_is_rejected(self):
+        data = _valid_gantry_dict()
+        data["machine_structures"] = {
+            "right_x_max_rail": {
+                "type": "box",
+                "x_min": 480.0,
+                "x_max": 540.0,
+                "y_min": 0.0,
+                "y_max": 300.0,
+                "z_min": 0.0,
+                "z_max": 100.0,
+            }
+        }
+
+        with pytest.raises(ValidationError, match="machine_structures"):
             GantryYamlSchema.model_validate(data)
 
     def test_extra_top_level_key_rejected(self):

@@ -73,6 +73,12 @@ Use `docs/agent-index.md` for exact files/tests. Common entrypoints:
 - Instruments: `src/instruments/<instrument>/`
 - Persistence: `data/data_store.py`, `src/protocol_engine/measurements.py`
 
+Gantry YAML requires top-level `gantry_type` (`cub` or `cub_xl`) so setup
+validation can apply built-in machine-family safety checks. For `cub_xl`, setup
+validation rejects protocols whose instrument point or known travel segment
+would hit the fixed right X-max rail. The rail geometry is not user-authored
+YAML and remains separate from deck labware and `working_volume`.
+
 ## Calibration Scripts
 
 - `setup/calibrate_gantry.py`: only supported user-facing calibration script. It requires an input gantry YAML and chooses single- or multi-instrument calibration from instrument count. With no `--output-gantry`, it prompts before overwriting the input file; with `--output-gantry`, it writes the explicit output path without an extra overwrite prompt.

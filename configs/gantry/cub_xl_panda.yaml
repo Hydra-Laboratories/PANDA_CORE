@@ -7,6 +7,7 @@
 # Confirm live $130/$131/$132 and jog directions before using on hardware.
 
 serial_port: /dev/ttyUSB0
+gantry_type: cub_xl
 
 cnc:
   homing_strategy: standard

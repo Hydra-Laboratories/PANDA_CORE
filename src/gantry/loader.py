@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from .errors import GantryLoaderError
 from .gantry_config import (
     GantryConfig,
+    GantryType,
     HomingStrategy,
     WorkingVolume,
     YAxisMotion,
@@ -31,7 +32,11 @@ def _format_loader_exception(path: Path, error: Exception) -> str:
         if "missing" in error_type or "Field required" in detail:
             guidance = "Add the missing required YAML field shown in the error location."
         elif "extra_forbidden" in error_type or "Extra inputs are not permitted" in detail:
-            guidance = "Remove unknown YAML fields; only 'serial_port', 'cnc', 'working_volume', 'grbl_settings', and 'instruments' are allowed at root."
+            guidance = (
+                "Remove unknown YAML fields; only 'serial_port', 'cnc', "
+                "'gantry_type', 'working_volume', 'grbl_settings', and "
+                "'instruments' are allowed at root."
+            )
         else:
             guidance = "Review the YAML values against the gantry schema."
 
@@ -80,6 +85,7 @@ def load_gantry_from_yaml(path: str | Path) -> GantryConfig:
 
     return GantryConfig(
         serial_port=schema.serial_port,
+        gantry_type=GantryType(schema.gantry_type),
         homing_strategy=HomingStrategy(schema.cnc.homing_strategy),
         total_z_height=schema.cnc.total_z_height,
         safe_z=schema.safe_z,

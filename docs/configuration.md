@@ -17,18 +17,20 @@ configs/
 Gantry YAML defines:
 
 - serial port
+- gantry type (`cub` or `cub_xl`)
 - CNC homing strategy
 - total Z reference height
 - Y-axis motion mode
 - working volume
 - optional absolute `safe_z` plane (inter-labware travel)
 - optional GRBL settings expectations
-- mounted instruments, offsets, reach depths, action heights, and driver-specific settings
+- mounted instruments, offsets, reach depths, and driver-specific settings
 
 Representative example:
 
 ```yaml
 serial_port: /dev/cu.usbserial-140
+gantry_type: cub_xl
 cnc:
   homing_strategy: standard
   total_z_height: 87.0
@@ -67,6 +69,12 @@ and preserves the persistent G54 work-coordinate frame established by
 `setup/calibrate_gantry.py`; it does not zero WPos after homing. Protocol
 setup rejects gantry configs whose X/Y minima are not `0.0` or whose Z minimum
 is negative.
+
+Use top-level `gantry_type` to identify the physical machine family. Built-in
+setup validation uses it for machine-specific safety checks; for `cub_xl`, this
+includes rejecting protocols whose commanded instrument point or known travel
+segment would hit the fixed right X-max rail. The rail is not deck labware and
+is not configured in YAML.
 
 Run [Calibrate Deck Origin](calibration.md) before trusting measured working
 volume values on real hardware. Use [Gantry Bring-Up](admin/gantry-bring-up.md)

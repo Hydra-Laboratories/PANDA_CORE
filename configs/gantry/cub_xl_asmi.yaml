@@ -9,6 +9,7 @@
 # - Homed WPos measured as X=399.000, Y=280.000, Z=87.000.
 
 serial_port: /dev/ttyUSB0
+gantry_type: cub_xl
 
 cnc:
   homing_strategy: standard

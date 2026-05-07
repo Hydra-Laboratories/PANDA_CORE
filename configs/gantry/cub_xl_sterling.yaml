@@ -1,4 +1,5 @@
 serial_port: /dev/ttyUSB0
+gantry_type: cub_xl
 cnc:
   homing_strategy: standard
   total_z_height: 129.0
