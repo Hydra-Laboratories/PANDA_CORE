@@ -56,12 +56,10 @@ def _board() -> Board:
     instrument.offset_x = 0.0
     instrument.offset_y = 0.0
     instrument.depth = 0.0
-    instrument.measurement_height = -1.0   # owned by instrument config
-    instrument.safe_approach_height = None
     return Board(gantry=MagicMock(), instruments={"asmi": instrument})
 
 
-def _scan(safe_approach_height: float) -> Protocol:
+def _scan(safe_approach_height: float, measurement_height: float = -1.0) -> Protocol:
     return Protocol([
         ProtocolStep(
             index=0,
@@ -71,6 +69,7 @@ def _scan(safe_approach_height: float) -> Protocol:
                 "plate": "plate",
                 "instrument": "asmi",
                 "method": "indentation",
+                "measurement_height": measurement_height,
                 "safe_approach_height": safe_approach_height,
                 "indentation_limit": 5.0,
                 "method_kwargs": {"step_size": 0.1},

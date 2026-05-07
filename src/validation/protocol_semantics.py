@@ -3,11 +3,11 @@
 The protocol model:
 
 * ``measurement_height`` and ``safe_approach_height`` are *labware-relative*
-  offsets (mm above the labware's ``height_mm`` surface; negative = below).
-* ``measurement_height`` is owned by the instrument config (not on
-  protocol commands). ``safe_approach_height`` may be on either source
-  with a dual-source rule (at least one set; if both, values match).
-* ``safe_approach_height`` is required only on ``scan`` commands.
+  offsets (mm above the labware's ``height_mm`` surface; negative = below)
+  and are first-class arguments to the protocol commands that use them.
+* ``measurement_height`` is required on ``measure`` and ``scan``.
+* ``safe_approach_height`` is required on ``scan``.
+* Instruments do not declare these heights.
 * ``gantry.safe_z`` is the absolute deck-frame Z used for inter-labware
   travel and the entry approach for the first well of a scan. Resolved
   approach planes must satisfy ``height_mm + safe_approach_height <= safe_z``.
@@ -119,38 +119,6 @@ def _resolve_labware_for_target(
     return deck[labware_key]
 
 
-def _resolve_dual_source_height(
-    *,
-    instrument_value: float | None,
-    command_value: float | None,
-) -> tuple[float | None, str | None]:
-    """Return ``(resolved, error_message)``.
-
-    The field may be set on the instrument config, on the command, or
-    both. At least one source must define it; if both do, they must
-    agree.
-    """
-    if instrument_value is not None and command_value is not None:
-        if instrument_value != command_value:
-            return (
-                None,
-                f"set on the instrument config ({instrument_value}) and on "
-                f"the command ({command_value}) with conflicting values; "
-                "they must match",
-            )
-        return (instrument_value, None)
-    if instrument_value is None and command_value is None:
-        return (None, "is not set on either the instrument config or the command")
-    return (
-        instrument_value if instrument_value is not None else command_value,
-        None,
-    )
-
-
-# Kept for compatibility with callers that import the old name.
-_resolve_measurement_height = _resolve_dual_source_height
-
-
 def _validate_scan_command(
     *,
     step_index: int,
@@ -163,19 +131,28 @@ def _validate_scan_command(
 
     try:
         normalized = normalize_scan_arguments(
-            safe_approach_height=args.get("safe_approach_height"),
             indentation_limit=args.get("indentation_limit"),
             method_kwargs=args.get("method_kwargs"),
         )
     except ValueError as exc:
         return [_violation(step_index, "scan", str(exc))]
-    if "measurement_height" in args:
-        return [_violation(
+
+    relative_action = args.get("measurement_height")
+    relative_approach = args.get("safe_approach_height")
+    if relative_action is None:
+        violations.append(_violation(
             step_index, "scan",
-            "Top-level `measurement_height` on `scan` is not supported. "
-            "`measurement_height` is owned by the instrument config; set "
-            "it in the gantry YAML's `instruments:` block.",
-        )]
+            "`measurement_height` is required on `scan` (labware-relative "
+            "offset, mm above `labware.height_mm`).",
+        ))
+        return violations
+    if relative_approach is None:
+        violations.append(_violation(
+            step_index, "scan",
+            "`safe_approach_height` is required on `scan` (labware-relative "
+            "offset for between-wells XY travel).",
+        ))
+        return violations
 
     instrument = args.get("instrument")
     plate = args.get("plate")
@@ -184,7 +161,6 @@ def _validate_scan_command(
     plate_obj = deck[plate]
     if not isinstance(plate_obj, WellPlate):
         return violations
-    instr = board.instruments[instrument]
 
     if plate_obj.height_mm is None:
         violations.append(_violation(
@@ -194,27 +170,10 @@ def _validate_scan_command(
         ))
         return violations
 
-    if instr.measurement_height is None:
-        violations.append(_violation(
-            step_index, "scan",
-            f"`measurement_height` is not set on instrument {instrument!r}. "
-            "Set it in the gantry YAML's `instruments:` block.",
-        ))
-        return violations
-    relative_action = instr.measurement_height
-
-    relative_approach, approach_error = _resolve_dual_source_height(
-        instrument_value=getattr(instr, "safe_approach_height", None),
-        command_value=normalized.safe_approach_height,
-    )
-    if approach_error:
-        violations.append(_violation(
-            step_index, "scan",
-            f"`safe_approach_height` {approach_error}.",
-        ))
-        return violations
-
-    if not math.isfinite(relative_action) or not math.isfinite(relative_approach):
+    if not isinstance(relative_action, (int, float)) or isinstance(relative_action, bool) \
+            or not math.isfinite(relative_action) \
+            or not isinstance(relative_approach, (int, float)) or isinstance(relative_approach, bool) \
+            or not math.isfinite(relative_approach):
         violations.append(_violation(
             step_index, "scan",
             "scan heights must be finite.",
@@ -288,13 +247,13 @@ def _validate_measure_command(
     violations: list[ProtocolSemanticViolation] = []
     instrument = args.get("instrument")
     position = args.get("position")
+    relative_action = args.get("measurement_height")
 
-    if "measurement_height" in args:
+    if relative_action is None:
         violations.append(_violation(
             step_index, "measure",
-            "Top-level `measurement_height` on `measure` is not supported. "
-            "`measurement_height` is owned by the instrument config; set "
-            "it in the gantry YAML's `instruments:` block.",
+            "`measurement_height` is required on `measure` (labware-relative "
+            "offset, mm above `labware.height_mm`).",
         ))
         return violations
 
@@ -311,16 +270,9 @@ def _validate_measure_command(
         ))
         return violations
 
-    instr = board.instruments[instrument]
-    if instr.measurement_height is None:
-        violations.append(_violation(
-            step_index, "measure",
-            f"`measurement_height` is not set on instrument {instrument!r}. "
-            "Set it in the gantry YAML's `instruments:` block.",
-        ))
-        return violations
-    relative_action = instr.measurement_height
-    if not math.isfinite(relative_action):
+    if (isinstance(relative_action, bool)
+            or not isinstance(relative_action, (int, float))
+            or not math.isfinite(relative_action)):
         violations.append(_violation(
             step_index, "measure",
             "measure measurement_height must be finite.",

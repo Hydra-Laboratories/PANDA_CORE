@@ -38,7 +38,6 @@ def _mock_context(
         pipette.dispense.return_value = MagicMock(success=True, volume_ul=100.0)
         pipette.mix.return_value = MagicMock(success=True, volume_ul=50.0, repetitions=3)
         # Default: pipette's instrument-config measurement_height is 0 (well surface).
-        pipette.measurement_height = 0.0
         board.instruments = {"pipette": pipette}
     else:
         board.instruments = {}
@@ -131,17 +130,17 @@ class TestAspirateCommand:
         aspirate(ctx, position="plate_1.A1", volume_ul=100.0)
         ctx.board.move_to_labware.assert_called_once_with("pipette", coord)
 
-    def test_descends_to_action_z_after_approach(self):
-        """aspirate descends to height_mm + measurement_height (relative)."""
+    def test_descends_to_well_bottom_after_approach(self):
+        """aspirate descends to ``height_mm + 0`` (the labware reference Z,
+        i.e. the well bottom). Pipette commands engage at the labware
+        surface — per-command Z offsets aren't surfaced yet."""
         from protocol_engine.commands.pipette import aspirate
 
         coord = Coordinate3D(x=10.0, y=20.0, z=PIPETTE_HEIGHT_MM)
         ctx = _mock_context(resolve_return=coord)
-        # Contact pipette: instrument config sets a negative offset (below).
-        _get_pipette(ctx).measurement_height = -5.0
         aspirate(ctx, position="plate_1.A1", volume_ul=100.0)
         ctx.board.move.assert_called_once_with(
-            "pipette", (10.0, 20.0, PIPETTE_HEIGHT_MM - 5.0),
+            "pipette", (10.0, 20.0, PIPETTE_HEIGHT_MM),
         )
 
     def test_approach_then_descend_then_aspirate(self):
@@ -408,8 +407,6 @@ def _mock_context_multi_resolve(has_pipette: bool = True) -> ProtocolContext:
         pipette = MagicMock()
         # Real numeric heights so the dispatch finite-number guards pass;
         # test fixtures elsewhere set realistic values for engagement math.
-        pipette.measurement_height = 0.0
-        pipette.safe_approach_height = 0.0
         pipette.aspirate.return_value = MagicMock(success=True, volume_ul=100.0)
         pipette.dispense.return_value = MagicMock(success=True, volume_ul=100.0)
         board.instruments = {"pipette": pipette}
@@ -525,8 +522,6 @@ def _serial_transfer_context(
 
     if has_pipette:
         pipette = MagicMock()
-        pipette.measurement_height = 0.0
-        pipette.safe_approach_height = 0.0
         pipette.aspirate.return_value = MagicMock(success=True)
         pipette.dispense.return_value = MagicMock(success=True)
         board.instruments = {"pipette": pipette}

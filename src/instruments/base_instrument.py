@@ -21,18 +21,16 @@ class BaseInstrument(ABC):
     -----------
     CubOS uses a +Z-up deck frame.
 
-    * ``measurement_height`` and ``safe_approach_height`` are
-      *labware-relative* offsets (mm above the labware's ``height_mm``
-      surface; negative = below).
-    * Each may be set here, on the protocol ``measure``/``scan`` command,
-      or both. At least one source must define each, and conflicting
-      values between the two sources are rejected.
-    * ``safe_approach_height`` is consumed by ``scan`` only; ``measure``
-      does not use it.
+    Instruments don't carry labware-relative motion heights. The protocol
+    commands own them:
+
+    * ``measurement_height`` (action plane, labware-relative offset) is a
+      first-class argument to ``measure`` and ``scan``.
+    * ``safe_approach_height`` (between-wells XY-travel offset) is a
+      first-class argument to ``scan``.
 
     Inter-labware travel and the entry approach for the first well of a
-    scan use the gantry-level ``safe_z`` (absolute deck-frame Z), not any
-    instrument-level field.
+    scan use the gantry-level ``safe_z`` (absolute deck-frame Z).
     """
 
     def __init__(
@@ -41,16 +39,12 @@ class BaseInstrument(ABC):
         offset_x: float = 0.0,
         offset_y: float = 0.0,
         depth: float = 0.0,
-        measurement_height: Optional[float] = None,
-        safe_approach_height: Optional[float] = None,
         offline: bool = False,
     ):
         self.name = name or self.__class__.__name__
         self.offset_x = offset_x
         self.offset_y = offset_y
         self.depth = depth
-        self.measurement_height = measurement_height
-        self.safe_approach_height = safe_approach_height
         self._offline = offline
         self.logger = logging.getLogger(f"{__name__}.{self.name}")
 

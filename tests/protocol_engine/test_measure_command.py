@@ -14,13 +14,12 @@ from protocol_engine.protocol import ProtocolContext
 HEIGHT_MM = 14.10
 
 
-def _mock_instr(measurement_height=None):
+def _mock_instr():
     instr = MagicMock(spec=BaseInstrument)
     instr.name = "uvvis"
     instr.offset_x = 0.0
     instr.offset_y = 0.0
     instr.depth = 0.0
-    instr.measurement_height = measurement_height
     instr.measure = MagicMock(return_value="spectrum")
     return instr
 
@@ -39,11 +38,14 @@ def _ctx(instr, well_coord=None, height_mm=HEIGHT_MM):
 def test_measure_travels_at_safe_z_then_descends():
     """measure: move_to_labware (XY at safe_z), then descend to
     height_mm + measurement_height, then call the method."""
-    instr = _mock_instr(measurement_height=2.0)
+    instr = _mock_instr()
     coord = Coordinate3D(x=10.0, y=20.0, z=HEIGHT_MM)
     ctx = _ctx(instr, well_coord=coord)
 
-    result = measure(ctx, instrument="uvvis", position="plate_1.A1")
+    result = measure(
+        ctx, instrument="uvvis", position="plate_1.A1",
+        measurement_height=2.0,
+    )
 
     ctx.board.move_to_labware.assert_called_once_with("uvvis", coord)
     ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, HEIGHT_MM + 2.0))
@@ -53,37 +55,35 @@ def test_measure_travels_at_safe_z_then_descends():
 
 def test_measure_with_negative_offset_descends_below_surface():
     """Negative measurement_height = below the labware surface."""
-    instr = _mock_instr(measurement_height=-1.0)
+    instr = _mock_instr()
     coord = Coordinate3D(x=10.0, y=20.0, z=HEIGHT_MM)
     ctx = _ctx(instr, well_coord=coord)
 
-    measure(ctx, instrument="uvvis", position="plate_1.A1")
+    measure(
+        ctx, instrument="uvvis", position="plate_1.A1",
+        measurement_height=-1.0,
+    )
 
     ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, HEIGHT_MM - 1.0))
 
 
-def test_measure_missing_instrument_measurement_height_rejected():
-    """`measurement_height` is owned by the instrument config — required."""
-    instr = _mock_instr(measurement_height=None)
-    ctx = _ctx(instr)
-
-    with pytest.raises(ProtocolExecutionError, match="not set on instrument"):
-        measure(ctx, instrument="uvvis", position="plate_1.A1")
-
-
 def test_measure_height_mm_required():
-    instr = _mock_instr(measurement_height=1.0)
+    instr = _mock_instr()
     ctx = _ctx(instr, height_mm=None)
 
     with pytest.raises(ProtocolExecutionError, match="height_mm"):
-        measure(ctx, instrument="uvvis", position="plate_1.A1")
+        measure(
+            ctx, instrument="uvvis", position="plate_1.A1",
+            measurement_height=1.0,
+        )
 
 
 def test_measure_passes_method_kwargs():
-    instr = _mock_instr(measurement_height=0.0)
+    instr = _mock_instr()
     ctx = _ctx(instr)
     measure(
         ctx, instrument="uvvis", position="plate_1.A1",
+        measurement_height=0.0,
         method="measure", method_kwargs={"intensity": 50},
     )
     instr.measure.assert_called_once_with(intensity=50)
@@ -93,14 +93,30 @@ def test_measure_unknown_instrument_raises():
     instr = _mock_instr()
     ctx = _ctx(instr)
     with pytest.raises(ProtocolExecutionError, match="Unknown instrument"):
-        measure(ctx, instrument="not_a_thing", position="plate_1.A1")
+        measure(
+            ctx, instrument="not_a_thing", position="plate_1.A1",
+            measurement_height=0.0,
+        )
 
 
 def test_measure_unknown_method_raises():
     instr = MagicMock(spec=BaseInstrument)
     instr.name = "uvvis"
     instr.offset_x = instr.offset_y = instr.depth = 0.0
-    instr.measurement_height = 0.0
     ctx = _ctx(instr)
     with pytest.raises(ProtocolExecutionError, match="has no method"):
-        measure(ctx, instrument="uvvis", position="plate_1.A1", method="nope")
+        measure(
+            ctx, instrument="uvvis", position="plate_1.A1",
+            measurement_height=0.0, method="nope",
+        )
+
+
+@pytest.mark.parametrize("bad", ["", "1.0", float("nan"), True])
+def test_measure_rejects_non_finite_measurement_height(bad):
+    instr = _mock_instr()
+    ctx = _ctx(instr)
+    with pytest.raises(ProtocolExecutionError, match="finite number"):
+        measure(
+            ctx, instrument="uvvis", position="plate_1.A1",
+            measurement_height=bad,
+        )

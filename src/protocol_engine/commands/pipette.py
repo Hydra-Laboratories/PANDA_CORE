@@ -31,10 +31,15 @@ def _get_pipette(context: ProtocolContext):
 def _engage(context: ProtocolContext, position: str, *, command_label: str) -> float:
     """Wrap ``engage_at_labware`` so configuration errors surface as
     ``ProtocolExecutionError`` instead of bare ``ValueError``s — matching
-    how ``measure`` and ``scan`` handle their command boundary."""
+    how ``measure`` and ``scan`` handle their command boundary.
+
+    Pipette commands engage at the labware reference Z (well bottom,
+    tip top, etc.) — i.e. ``measurement_height=0``. Per-command Z offsets
+    aren't surfaced here yet; raise an issue if you need them."""
     try:
         return engage_at_labware(
-            context, "pipette", position, command_label=command_label,
+            context, "pipette", position,
+            measurement_height=0.0, command_label=command_label,
         )
     except ValueError as exc:
         raise ProtocolExecutionError(str(exc)) from exc

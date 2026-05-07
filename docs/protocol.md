@@ -28,13 +28,10 @@ protocol:
       plate: plate
       instrument: asmi
       method: indentation
-      # safe_approach_height is the labware-relative XY-travel offset
-      # between wells (mm above the plate surface). Required.
-      safe_approach_height: 8.0
-      # measurement_height (the action plane offset) is owned by the
-      # instrument config — set it in the gantry YAML's `instruments:`
-      # block, not here.
-      indentation_limit: 5.0   # magnitude: descend 5 mm into the well
+      # Labware-relative offsets above plate.height_mm (negative = below).
+      measurement_height: -1.0    # 1 mm into the well surface
+      safe_approach_height: 8.0   # 8 mm above the plate for between-wells travel
+      indentation_limit: 5.0      # magnitude: descend 5 mm below action plane
       method_kwargs:
         step_size: 0.01
         force_limit: 10.0
@@ -84,29 +81,28 @@ The `move` command accepts:
 - raw `[x, y, z]` coordinates
 - a deck target string such as `plate_1.A1` or `vial_1`
 
-The `measure` command requires `instrument` and `position`. It travels XY
-at the gantry's absolute `safe_z`, descends to
-`labware.height_mm + instr.measurement_height`, and calls the selected
-method. The default method is `measure`. `measurement_height` is owned
-by the instrument config (set in the gantry YAML's `instruments:` block);
-the `measure` command does not accept it.
+The `measure` command requires `instrument`, `position`, and
+`measurement_height`. It travels XY at the gantry's absolute `safe_z`,
+descends to `labware.height_mm + measurement_height`, and calls the
+selected method. The default method is `measure`.
 
-## Scan Heights
+## Heights on engaging commands
 
-Scan heights are *labware-relative* offsets above `labware.height_mm`
-(positive = above the plate surface; negative = below):
+Heights are *labware-relative* offsets above `labware.height_mm`
+(positive = above the surface; negative = below) and are first-class
+command arguments:
 
-- `measurement_height` is the action plane offset. Owned by the
-  instrument config; the `scan` command does not accept it.
-- `safe_approach_height` is the between-wells XY-travel offset. May be
-  set on the instrument config, the `scan` command, or both; at least
-  one source must define it and conflicting values across sources are
-  rejected. Must be at or above `measurement_height` in +Z-up.
-- `indentation_limit` is a sign-agnostic *magnitude* — the descent
-  distance below the action plane. Legacy ASMI `z_limit` is rejected.
+- `measurement_height` — required on `measure` and `scan`. Action plane
+  offset.
+- `safe_approach_height` — required on `scan`. Between-wells XY-travel
+  offset; must be at or above `measurement_height` in +Z-up.
+- `indentation_limit` (ASMI scan) — sign-agnostic *magnitude*: the
+  descent distance below the action plane. Legacy `z_limit` is rejected.
 
-Inter-labware travel and the entry approach for the first well of a scan
-use the gantry's absolute `safe_z`, not these labware-relative fields.
+Pipette commands (aspirate/dispense/etc.) engage at the labware reference
+Z (well bottom, tip top) — i.e. `measurement_height = 0` implicitly.
+Inter-labware travel and the first-well entry of a scan use the gantry's
+absolute `safe_z`, not these labware-relative fields.
 
 Example:
 
@@ -116,6 +112,7 @@ protocol:
       instrument: uvvis
       position: plate_1.A1
       method: measure
+      measurement_height: 3.0
 ```
 
 ## Where Commands Live

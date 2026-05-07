@@ -5,9 +5,10 @@ agree on the same motion primitives:
 
 * ``Board.move_to_labware`` travels XY at the gantry's ``safe_z``
   (absolute deck-frame).
-* Engaging commands read ``measurement_height`` from the instrument
-  config and descend to ``labware.height_mm + measurement_height``
-  (relative).
+* Engaging commands take ``measurement_height`` as a first-class command
+  argument and descend to ``labware.height_mm + measurement_height``
+  (relative). Pipette commands engage at the labware reference Z (i.e.
+  ``measurement_height = 0``).
 """
 
 from __future__ import annotations
@@ -25,13 +26,12 @@ from protocol_engine.protocol import ProtocolContext
 HEIGHT_MM = 14.10
 
 
-def _instrument(name: str = "tool", measurement_height: float | None = None):
+def _instrument(name: str = "tool"):
     return SimpleNamespace(
         name=name,
         offset_x=0.0,
         offset_y=0.0,
         depth=0.0,
-        measurement_height=measurement_height,
     )
 
 
@@ -75,11 +75,11 @@ def test_board_move_to_labware_uses_absolute_safe_z():
 def test_measure_descends_to_height_mm_plus_relative_offset():
     from protocol_engine.commands.measure import measure
 
-    instr = _instrument(name="uvvis", measurement_height=2.0)
+    instr = _instrument(name="uvvis")
     instr.measure = MagicMock(return_value="ok")
     ctx = _ctx("uvvis", instr)
 
-    measure(ctx, instrument="uvvis", position="plate_1.A1")
+    measure(ctx, instrument="uvvis", position="plate_1.A1", measurement_height=2.0)
 
     ctx.board.move_to_labware.assert_called_once()
     ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, HEIGHT_MM + 2.0))
@@ -88,7 +88,7 @@ def test_measure_descends_to_height_mm_plus_relative_offset():
 def test_scan_first_well_descends_to_height_mm_plus_relative_offset():
     from protocol_engine.commands.scan import scan
 
-    instr = _instrument(name="uvvis", measurement_height=1.0)
+    instr = _instrument(name="uvvis")
     instr.measure = MagicMock(return_value="ok")
     ctx = _ctx("uvvis", instr)
 
@@ -97,19 +97,21 @@ def test_scan_first_well_descends_to_height_mm_plus_relative_offset():
         plate="plate_1",
         instrument="uvvis",
         method="measure",
+        measurement_height=1.0,
         safe_approach_height=10.0,
     )
 
-    # First call to board.move is the descent to approach_z, then to action_z.
     move_calls = ctx.board.move.call_args_list
     assert move_calls[0].args == ("uvvis", (10.0, 20.0, HEIGHT_MM + 10.0))
     assert move_calls[1].args == ("uvvis", (10.0, 20.0, HEIGHT_MM + 1.0))
 
 
-def test_pipette_aspirate_descends_to_height_mm_plus_relative_offset():
+def test_pipette_aspirate_descends_to_well_bottom():
+    """Pipette commands engage at the labware reference Z
+    (``measurement_height = 0``)."""
     from protocol_engine.commands.pipette import aspirate
 
-    pipette = _instrument(name="pipette", measurement_height=-2.0)
+    pipette = _instrument(name="pipette")
     pipette.aspirate = MagicMock(return_value="ok")
     ctx = _ctx("pipette", pipette)
 
@@ -117,7 +119,7 @@ def test_pipette_aspirate_descends_to_height_mm_plus_relative_offset():
 
     ctx.board.move_to_labware.assert_called_once()
     ctx.board.move.assert_called_once_with(
-        "pipette", (10.0, 20.0, HEIGHT_MM - 2.0),
+        "pipette", (10.0, 20.0, HEIGHT_MM),
     )
 
 

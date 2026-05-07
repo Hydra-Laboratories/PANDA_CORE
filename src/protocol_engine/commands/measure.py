@@ -18,6 +18,7 @@ def measure(
     context: ProtocolContext,
     instrument: str,
     position: str,
+    measurement_height: float,
     method: str = "measure",
     method_kwargs: Dict[str, Any] = {},
 ) -> Any:
@@ -25,12 +26,12 @@ def measure(
 
     Motion:
       1. Travel at the gantry's ``safe_z`` (absolute) to above the target.
-      2. Descend straight down to ``labware.height_mm + instr.measurement_height``.
+      2. Descend straight down to ``labware.height_mm + measurement_height``.
       3. Call ``instrument.method(**method_kwargs)``.
 
-    ``measurement_height`` is owned by the instrument config — a
+    ``measurement_height`` is a required first-class argument: a
     labware-relative offset (mm above the labware's ``height_mm`` surface;
-    negative = below). It is not a protocol-command parameter.
+    negative = below).
     """
     if instrument not in context.board.instruments:
         raise ProtocolExecutionError(
@@ -46,9 +47,8 @@ def measure(
 
     try:
         action_z = engage_at_labware(
-            context,
-            instrument,
-            position,
+            context, instrument, position,
+            measurement_height=measurement_height,
             command_label="measure",
         )
     except ValueError as exc:

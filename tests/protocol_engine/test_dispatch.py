@@ -31,7 +31,6 @@ class _ClosedLoopInstrument(BaseInstrument):
         super().__init__(
             name="indenter",
             offset_x=0.0, offset_y=0.0, depth=0.0,
-            measurement_height=0.0, safe_approach_height=0.0,
         )
 
     def connect(self) -> None: ...
@@ -94,7 +93,6 @@ class _MethodWithMeasurementHeight(BaseInstrument):
         super().__init__(
             name="indenter",
             offset_x=0.0, offset_y=0.0, depth=0.0,
-            measurement_height=0.0, safe_approach_height=0.0,
         )
 
     def connect(self) -> None: ...

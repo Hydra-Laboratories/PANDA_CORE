@@ -38,8 +38,7 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    # Labware-relative: 1 mm into the well surface for indentation seating.
-    measurement_height: -1.0
+    # Labware-relative motion heights live on the protocol scan/measure command.
     force_threshold: -50
     sensor_channels:
       - 1

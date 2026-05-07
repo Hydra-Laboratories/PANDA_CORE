@@ -47,12 +47,7 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    # measurement_height is a *labware-relative* offset (mm above the
-    # labware's height_mm surface; negative = below). May be set on the
-    # instrument config (here), on the protocol scan/measure command, or
-    # both — at least one source is required, and if both are set the
-    # values must match. ASMI seats 1 mm into the well for indentation.
-    measurement_height: -1.0
-    # Sensor hardware.
+    # Labware-relative motion heights (`measurement_height`,
+    # `safe_approach_height`) live on the protocol command, not here.
     force_threshold: -50
     sensor_channels: [1]

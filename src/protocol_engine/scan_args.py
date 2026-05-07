@@ -1,15 +1,10 @@
 """Scan argument normalization.
 
-The scan command takes one labware-relative height field on its surface:
-
-* ``safe_approach_height``: between-well XY-travel offset above the
-  labware's ``height_mm`` reference (positive; negative isn't legitimate
-  for inter-well travel).
-
-``measurement_height`` is owned by the instrument config (set in the
-gantry YAML's ``instruments:`` block), not on the scan command. Per-
-method options live in ``method_kwargs``; ``indentation_limit`` is
-ASMI-specific and lives there.
+The scan command's required heights (``measurement_height`` and
+``safe_approach_height``) are first-class function parameters and are
+validated by the command itself, not here. This module only handles
+``method_kwargs`` reconciliation: rejecting legacy field names and
+threading ``indentation_limit`` through when present.
 """
 
 from __future__ import annotations
@@ -22,7 +17,6 @@ from typing import Any, Mapping
 class NormalizedScanArguments:
     """Runtime scan arguments after compatibility checks."""
 
-    safe_approach_height: float | None
     method_kwargs: dict[str, Any]
 
 
@@ -43,15 +37,14 @@ _LEGACY_KWARG_HINTS = {
 
 def normalize_scan_arguments(
     *,
-    safe_approach_height: float | None = None,
     indentation_limit: float | None = None,
     method_kwargs: Mapping[str, Any] | None = None,
 ) -> NormalizedScanArguments:
-    """Validate and normalize the scan command's argument surface.
+    """Validate and normalize the scan command's ``method_kwargs``.
 
     Raises:
-        ValueError: When legacy fields are present or top-level args
-            conflict with ``method_kwargs``.
+        ValueError: When legacy fields are present or top-level
+            ``indentation_limit`` conflicts with ``method_kwargs``.
     """
     kwargs = dict(method_kwargs or {})
 
@@ -76,7 +69,4 @@ def normalize_scan_arguments(
     if resolved_limit is not None:
         kwargs["indentation_limit"] = resolved_limit
 
-    return NormalizedScanArguments(
-        safe_approach_height=safe_approach_height,
-        method_kwargs=kwargs,
-    )
+    return NormalizedScanArguments(method_kwargs=kwargs)

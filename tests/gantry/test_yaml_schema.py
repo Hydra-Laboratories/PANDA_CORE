@@ -176,25 +176,23 @@ class TestGantryYamlSchema:
             "asmi": {
                 "type": "asmi",
                 "vendor": "vernier",
-                "measurement_height": -1.0,
                 "sensor_channels": [1],
             }
         }
         schema = GantryYamlSchema.model_validate(data)
         assert schema.instruments["asmi"].type == "asmi"
-        assert schema.instruments["asmi"].measurement_height == -1.0
         assert schema.instruments["asmi"].model_extra["sensor_channels"] == [1]
 
-    def test_instrument_measurement_height_optional(self):
+    def test_instrument_measurement_height_no_longer_a_field(self):
+        """`measurement_height` belongs on the protocol command, not the
+        instrument config. Schema accepts it as a model_extra (no validation
+        error), but `InstrumentYamlEntry` exposes no first-class attribute."""
         data = _valid_gantry_dict()
         data["instruments"] = {
-            "filmetrics": {
-                "type": "filmetrics",
-                "vendor": "kla",
-            }
+            "filmetrics": {"type": "filmetrics", "vendor": "kla"},
         }
         schema = GantryYamlSchema.model_validate(data)
-        assert schema.instruments["filmetrics"].measurement_height is None
+        assert not hasattr(schema.instruments["filmetrics"], "measurement_height")
 
 
 class TestGrblSettingsYaml:

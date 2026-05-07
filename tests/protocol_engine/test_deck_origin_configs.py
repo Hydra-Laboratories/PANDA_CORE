@@ -77,9 +77,10 @@ def test_asmi_config_generates_deck_origin_scan_waypoints():
     instr = board.instruments["asmi"]
     safe_z = gantry_config.resolved_safe_z
     safe_approach_height = scan_step.args["safe_approach_height"]
+    measurement_height = scan_step.args["measurement_height"]
     indentation_limit = scan_step.args["indentation_limit"]
     approach_abs = plate_obj.height_mm + safe_approach_height
-    action_abs = plate_obj.height_mm + instr.measurement_height
+    action_abs = plate_obj.height_mm + measurement_height
 
     # First well: move_to_labware travels XY at safe_z, then descends to
     # approach plane, then to action plane.
@@ -152,8 +153,8 @@ def test_filmetrics_deck_origin_config_validates_setup():
 
     assert (a1.x, a1.y, a1.z) == pytest.approx((270.0, 140.0, 70.0))
     assert (a2.x, a2.y, a2.z) == pytest.approx((270.0, 131.0, 70.0))
-    # `measurement_height` is owned by the instrument config — required.
-    assert board.instruments["filmetrics"].measurement_height == pytest.approx(10.0)
+    scan_step = next(step for step in protocol.steps if step.command_name == "scan")
+    assert scan_step.args["measurement_height"] == pytest.approx(10.0)
     assert plate.height_mm == pytest.approx(70.0)
     assert validate_protocol_semantics(protocol, board, deck, gantry_config) == []
 

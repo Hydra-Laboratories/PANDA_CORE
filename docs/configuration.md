@@ -52,8 +52,6 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    # Labware-relative offset (mm above labware.height_mm; negative = below).
-    measurement_height: -1.0
 ```
 
 Use this file when:
@@ -114,15 +112,12 @@ Use this file when:
 Mounted instruments are defined inside the gantry YAML under `instruments`.
 Offsets are relative to the gantry/router reference point.
 
-`measurement_height` and `safe_approach_height` are *labware-relative*
-offsets (mm above the labware's `height_mm` surface; negative = below).
-`measurement_height` is owned by the instrument config — protocol
-commands do not accept it. `safe_approach_height` may be set on the
-instrument, on the `scan` command, or both; at least one source must
-define it and conflicting values across sources are rejected.
-`safe_approach_height` is consumed only by `scan`. Inter-labware and
-first-well-entry travel use the gantry-level `safe_z`, not any instrument
-field.
+Instrument blocks carry only physical mounting state (offsets, depth,
+hardware-specific config). Labware-relative motion heights
+(`measurement_height`, `safe_approach_height`) are first-class arguments
+to the protocol commands that consume them — see the Protocol Config
+section. Inter-labware and first-well-entry travel use the gantry-level
+`safe_z`, not any instrument field.
 
 Representative example:
 
@@ -137,7 +132,6 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    measurement_height: 3.0   # 3 mm above the plate surface
 ```
 
 ## Protocol Config
@@ -163,14 +157,14 @@ Use this file when:
 - adding measurement or liquid-handling steps
 - adjusting step parameters without changing the machine layout
 
-Protocol scan heights are labware-relative (mm above `labware.height_mm`):
+Protocol heights are labware-relative (mm above `labware.height_mm`)
+and first-class command arguments:
 
-- `measurement_height` — action plane. Owned by the instrument config;
-  the `scan` command does not accept it.
-- `safe_approach_height` — between-wells XY-travel plane (must be at or
-  above `measurement_height`). May be set on the instrument config, the
-  `scan` command, or both; at least one source must define it and
-  conflicting values across sources are rejected.
+- `measurement_height` — action plane. Required on `measure` and `scan`.
+- `safe_approach_height` — between-wells XY-travel plane. Required on
+  `scan`. Must be at or above `measurement_height` (in +Z-up).
+
+Pipette commands engage at the labware reference Z (`measurement_height = 0`).
 
 Inter-labware travel uses the gantry's absolute `safe_z`. Legacy names
 `entry_travel_z`, `entry_travel_height`, `interwell_travel_height`, and

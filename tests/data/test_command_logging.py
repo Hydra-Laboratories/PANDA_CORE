@@ -92,7 +92,6 @@ def _mock_context(
     vial = vial or _make_vial()
     sensor = sensor or _FakeSensor(
         name="uvvis", offset_x=0.0, offset_y=0.0, depth=0.0,
-        measurement_height=0.0,
     )
 
     labware_map = {"plate_1": plate, "vial_1": vial}
@@ -127,7 +126,7 @@ class TestScanCommandLogging:
         store, cid = _make_store_with_labware(plate=plate)
         ctx = _mock_context(plate=plate, store=store, campaign_id=cid)
 
-        scan(ctx, plate="plate_1", instrument="uvvis", method="measure", safe_approach_height=2.0)
+        scan(ctx, plate="plate_1", instrument="uvvis", method="measure", measurement_height=0.0, safe_approach_height=10.0)
 
         uvvis_count = store._conn.execute(
             "SELECT COUNT(*) FROM uvvis_measurements"
@@ -142,7 +141,7 @@ class TestScanCommandLogging:
         store.record_dispense(cid, "plate_1", "A1", "vial_1", 50.0)
         ctx = _mock_context(plate=plate, store=store, campaign_id=cid)
 
-        scan(ctx, plate="plate_1", instrument="uvvis", method="measure", safe_approach_height=2.0)
+        scan(ctx, plate="plate_1", instrument="uvvis", method="measure", measurement_height=0.0, safe_approach_height=10.0)
 
         row = store._conn.execute(
             "SELECT contents FROM experiments WHERE well_id = 'A1'"
@@ -154,14 +153,14 @@ class TestScanCommandLogging:
         from protocol_engine.commands.scan import scan
 
         ctx = _mock_context()
-        result = scan(ctx, plate="plate_1", instrument="uvvis", method="measure", safe_approach_height=2.0)
+        result = scan(ctx, plate="plate_1", instrument="uvvis", method="measure", measurement_height=0.0, safe_approach_height=10.0)
         assert len(result) == 4
 
     def test_returns_any_type(self):
         from protocol_engine.commands.scan import scan
 
         ctx = _mock_context()
-        result = scan(ctx, plate="plate_1", instrument="uvvis", method="measure", safe_approach_height=2.0)
+        result = scan(ctx, plate="plate_1", instrument="uvvis", method="measure", measurement_height=0.0, safe_approach_height=10.0)
         assert all(isinstance(v, UVVisSpectrum) for v in result.values())
 
 
@@ -180,8 +179,6 @@ class TestPipetteDbTracking:
         labware_map = {"plate_1": plate, "vial_1": vial}
         board = MagicMock()
         pipette = MagicMock()
-        pipette.measurement_height = 0.0
-        pipette.safe_approach_height = 0.0
         board.instruments = {"pipette": pipette}
 
         deck = MagicMock()
@@ -205,8 +202,6 @@ class TestPipetteDbTracking:
 
         board = MagicMock()
         pipette = MagicMock()
-        pipette.measurement_height = 0.0
-        pipette.safe_approach_height = 0.0
         pipette.dispense = MagicMock(return_value=None)
         board.instruments = {"pipette": pipette}
 

@@ -16,14 +16,12 @@ def _mock_instrument(
     offset_x=0.0,
     offset_y=0.0,
     depth=0.0,
-    measurement_height=None,
 ):
     instr = MagicMock(spec=BaseInstrument)
     instr.name = name
     instr.offset_x = offset_x
     instr.offset_y = offset_y
     instr.depth = depth
-    instr.measurement_height = measurement_height
     return instr
 
 

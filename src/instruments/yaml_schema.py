@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from pydantic import BaseModel, ConfigDict
 
 
@@ -15,17 +13,14 @@ class InstrumentYamlEntry(BaseModel):
 
     Z semantics
     -----------
-    ``measurement_height`` and ``safe_approach_height`` are *labware-relative*
-    offsets (mm above the labware's ``height_mm`` surface; negative = below).
+    Instruments declare only their physical mounting (``offset_x``,
+    ``offset_y``, ``depth``). Labware-relative motion heights live on the
+    protocol commands that engage with labware:
 
-    ``measurement_height`` is owned here — protocol ``measure``/``scan``
-    commands do not accept it.
+    * ``measurement_height`` — first-class arg to ``measure`` and ``scan``.
+    * ``safe_approach_height`` — first-class arg to ``scan``.
 
-    ``safe_approach_height`` may be set here, on the ``scan`` command, or
-    both; at least one source must define it and conflicting values across
-    sources are rejected. ``safe_approach_height`` is consumed by ``scan``
-    only; ``measure`` does not use it. Inter-labware travel uses the
-    gantry-level ``safe_z`` (absolute), not any instrument-level field.
+    Inter-labware travel uses the gantry-level ``safe_z`` (absolute).
     """
 
     model_config = ConfigDict(extra="allow")
@@ -35,5 +30,3 @@ class InstrumentYamlEntry(BaseModel):
     offset_x: float = 0.0
     offset_y: float = 0.0
     depth: float = 0.0
-    measurement_height: Optional[float] = None
-    safe_approach_height: Optional[float] = None

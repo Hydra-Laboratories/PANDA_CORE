@@ -60,7 +60,7 @@ class TestInstrumentYamlEntry:
         assert entry.offset_x == 0.0
         assert entry.offset_y == 0.0
         assert entry.depth == 0.0
-        assert entry.measurement_height is None
+        assert not hasattr(entry, "measurement_height")
 
     def test_missing_vendor_raises(self):
         with pytest.raises(Exception):
@@ -116,7 +116,6 @@ class TestLoadBoardSingleInstrument:
                 offset_x: 15.0
                 offset_y: 0.0
                 depth: 5.0
-                measurement_height: 3.0
         """)
         board = load_board_from_yaml(yaml_path, _mock_gantry())
 
@@ -127,7 +126,6 @@ class TestLoadBoardSingleInstrument:
         assert instr.offset_x == 15.0
         assert instr.offset_y == 0.0
         assert instr.depth == 5.0
-        assert instr.measurement_height == 3.0
 
 
 class TestLoadBoardMultipleInstruments:
@@ -160,38 +158,12 @@ class TestLoadBoardMultipleInstruments:
                 type: filmetrics
                 vendor: kla
                 offset_x: 20.0
-                measurement_height: 1.5
         """)
         board = load_board_from_yaml(yaml_path, _mock_gantry())
 
         instr = board.instruments["film"]
         assert isinstance(instr, Filmetrics)
-        assert instr.measurement_height == 1.5
-
-
-class TestLoadBoardMeasurementHeight:
-
-    def test_measurement_height_passes_through(self, tmp_path):
-        yaml_path = _write_yaml(tmp_path, """\
-            instruments:
-              sensor:
-                type: uvvis_ccs
-                vendor: thorlabs
-                measurement_height: 4.5
-        """)
-        board = load_board_from_yaml(yaml_path, _mock_gantry())
-        assert board.instruments["sensor"].measurement_height == 4.5
-
-    def test_measurement_height_defaults_to_none(self, tmp_path):
-        """No instrument default — protocol command must supply it."""
-        yaml_path = _write_yaml(tmp_path, """\
-            instruments:
-              sensor:
-                type: uvvis_ccs
-                vendor: thorlabs
-        """)
-        board = load_board_from_yaml(yaml_path, _mock_gantry())
-        assert board.instruments["sensor"].measurement_height is None
+        assert instr.offset_x == 20.0
 
 
 class TestLoadBoardGantry:
@@ -250,7 +222,6 @@ class TestLoadBoardFromGantryConfig:
               asmi:
                 type: asmi
                 vendor: vernier
-                measurement_height: -1.0
         """)
         gantry_config = load_gantry_from_yaml(gantry_path)
         board = load_board_from_gantry_config(

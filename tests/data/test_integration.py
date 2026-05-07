@@ -82,11 +82,8 @@ class TestFullProtocolWithDataStore:
 
         sensor = _FakeUVVis(
             name="uvvis", offset_x=0.0, offset_y=0.0, depth=0.0,
-            measurement_height=0.0,
         )
         pipette = MagicMock()
-        pipette.measurement_height = 0.0
-        pipette.safe_approach_height = 0.0
 
         board = MagicMock()
         board.instruments = {"uvvis": sensor, "pipette": pipette}
@@ -125,7 +122,7 @@ class TestFullProtocolWithDataStore:
         assert len(contents_b1) == 1
 
         # Step 2: Scan entire plate
-        results = scan(ctx, plate="plate_1", instrument="uvvis", method="measure", safe_approach_height=2.0)
+        results = scan(ctx, plate="plate_1", instrument="uvvis", method="measure", measurement_height=0.0, safe_approach_height=10.0)
         assert len(results) == 4
 
         # Verify DB rows
@@ -171,11 +168,8 @@ class TestFullProtocolWithoutDataStore:
 
         sensor = _FakeUVVis(
             name="uvvis", offset_x=0.0, offset_y=0.0, depth=0.0,
-            measurement_height=0.0,
         )
         pipette = MagicMock()
-        pipette.measurement_height = 0.0
-        pipette.safe_approach_height = 0.0
 
         board = MagicMock()
         board.instruments = {"uvvis": sensor, "pipette": pipette}
@@ -191,7 +185,7 @@ class TestFullProtocolWithoutDataStore:
         )
 
         transfer(ctx, source="reagent_vial", destination="plate_1.A1", volume_ul=50.0)
-        results = scan(ctx, plate="plate_1", instrument="uvvis", method="measure", safe_approach_height=2.0)
+        results = scan(ctx, plate="plate_1", instrument="uvvis", method="measure", measurement_height=0.0, safe_approach_height=10.0)
 
         assert len(results) == 4
         assert all(isinstance(v, UVVisSpectrum) for v in results.values())

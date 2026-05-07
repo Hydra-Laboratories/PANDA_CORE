@@ -15,10 +15,7 @@ from ..measurements import normalize_measurement
 from ..registry import protocol_command
 from ..scan_args import normalize_scan_arguments
 from ._dispatch import inject_runtime_args
-from ._movement import (
-    resolve_instrument_measurement_height,
-    resolve_labware_height,
-)
+from ._movement import _assert_finite_number, resolve_labware_height
 
 if TYPE_CHECKING:
     from ..protocol import ProtocolContext
@@ -37,7 +34,8 @@ def scan(
     plate: str,
     instrument: str,
     method: str,
-    safe_approach_height: float | None = None,
+    measurement_height: float,
+    safe_approach_height: float,
     indentation_limit: float | None = None,
     delay_s: float = 0.0,
     method_kwargs: Dict[str, Any] | None = None,
@@ -50,21 +48,23 @@ def scan(
 
     * **First well of the plate.** Travel at the gantry's ``safe_z``
       (absolute) → descend to ``ref_z + safe_approach_height`` →
-      descend to ``ref_z + instr.measurement_height`` → act.
+      descend to ``ref_z + measurement_height`` → act.
     * **Subsequent wells.** Rise to ``ref_z + safe_approach_height`` at
       the current XY → travel XY at that height → descend to
-      ``ref_z + instr.measurement_height`` → act.
+      ``ref_z + measurement_height`` → act.
 
     Args:
         context:              Runtime context (board, deck, logger).
         plate:                Deck key of the well plate.
         instrument:           Name of the instrument registered on the board.
         method:               Method on the instrument to call per well.
-        safe_approach_height: Labware-relative offset for between-wells XY
-                              travel (mm above ``labware.height_mm``).
-                              May be set here or on the instrument config;
-                              at least one source must define it, and
-                              conflicting values across sources are rejected.
+        measurement_height:   Required labware-relative offset for the
+                              action plane (mm above ``labware.height_mm``;
+                              negative = below).
+        safe_approach_height: Required labware-relative offset for
+                              between-wells XY travel (mm above
+                              ``labware.height_mm``). Must be at or above
+                              ``measurement_height`` in +Z-up.
         indentation_limit:    ASMI indentation stopping bound (magnitude).
         delay_s:              Seconds to pause between wells (default 0.0).
         method_kwargs:        Keyword arguments passed per well.
@@ -94,48 +94,28 @@ def scan(
 
     try:
         normalized = normalize_scan_arguments(
-            safe_approach_height=safe_approach_height,
             indentation_limit=indentation_limit,
             method_kwargs=method_kwargs,
         )
-        ref_z = resolve_labware_height(plate_obj, plate)
-        relative_action = resolve_instrument_measurement_height(
-            instrument_value=instr.measurement_height,
-            instrument_name=instrument,
-            command_label="scan",
+        _assert_finite_number(
+            measurement_height, field_name="measurement_height",
+            source="scan",
         )
-        # safe_approach_height may still be on either source; reuse a small
-        # local dual-source check rather than dragging the resolver back.
-        instr_approach = getattr(instr, "safe_approach_height", None)
-        cmd_approach = normalized.safe_approach_height
-        if instr_approach is not None and cmd_approach is not None:
-            if instr_approach != cmd_approach:
-                raise ValueError(
-                    f"scan: `safe_approach_height` set on instrument "
-                    f"'{instrument}' ({instr_approach}) and on the command "
-                    f"({cmd_approach}) with conflicting values. When both "
-                    "sources are set they must match."
-                )
-            relative_approach = float(instr_approach)
-        elif instr_approach is None and cmd_approach is None:
-            raise ValueError(
-                f"scan: `safe_approach_height` is not set. Provide it on "
-                f"the command or on instrument '{instrument}'."
-            )
-        else:
-            relative_approach = float(
-                instr_approach if instr_approach is not None else cmd_approach
-            )
+        _assert_finite_number(
+            safe_approach_height, field_name="safe_approach_height",
+            source="scan",
+        )
+        ref_z = resolve_labware_height(plate_obj, plate)
     except ValueError as exc:
         raise ProtocolExecutionError(str(exc)) from exc
 
-    action_z = ref_z + relative_action
-    approach_z = ref_z + relative_approach
+    action_z = ref_z + measurement_height
+    approach_z = ref_z + safe_approach_height
 
     if approach_z < action_z:
         raise ProtocolExecutionError(
-            f"scan: safe_approach_height ({relative_approach}) resolves "
-            f"below measurement_height ({relative_action}) for plate "
+            f"scan: safe_approach_height ({safe_approach_height}) resolves "
+            f"below measurement_height ({measurement_height}) for plate "
             f"'{plate}'. Approach must be at or above the action plane."
         )
 

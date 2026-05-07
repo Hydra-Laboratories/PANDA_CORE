@@ -31,8 +31,7 @@ Gantry YAML defines:
 - working volume
 - optional `safe_z` (absolute deck-frame travel ceiling)
 - optional GRBL settings expectations
-- mounted instruments, offsets, reach depths, optional `measurement_height`,
-  and driver settings
+- mounted instruments, offsets, reach depths, and driver settings
 
 Representative example:
 
@@ -67,10 +66,6 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    # Labware-relative offset (mm above labware.height_mm; negative = below).
-    # Optional here — the protocol scan/measure command may supply it instead.
-    # At least one source must set it; if both set, values must match.
-    measurement_height: -1.0
 ```
 
 Use this file when:
@@ -129,29 +124,25 @@ Mounted instruments live under the gantry YAML `instruments` key.
   reference point.
 - `depth` is positive tool depth below the gantry reference point; in the +Z-up
   deck frame, gantry Z is computed as target/tool Z plus `depth`.
-- `measurement_height` and `safe_approach_height` are *labware-relative*
-  offsets (mm above `labware.height_mm`; negative = below).
-  `measurement_height` is owned by the instrument config and is required
-  here for any instrument that engages with labware; protocol commands
-  do not accept it. `safe_approach_height` may be set here, on the
-  `scan` command, or both; at least one source must define it and
-  conflicting values across sources are rejected.
 
-Inter-labware and first-well-entry travel use the gantry-level `safe_z`,
-not any instrument field.
+Instrument blocks carry only physical mounting state. Labware-relative
+motion heights live on the protocol command — see "Protocol Height
+Fields" below. Inter-labware and first-well-entry travel use the
+gantry-level `safe_z`, not any instrument field.
 
 ## Protocol Height Fields
 
-Protocol heights are *labware-relative* offsets above `labware.height_mm`
-(positive = above the surface; negative = below):
+Labware-relative offsets above `labware.height_mm` (positive = above the
+surface; negative = below) are first-class arguments to the protocol
+commands that consume them:
 
-- `measurement_height` is the action plane offset for `measure` and
-  `scan`. It is owned by the instrument config — set it in the gantry
-  YAML's `instruments:` block, not on the protocol command.
-- `safe_approach_height` is the between-wells XY-travel offset for
-  `scan`. May be set on the instrument config, the `scan` command, or
-  both; at least one source must define it and conflicting values
-  across sources are rejected. Must be at or above `measurement_height`.
+- `measurement_height` — required on `measure` and `scan`. It is the
+  action plane offset.
+- `safe_approach_height` — required on `scan`. It is the between-wells
+  XY-travel offset and must be at or above `measurement_height`.
+
+Pipette commands (aspirate/dispense/etc.) engage at the labware reference
+Z (well bottom, tip top) — i.e. `measurement_height = 0` implicitly.
 - `park_position` is an explicit rest pose (absolute coords, not relative).
 - ASMI `indentation_limit` is a sign-agnostic *magnitude* — the descent
   distance below the action plane.

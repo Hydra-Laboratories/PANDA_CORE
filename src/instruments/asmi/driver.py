@@ -48,8 +48,6 @@ class ASMI(BaseInstrument):
         offset_x: float = 0.0,
         offset_y: float = 0.0,
         depth: float = 0.0,
-        measurement_height: Optional[float] = None,
-        safe_approach_height: Optional[float] = None,
         offline: bool = False,  # passed through to BaseInstrument
         default_force: float = 0.0,
         force_threshold: float = _DEFAULT_FORCE_THRESHOLD,
@@ -62,9 +60,7 @@ class ASMI(BaseInstrument):
     ):
         super().__init__(
             name=name, offset_x=offset_x, offset_y=offset_y,
-            depth=depth, measurement_height=measurement_height,
-            safe_approach_height=safe_approach_height,
-            offline=offline,
+            depth=depth, offline=offline,
         )
         self._default_force = default_force
         self._force_threshold = force_threshold
@@ -297,12 +293,15 @@ class ASMI(BaseInstrument):
         _limit_magnitude = abs(resolved_limit)
         _step_size = step_size if step_size is not None else self._step_size
         _force_limit = force_limit if force_limit is not None else self._force_limit
-        _well_top_z = measurement_height if measurement_height is not None else self.measurement_height
-        if _well_top_z is None:
+        if measurement_height is None:
             raise ValueError(
-                "ASMI indentation requires measurement_height — supply it via "
-                "the protocol scan command or the instrument config."
+                "ASMI indentation requires measurement_height — supply it on "
+                "the protocol scan/measure command. (Note: it's the resolved "
+                "absolute deck-frame Z to start the indent from, not a "
+                "labware-relative offset; engaging commands inject this "
+                "automatically.)"
             )
+        _well_top_z = measurement_height
         _baseline_samples = baseline_samples if baseline_samples is not None else self._baseline_samples
         # In +Z-up: deepest absolute Z is the well top minus the descent magnitude.
         _z_target = _well_top_z - _limit_magnitude

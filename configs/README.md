@@ -24,9 +24,9 @@ configs/
   protocol/   # Ordered protocol steps
 ```
 
-There are no separate board YAMLs. Mounted instruments, offsets,
-`measurement_height`, and `safe_approach_height` live inside the corresponding
-`configs/gantry/*.yaml` machine file.
+There are no separate board YAMLs. Mounted instruments and offsets live
+inside the corresponding `configs/gantry/*.yaml` machine file. Protocol
+motion heights live on the protocol command (see Height Semantics below).
 
 ## Runnable ASMI Example
 
@@ -63,21 +63,22 @@ PYTHONPATH=src python setup/validate_setup.py \
 
 ## Height Semantics
 
-`measurement_height` and `safe_approach_height` on instruments are
-**labware-relative offsets** above the labware's `height_mm` reference
-(positive = above, negative = below). At runtime, action and approach
-planes are computed as `labware.height_mm + offset`.
+`measurement_height` and `safe_approach_height` are **labware-relative
+offsets** above the labware's `height_mm` reference (positive = above,
+negative = below). At runtime, action and approach planes are computed
+as `labware.height_mm + offset`. Both fields are first-class arguments
+to the protocol command — instruments do not declare them.
 
-- instrument `measurement_height`: default per-position action offset
-- instrument `safe_approach_height`: default per-position approach offset
-- `method_kwargs.measurement_height`: protocol-level override (still a
-  labware-relative offset; if both sources are set, they must agree)
-- `method_kwargs.indentation_limit`: ASMI deepest-Z stopping offset
+- `scan` requires `measurement_height` and `safe_approach_height`
+- `measure` requires `measurement_height`
+- ASMI `indentation_limit` (top-level on `scan`): sign-agnostic
+  *magnitude* — the descent distance below the action plane
 - gantry `safe_z`: absolute deck-frame Z used for inter-labware travel
   (the only absolute Z in the engagement path)
 
-Unrecognized top-level scan fields are rejected at protocol-load time by
-the command's Pydantic schema.
+Pipette commands engage at the labware reference Z (well bottom, tip
+top) — `measurement_height = 0` implicitly. Unrecognized scan fields are
+rejected at protocol-load time by the command's Pydantic schema.
 
 ## Validation Status
 

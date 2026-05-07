@@ -18,9 +18,8 @@ protocol:
       plate: plate
       instrument: asmi
       method: indentation
-      # measurement_height is supplied by the instrument config
-      # (labware-relative -1.0 → 1 mm into the well surface for seating).
-      # At least one source must set it; if both set, values must match.
+      # Labware-relative offsets above plate.height_mm (mm; negative = below).
+      measurement_height: -1.0    # 1 mm into the well surface for seating
       safe_approach_height: 8.0   # 8 mm above the plate surface
       indentation_limit: 5.0      # magnitude (mm of descent below action plane)
       method_kwargs:

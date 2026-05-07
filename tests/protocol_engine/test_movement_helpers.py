@@ -6,8 +6,8 @@ import pytest
 
 from deck.labware.labware import Coordinate3D
 from protocol_engine.commands._movement import (
+    _assert_finite_number,
     engage_at_labware,
-    resolve_instrument_measurement_height,
     resolve_labware_height,
     unpack_xyz,
 )
@@ -42,36 +42,21 @@ class TestResolveLabwareHeight:
             resolve_labware_height(labware, "plate")
 
 
-class TestResolveInstrumentMeasurementHeight:
+class TestAssertFiniteNumber:
 
-    def test_returns_instrument_value(self):
-        assert resolve_instrument_measurement_height(
-            instrument_value=-1.0,
-            instrument_name="probe",
-            command_label="measure",
-        ) == -1.0
+    def test_accepts_int_and_float(self):
+        _assert_finite_number(0, field_name="x", source="test")
+        _assert_finite_number(1.5, field_name="x", source="test")
+        _assert_finite_number(-1.0, field_name="x", source="test")
 
-    def test_rejects_when_unset(self):
-        with pytest.raises(ValueError, match="not set on instrument"):
-            resolve_instrument_measurement_height(
-                instrument_value=None,
-                instrument_name="probe",
-                command_label="measure",
-            )
-
-    @pytest.mark.parametrize("bad_value", ["", "1.0", "abc", float("nan"), float("inf"), True])
-    def test_rejects_non_finite_values(self, bad_value):
-        with pytest.raises(ValueError, match="finite number"):
-            resolve_instrument_measurement_height(
-                instrument_value=bad_value,
-                instrument_name="probe",
-                command_label="measure",
-            )
+    @pytest.mark.parametrize("bad", ["", "1.0", "abc", float("nan"), float("inf"), True, False, None])
+    def test_rejects_non_finite_or_wrong_type(self, bad):
+        with pytest.raises(ValueError, match="must be a finite number"):
+            _assert_finite_number(bad, field_name="x", source="test")
 
 
-def _mock_ctx_with_labware(measurement_height=None, height_mm=14.10):
+def _mock_ctx_with_labware(height_mm=14.10):
     instr = MagicMock()
-    instr.measurement_height = measurement_height
     board = MagicMock()
     board.instruments = {"sensor": instr}
     labware = MagicMock(height_mm=height_mm)
@@ -87,33 +72,38 @@ def _mock_ctx_with_labware(measurement_height=None, height_mm=14.10):
 
 class TestEngageAtLabware:
 
-    def test_travels_at_safe_z_then_descends_to_action_plane(self):
-        ctx, _, _ = _mock_ctx_with_labware(measurement_height=2.0, height_mm=14.10)
+    def test_descends_to_labware_plus_offset(self):
+        ctx, _, _ = _mock_ctx_with_labware(height_mm=14.10)
         action_z = engage_at_labware(
-            ctx, "sensor", "plate.A1", command_label="measure",
+            ctx, "sensor", "plate.A1",
+            measurement_height=2.0, command_label="measure",
         )
         assert action_z == pytest.approx(16.10)
         ctx.board.move_to_labware.assert_called_once()
         ctx.board.move.assert_called_once_with("sensor", (10.0, 20.0, 16.10))
 
     def test_negative_offset_descends_below_surface(self):
-        ctx, _, _ = _mock_ctx_with_labware(measurement_height=-1.0, height_mm=14.10)
+        ctx, _, _ = _mock_ctx_with_labware(height_mm=14.10)
         action_z = engage_at_labware(
-            ctx, "sensor", "plate.A1", command_label="measure",
+            ctx, "sensor", "plate.A1",
+            measurement_height=-1.0, command_label="measure",
         )
         assert action_z == pytest.approx(13.10)
 
-    def test_missing_instrument_measurement_height_raises(self):
-        ctx, _, _ = _mock_ctx_with_labware(measurement_height=None, height_mm=14.10)
-        with pytest.raises(ValueError, match="not set on instrument"):
-            engage_at_labware(
-                ctx, "sensor", "plate.A1", command_label="measure",
-            )
-
     def test_missing_height_mm_raises(self):
-        ctx, _, labware = _mock_ctx_with_labware(measurement_height=2.0, height_mm=None)
+        ctx, _, labware = _mock_ctx_with_labware(height_mm=None)
         labware.height_mm = None
         with pytest.raises(ValueError, match="height_mm"):
             engage_at_labware(
-                ctx, "sensor", "plate.A1", command_label="measure",
+                ctx, "sensor", "plate.A1",
+                measurement_height=2.0, command_label="measure",
+            )
+
+    @pytest.mark.parametrize("bad", ["", "1.0", float("nan"), True])
+    def test_rejects_non_finite_measurement_height(self, bad):
+        ctx, _, _ = _mock_ctx_with_labware(height_mm=14.10)
+        with pytest.raises(ValueError, match="finite number"):
+            engage_at_labware(
+                ctx, "sensor", "plate.A1",
+                measurement_height=bad, command_label="measure",
             )

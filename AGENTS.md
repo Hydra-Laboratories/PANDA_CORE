@@ -53,13 +53,12 @@ Two kinds of Z fields coexist:
   labware's `height_mm` surface; negative = below. Resolved at command
   time as `labware.height_mm + relative_offset`.
 
-`measurement_height` and `safe_approach_height` may each be set on the
-instrument config (`gantry.instruments.<name>`), the protocol command,
-or both. At least one source must define each (the validator rejects
-neither-set). If both sources are set they must agree; conflicting
-values are rejected. `safe_approach_height` is consumed only by `scan`;
-`measure` ignores it. ASMI `indentation_limit` is a sign-agnostic
-magnitude (descent distance below the action plane).
+These offsets live on the protocol command, never on instruments. `scan`
+requires both `measurement_height` and `safe_approach_height`; `measure`
+requires `measurement_height`. Pipette commands engage at the labware
+reference Z (`measurement_height = 0` implicitly). ASMI
+`indentation_limit` is a sign-agnostic magnitude (descent distance below
+the action plane).
 
 ## Where to Look
 
