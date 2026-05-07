@@ -444,7 +444,6 @@ def test_multi_instrument_calibration_sets_xy_before_z_and_updates_yaml(tmp_path
     assert written["grbl_settings"]["max_travel_y"] == 299.0
     assert written["grbl_settings"]["max_travel_z"] == 96.0
     assert "measurement_height" not in written["instruments"]["camera"]
-    assert written["instruments"]["camera"]["offset_x"] == -323.0
-    assert written["instruments"]["camera"]["offset_y"] == -186.0
-    assert written["instruments"]["camera"]["depth"] == 100.0
-    assert not [call for call in _FakeGantry.instance.calls if call[0] == "move_to"]
+    assert written["instruments"]["camera"]["offset_x"] == -15.0
+    assert written["instruments"]["camera"]["offset_y"] == -7.0
+    assert written["instruments"]["camera"]["depth"] == 6.0

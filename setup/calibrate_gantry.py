@@ -215,14 +215,18 @@ def _build_gantry_grbl_settings(
     gantry_raw: dict[str, Any],
     max_travel: dict[str, float],
 ) -> dict[str, Any]:
-    return {
-        "status_report": 0,
-        "soft_limits": True,
-        "homing_enable": True,
-        "max_travel_x": max_travel["max_travel_x"],
-        "max_travel_y": max_travel["max_travel_y"],
-        "max_travel_z": max_travel["max_travel_z"],
-    }
+    settings = dict(gantry_raw.get("grbl_settings") or {})
+    settings.update(
+        {
+            "status_report": 0,
+            "soft_limits": True,
+            "homing_enable": True,
+            "max_travel_x": max_travel["max_travel_x"],
+            "max_travel_y": max_travel["max_travel_y"],
+            "max_travel_z": max_travel["max_travel_z"],
+        }
+    )
+    return settings
 
 
 def _print_yaml_block(
