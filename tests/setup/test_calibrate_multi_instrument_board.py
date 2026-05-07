@@ -17,6 +17,7 @@ def _write_multi_gantry(path: Path) -> Path:
     path.write_text(
         """\
 serial_port: /dev/ttyUSB0
+gantry_type: cub_xl
 cnc:
   homing_strategy: standard
   total_z_height: 100.0

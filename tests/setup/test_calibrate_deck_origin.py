@@ -20,6 +20,7 @@ def _write_gantry(path: Path, *, x_min: float = 0.0) -> Path:
     path.write_text(
         f"""\
 serial_port: /dev/ttyUSB0
+gantry_type: cub_xl
 cnc:
   homing_strategy: standard
   total_z_height: 100.0
@@ -328,6 +329,7 @@ def test_run_calibration_prints_full_gantry_yaml_with_grbl_settings(tmp_path):
     path.write_text(
         """\
 serial_port: /dev/ttyUSB0
+gantry_type: cub_xl
 cnc:
   homing_strategy: standard
   total_z_height: 100.0

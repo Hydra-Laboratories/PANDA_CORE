@@ -9,10 +9,10 @@ Three YAML files define a runnable experiment:
 
 ### 1. Gantry (`configs/gantry/*.yaml`)
 
-Defines the controller serial port, homing strategy, working volume, optional
-absolute `safe_z` plane (used for inter-labware travel), fixed machine
-structures, optional GRBL expectations, `cnc.total_z_height`, and the
-instruments mounted on that machine.
+Defines the controller serial port, `gantry_type`, homing strategy, working
+volume, optional absolute `safe_z` plane (used for inter-labware travel),
+optional GRBL expectations, `cnc.total_z_height`, and the instruments mounted
+on that machine.
 
 Coordinate convention:
 
@@ -24,6 +24,7 @@ Coordinate convention:
 
 ```yaml
 serial_port: /dev/ttyUSB0
+gantry_type: cub_xl
 cnc:
   homing_strategy: standard
   total_z_height: 87.0
@@ -38,16 +39,6 @@ working_volume:
   y_max: 280.0
   z_min: 0.0
   z_max: 87.0
-
-machine_structures:
-  right_x_max_rail:
-    type: box
-    x_min: 480.0
-    x_max: 540.0
-    y_min: 0.0
-    y_max: 300.0
-    z_min: 0.0
-    z_max: 100.0
 
 instruments:
   asmi:
@@ -97,9 +88,10 @@ hardware-specific config). Labware-relative motion heights
 command — see the Protocol section below. Inter-labware travel uses the
 gantry-level `safe_z`, not any instrument field.
 
-`machine_structures` are fixed gantry-level safety obstacles, not deck labware.
-They can live outside `working_volume`; protocol validation rejects commanded
-instrument points and known travel segments that intersect a structure box.
+`gantry_type` selects built-in machine-family validation. For `cub_xl`, setup
+validation rejects protocols whose commanded instrument points or known travel
+segments would hit the fixed right X-max rail. That rail is machine structure,
+not deck labware, and is not represented in YAML.
 
 ### 3. Protocol (`configs/protocol/*.yaml`)
 

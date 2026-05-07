@@ -19,6 +19,7 @@ def test_validate_setup_home_over_rail_then_low_travel_fails(tmp_path):
         dedent(
             """\
             serial_port: /dev/ttyUSB0
+            gantry_type: cub_xl
 
             cnc:
               homing_strategy: standard
@@ -33,16 +34,6 @@ def test_validate_setup_home_over_rail_then_low_travel_fails(tmp_path):
               y_max: 300.0
               z_min: 0.0
               z_max: 130.0
-
-            machine_structures:
-              right_x_max_rail:
-                type: box
-                x_min: 480.0
-                x_max: 540.0
-                y_min: 0.0
-                y_max: 300.0
-                z_min: 0.0
-                z_max: 100.0
 
             grbl_settings:
               status_report: 0
@@ -101,5 +92,5 @@ def test_validate_setup_home_over_rail_then_low_travel_fails(tmp_path):
 
     assert result.passed is False
     assert "home pose" not in result.output
-    assert "right_x_max_rail" in result.output
+    assert "Cub XL right X-max rail" in result.output
     assert "travel_z lift/lower" in result.output

@@ -73,9 +73,11 @@ Use `docs/agent-index.md` for exact files/tests. Common entrypoints:
 - Instruments: `src/instruments/<instrument>/`
 - Persistence: `data/data_store.py`, `src/protocol_engine/measurements.py`
 
-Gantry YAML can include top-level `machine_structures` for fixed AABB safety
-obstacles such as rails. These are machine structure, not deck labware, and are
-validated separately from `working_volume`.
+Gantry YAML requires top-level `gantry_type` (`cub` or `cub_xl`) so setup
+validation can apply built-in machine-family safety checks. For `cub_xl`, setup
+validation rejects protocols whose instrument point or known travel segment
+would hit the fixed right X-max rail. The rail geometry is not user-authored
+YAML and remains separate from deck labware and `working_volume`.
 
 ## Calibration Scripts
 

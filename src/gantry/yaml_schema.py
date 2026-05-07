@@ -35,31 +35,6 @@ class WorkingVolumeYaml(BaseModel):
         return self
 
 
-class MachineStructureBoxYaml(BaseModel):
-    """Fixed box obstacle in CubOS deck-frame coordinates."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    type: Literal["box"]
-    x_min: float
-    x_max: float
-    y_min: float
-    y_max: float
-    z_min: float
-    z_max: float
-
-    @model_validator(mode="after")
-    def _validate_min_less_than_max(self) -> "MachineStructureBoxYaml":
-        for axis in ("x", "y", "z"):
-            min_val = getattr(self, f"{axis}_min")
-            max_val = getattr(self, f"{axis}_max")
-            if min_val >= max_val:
-                raise ValueError(
-                    f"{axis}_min ({min_val}) must be < {axis}_max ({max_val})"
-                )
-        return self
-
-
 class CncYaml(BaseModel):
     """CNC gantry settings."""
 
@@ -87,12 +62,10 @@ class GantryYamlSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     serial_port: str
+    gantry_type: Literal["cub", "cub_xl"]
     cnc: CncYaml
     working_volume: WorkingVolumeYaml
     grbl_settings: Optional[GrblSettingsYaml] = None
-    machine_structures: Dict[str, MachineStructureBoxYaml] = Field(
-        default_factory=dict
-    )
     instruments: Dict[str, InstrumentYamlEntry] = Field(default_factory=dict)
 
     @model_validator(mode="after")

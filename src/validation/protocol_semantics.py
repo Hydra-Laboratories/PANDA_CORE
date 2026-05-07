@@ -16,12 +16,13 @@ The protocol model:
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Any
 
 from board.board import Board
 from deck.deck import Deck
 from deck.labware.well_plate import WellPlate
-from gantry.gantry_config import GantryConfig, MachineStructureBox
+from gantry.gantry_config import GantryConfig, GantryType
 from protocol_engine.protocol import Protocol
 from protocol_engine.scan_args import (
     NormalizedScanArguments,
@@ -31,6 +32,36 @@ from protocol_engine.scan_args import (
 from .errors import ProtocolSemanticViolation
 
 Point3D = tuple[float, float, float]
+
+
+@dataclass(frozen=True)
+class _FixedStructureBox:
+    """Internal fixed AABB in CubOS deck-frame coordinates."""
+
+    x_min: float
+    x_max: float
+    y_min: float
+    y_max: float
+    z_min: float
+    z_max: float
+
+    def contains(self, x: float, y: float, z: float) -> bool:
+        return (
+            self.x_min <= x <= self.x_max
+            and self.y_min <= y <= self.y_max
+            and self.z_min <= z <= self.z_max
+        )
+
+
+CUB_XL_RIGHT_RAIL_NAME = "Cub XL right X-max rail"
+CUB_XL_RIGHT_RAIL_BOX = _FixedStructureBox(
+    x_min=480.0,
+    x_max=540.0,
+    y_min=0.0,
+    y_max=300.0,
+    z_min=0.0,
+    z_max=100.0,
+)
 
 
 def _violation(step_index: int, command: str, message: str) -> ProtocolSemanticViolation:
@@ -83,7 +114,7 @@ def _gantry_xyz_for_tip(
     return (x - instr.offset_x, y - instr.offset_y, z + instr.depth)
 
 
-def _format_box(box: MachineStructureBox) -> str:
+def _format_box(box: _FixedStructureBox) -> str:
     return (
         f"X[{box.x_min}, {box.x_max}] "
         f"Y[{box.y_min}, {box.y_max}] "
@@ -91,10 +122,20 @@ def _format_box(box: MachineStructureBox) -> str:
     )
 
 
+def _fixed_structures_for_gantry(
+    gantry: GantryConfig | None,
+) -> dict[str, _FixedStructureBox]:
+    if gantry is None:
+        return {}
+    if gantry.gantry_type == GantryType.CUB_XL:
+        return {CUB_XL_RIGHT_RAIL_NAME: CUB_XL_RIGHT_RAIL_BOX}
+    return {}
+
+
 def _segment_intersects_box(
     start: Point3D,
     end: Point3D,
-    box: MachineStructureBox,
+    box: _FixedStructureBox,
 ) -> bool:
     t_min = 0.0
     t_max = 1.0
@@ -134,14 +175,13 @@ def _validate_machine_structure_point(
         return []
 
     violations: list[ProtocolSemanticViolation] = []
-    for name, box in gantry.machine_structures.items():
+    for name, box in _fixed_structures_for_gantry(gantry).items():
         if box.contains(x, y, z):
             violations.append(_violation(
                 step_index,
                 command_name,
-                f"{label} instrument point ({x}, {y}, {z}) overlaps "
-                f"machine structure {name!r} ({_format_box(box)}) for "
-                f"instrument {instrument!r}.",
+                f"{label} instrument point ({x}, {y}, {z}) will hit the "
+                f"{name} ({_format_box(box)}) for instrument {instrument!r}.",
             ))
     return violations
 
@@ -160,13 +200,13 @@ def _validate_machine_structure_segment(
         return []
 
     violations: list[ProtocolSemanticViolation] = []
-    for name, box in gantry.machine_structures.items():
+    for name, box in _fixed_structures_for_gantry(gantry).items():
         if _segment_intersects_box(start, end, box):
             violations.append(_violation(
                 step_index,
                 command_name,
-                f"{label} travel segment from {start} to {end} intersects "
-                f"machine structure {name!r} ({_format_box(box)}) for "
+                f"{label} travel segment from {start} to {end} will hit "
+                f"the {name} ({_format_box(box)}) for "
                 f"instrument {instrument!r}.",
             ))
     return violations

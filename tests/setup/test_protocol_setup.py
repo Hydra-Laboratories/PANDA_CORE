@@ -35,6 +35,7 @@ def _ensure_commands_registered():
 
 GANTRY_YAML = """\
 serial_port: /dev/ttyUSB0
+gantry_type: cub_xl
 cnc:
   homing_strategy: standard
   total_z_height: 90.0

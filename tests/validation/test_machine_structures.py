@@ -10,33 +10,24 @@ from deck.labware.labware import Coordinate3D
 from deck.labware.well_plate import WellPlate
 from gantry.gantry_config import (
     GantryConfig,
+    GantryType,
     HomingStrategy,
-    MachineStructureBox,
     WorkingVolume,
 )
 from protocol_engine.protocol import Protocol, ProtocolStep
 from validation.protocol_semantics import validate_protocol_semantics
 
 
-def _rail() -> MachineStructureBox:
-    return MachineStructureBox(
-        x_min=480.0,
-        x_max=540.0,
-        y_min=0.0,
-        y_max=300.0,
-        z_min=0.0,
-        z_max=100.0,
-    )
-
-
 def _gantry(
     *,
+    gantry_type: GantryType = GantryType.CUB_XL,
     x_max: float = 600.0,
     z_max: float = 160.0,
     safe_z: float | None = None,
 ) -> GantryConfig:
     return GantryConfig(
         serial_port="/dev/ttyUSB0",
+        gantry_type=gantry_type,
         homing_strategy=HomingStrategy.STANDARD,
         total_z_height=z_max,
         working_volume=WorkingVolume(
@@ -48,7 +39,6 @@ def _gantry(
             z_max=z_max,
         ),
         safe_z=safe_z,
-        machine_structures={"right_x_max_rail": _rail()},
     )
 
 
@@ -116,17 +106,17 @@ def _home_step(index: int) -> ProtocolStep:
     )
 
 
-def test_low_pose_inside_machine_structure_fails():
+def test_cub_xl_low_pose_inside_right_rail_fails():
     protocol = _protocol(_move_step(0, position=(500.0, 150.0, 50.0)))
 
     violations = validate_protocol_semantics(
         protocol, _board(), _deck(), _gantry(),
     )
 
-    assert any("right_x_max_rail" in v.message for v in violations), violations
+    assert any("Cub XL right X-max rail" in v.message for v in violations), violations
 
 
-def test_high_pose_inside_machine_structure_xy_passes():
+def test_cub_xl_high_pose_inside_right_rail_xy_passes():
     protocol = _protocol(_move_step(0, position=(500.0, 150.0, 101.0)))
 
     assert validate_protocol_semantics(
@@ -134,7 +124,18 @@ def test_high_pose_inside_machine_structure_xy_passes():
     ) == []
 
 
-def test_travel_segment_crossing_machine_structure_at_low_z_fails():
+def test_cub_type_does_not_apply_cub_xl_right_rail():
+    protocol = _protocol(_move_step(0, position=(500.0, 150.0, 50.0)))
+
+    assert validate_protocol_semantics(
+        protocol,
+        _board(),
+        _deck(),
+        _gantry(gantry_type=GantryType.CUB),
+    ) == []
+
+
+def test_cub_xl_travel_segment_crossing_right_rail_at_low_z_fails():
     protocol = _protocol(
         _move_step(0, position=(400.0, 150.0, 120.0)),
         _move_step(1, position=(560.0, 150.0, 120.0), travel_z=50.0),
@@ -145,7 +146,7 @@ def test_travel_segment_crossing_machine_structure_at_low_z_fails():
     )
 
     assert any(
-        "travel segment" in v.message and "right_x_max_rail" in v.message
+        "travel segment" in v.message and "Cub XL right X-max rail" in v.message
         for v in violations
     ), violations
 
@@ -174,7 +175,7 @@ def test_home_over_rail_passes_but_lowering_while_over_rail_fails():
     messages = [violation.message for violation in violations]
     assert not any("home pose" in message for message in messages), messages
     assert any("travel_z lift/lower" in message for message in messages), messages
-    assert any("right_x_max_rail" in message for message in messages), messages
+    assert any("Cub XL right X-max rail" in message for message in messages), messages
 
 
 def test_home_over_rail_at_rail_height_fails():
@@ -188,7 +189,7 @@ def test_home_over_rail_at_rail_height_fails():
     violations = validate_protocol_semantics(protocol, board, _deck(), gantry)
 
     assert any("home pose" in v.message for v in violations), violations
-    assert any("right_x_max_rail" in v.message for v in violations), violations
+    assert any("Cub XL right X-max rail" in v.message for v in violations), violations
 
 
 def test_deck_target_move_validates_safe_z_pose():

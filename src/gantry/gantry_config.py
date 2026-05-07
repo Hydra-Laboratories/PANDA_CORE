@@ -20,6 +20,13 @@ class YAxisMotion(str, Enum):
     BED = "bed"
 
 
+class GantryType(str, Enum):
+    """Supported physical gantry families."""
+
+    CUB = "cub"
+    CUB_XL = "cub_xl"
+
+
 @dataclass(frozen=True)
 class WorkingVolume:
     """Gantry working volume bounds in millimeters.
@@ -54,40 +61,11 @@ class WorkingVolume:
 
 
 @dataclass(frozen=True)
-class MachineStructureBox:
-    """Fixed machine-structure AABB in CubOS deck-frame coordinates."""
-
-    x_min: float
-    x_max: float
-    y_min: float
-    y_max: float
-    z_min: float
-    z_max: float
-    type: str = field(default="box", init=False)
-
-    def __post_init__(self) -> None:
-        for axis in ("x", "y", "z"):
-            lo = getattr(self, f"{axis}_min")
-            hi = getattr(self, f"{axis}_max")
-            if lo >= hi:
-                raise ValueError(
-                    f"{axis}_min ({lo}) must be < {axis}_max ({hi})"
-                )
-
-    def contains(self, x: float, y: float, z: float) -> bool:
-        """Return True when the point overlaps this forbidden volume."""
-        return (
-            self.x_min <= x <= self.x_max
-            and self.y_min <= y <= self.y_max
-            and self.z_min <= z <= self.z_max
-        )
-
-
-@dataclass(frozen=True)
 class GantryConfig:
     """Loaded gantry configuration."""
 
     serial_port: str
+    gantry_type: GantryType
     homing_strategy: HomingStrategy
     total_z_height: float
     working_volume: WorkingVolume
@@ -95,11 +73,14 @@ class GantryConfig:
     safe_z: Optional[float] = None
     expected_grbl_settings: Optional[Dict[str, float]] = field(default=None)
     instruments: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    machine_structures: Dict[str, MachineStructureBox] = field(
-        default_factory=dict
-    )
 
     def __post_init__(self) -> None:
+        try:
+            object.__setattr__(self, "gantry_type", GantryType(self.gantry_type))
+        except ValueError as exc:
+            raise ValueError(
+                f"Unsupported gantry_type {self.gantry_type!r}."
+            ) from exc
         if self.total_z_height <= 0:
             raise ValueError(
                 f"total_z_height ({self.total_z_height}) must be > 0"

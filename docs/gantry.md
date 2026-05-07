@@ -25,12 +25,12 @@ does not apply `G92` or redefine work coordinates after homing.
 Gantry YAML defines:
 
 - serial port
+- gantry type (`cub` or `cub_xl`)
 - CNC homing strategy
 - total Z reference height
 - Y-axis motion mode
 - working volume
 - optional `safe_z` (absolute deck-frame travel ceiling)
-- optional fixed `machine_structures`
 - optional GRBL settings expectations
 - mounted instruments, offsets, reach depths, and driver settings
 
@@ -38,6 +38,7 @@ Representative example:
 
 ```yaml
 serial_port: /dev/ttyUSB0
+gantry_type: cub_xl
 cnc:
   homing_strategy: standard
   total_z_height: 87.0
@@ -53,16 +54,6 @@ working_volume:
   y_max: 280.0
   z_min: 0.0
   z_max: 87.0
-
-machine_structures:
-  right_x_max_rail:
-    type: box
-    x_min: 480.0
-    x_max: 540.0
-    y_min: 0.0
-    y_max: 300.0
-    z_min: 0.0
-    z_max: 100.0
 
 grbl_settings:
   dir_invert_mask: 1
@@ -89,6 +80,12 @@ Use this file when:
 
 ## CNC Fields
 
+`gantry_type` is required at the gantry YAML root and identifies the physical
+machine family. Supported values are `cub` and `cub_xl`. For `cub_xl`, setup
+validation applies a built-in right X-max rail guard and rejects protocols whose
+instrument point or known travel segment would hit the rail. A pose over the
+rail is valid only when the instrument point is above the built-in rail height.
+
 `homing_strategy` must be `standard`, which runs GRBL `$H`.
 
 `total_z_height` is required and must be greater than zero. It describes the
@@ -104,14 +101,6 @@ absolute deck-frame Z used for inter-labware travel and the entry approach
 for the first well of a scan. Validation requires every resolved approach
 and action Z to satisfy `z <= safe_z` so the gantry can always retract
 above the deck.
-
-`machine_structures` is optional. Use it for fixed gantry-level hardware, such
-as the Cub XL right X-max rail, that must be forbidden during protocol setup
-validation but is not deck labware. Each entry is a `type: box` AABB in the
-CubOS deck frame. These boxes may sit outside normal `working_volume`; they are
-checked separately against commanded instrument points and known travel
-segments. A pose over the rail is valid only when its instrument point is above
-the box `z_max`.
 
 ## Working Volume
 

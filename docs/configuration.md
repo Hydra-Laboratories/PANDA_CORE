@@ -17,12 +17,12 @@ configs/
 Gantry YAML defines:
 
 - serial port
+- gantry type (`cub` or `cub_xl`)
 - CNC homing strategy
 - total Z reference height
 - Y-axis motion mode
 - working volume
 - optional absolute `safe_z` plane (inter-labware travel)
-- fixed machine structures such as rails
 - optional GRBL settings expectations
 - mounted instruments, offsets, reach depths, and driver-specific settings
 
@@ -30,6 +30,7 @@ Representative example:
 
 ```yaml
 serial_port: /dev/cu.usbserial-140
+gantry_type: cub_xl
 cnc:
   homing_strategy: standard
   total_z_height: 87.0
@@ -45,16 +46,6 @@ working_volume:
   y_max: 280.0
   z_min: 0.0
   z_max: 87.0
-
-machine_structures:
-  right_x_max_rail:
-    type: box
-    x_min: 480.0
-    x_max: 540.0
-    y_min: 0.0
-    y_max: 300.0
-    z_min: 0.0
-    z_max: 100.0
 
 instruments:
   asmi:
@@ -79,11 +70,11 @@ and preserves the persistent G54 work-coordinate frame established by
 setup rejects gantry configs whose X/Y minima are not `0.0` or whose Z minimum
 is negative.
 
-Use top-level `machine_structures` for fixed machine hardware that should not
-be represented as deck labware. Structure boxes are CubOS deck-frame AABBs and
-may extend beyond `working_volume`; validation checks commanded instrument
-points and known travel segments against them separately from working-volume
-bounds.
+Use top-level `gantry_type` to identify the physical machine family. Built-in
+setup validation uses it for machine-specific safety checks; for `cub_xl`, this
+includes rejecting protocols whose commanded instrument point or known travel
+segment would hit the fixed right X-max rail. The rail is not deck labware and
+is not configured in YAML.
 
 Run [Calibrate Deck Origin](calibration.md) before trusting measured working
 volume values on real hardware. Use [Gantry Bring-Up](admin/gantry-bring-up.md)
