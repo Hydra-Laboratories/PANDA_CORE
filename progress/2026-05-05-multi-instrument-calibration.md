@@ -20,15 +20,15 @@
 
 ## Planned files
 
-- New: `setup/calibrate_multi_instrument_board.py`
-- New tests: likely `tests/setup/test_calibrate_multi_instrument_board.py`
+- New: `setup/calibrate_gantry.py` unified calibration entrypoint
+- New tests: calibration routing plus single-/multi-flow helper coverage
 - Docs/context updates: `AGENTS.md`, `README.md` if feature lands.
 
 ## Progress
 
 - Workspace/repo docs read per AGENTS/CLAUDE.
 - Existing calibration, gantry origin, board offset math, validation paths inspected.
-- Added `setup/calibrate_multi_instrument_board.py` guided CLI.
+- Added guided multi-instrument flow; it now lives inside `setup/calibrate_gantry.py`.
 - Added offline tests in `tests/setup/test_calibrate_multi_instrument_board.py` covering:
   - inverse offset/depth math from `Board.move()`
   - minimal operator-facing prompt path with only `--gantry` required
@@ -50,6 +50,7 @@
 - Added 15 mm automatic +Z retract after each instrument contact point is recorded in multi-instrument calibration.
 - Changed instrument selection prompts to numbered menus; operators now enter `1`, `2`, etc. instead of typing instrument names.
 - Added a brief calibration overview before preflight explaining that Step 1 establishes the shared system origin by placing the front-left origin block/artifact and jogging the first/left-most tool over the X mark; Z is set later with the full board attached.
+- Removed the separate internal `setup/calibration/` modules. `setup/calibrate_gantry.py` is now the only calibration script/file and contains both flows, selecting single- vs multi-instrument calibration from the seed YAML.
 
 ## Validation
 
@@ -57,7 +58,7 @@
 - `python -m pytest tests/setup/test_calibrate_multi_instrument_board.py tests/setup/test_calibrate_deck_origin.py tests/setup/test_setup_imports.py -q` → 21 passed before CLI simplification
 - `python -m pytest tests/setup/test_calibrate_multi_instrument_board.py tests/setup/test_calibrate_deck_origin.py tests/setup/test_setup_imports.py -q` → 22 passed after CLI simplification
 - `python -m pytest tests/setup/test_calibrate_multi_instrument_board.py tests/setup/test_calibrate_deck_origin.py tests/setup/test_setup_imports.py -q` → 22 passed after removing automatic center moves
-- `python setup/calibrate_multi_instrument_board.py --help` → shows only `--gantry`, `--dry-run`, `--write-gantry-yaml`, and `--output-gantry`
+- `python setup/calibrate_gantry.py --help` → shows the unified `--seed` and `--output-gantry` entrypoint
 - `PYTHONPATH=src python - <<'PY' ... load_gantry_from_yaml(configs/gantry/seeds/*.yaml) ... PY` → all seed YAML files load and expose expected instrument names
 - `PYTHONPATH=src python - <<'PY' ... load_gantry_from_yaml('configs/gantry/cub_xl_sterling.yaml') ... PY` → Sterling instruments are `pipette`, `potentiostat`
 - `PYTHONPATH=src python - <<'PY' ... load_board_from_gantry_config(..., mock_mode=True) ... PY` → instantiates `Pipette` and `Potentiostat`
@@ -70,6 +71,8 @@
 - `PYTHONPATH=src python -m pytest -q` → 1045 passed, 4 subtests passed after prompt/recovery cleanup
 - `PYTHONPATH=src python -m pytest -q` → 1045 passed, 4 subtests passed after 5 mm pull-off/status probe/15 mm retract changes
 - `PYTHONPATH=src python -m pytest -q` → 1045 passed, 4 subtests passed after numbered instrument prompt change
+- `python -m pytest tests/setup/test_calibrate_gantry.py tests/setup/test_calibrate_deck_origin.py tests/setup/test_calibrate_multi_instrument_board.py tests/setup/test_keyboard_input.py -q` → 37 passed after consolidating calibration flows into `setup/calibrate_gantry.py` only
+- `python -m pytest tests/setup/test_setup_imports.py -q` → 2 passed after deleting `setup/calibration/`
 
 ## Hardware validation pending
 

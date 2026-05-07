@@ -1,4 +1,4 @@
-"""Offline tests for setup/calibrate_deck_origin.py."""
+"""Offline tests for setup.calibrate_gantry single-instrument helpers."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from gantry.gantry_driver.exceptions import (
     CommandExecutionError,
     StatusReturnError,
 )
-from setup.calibrate_deck_origin import (
+from setup.calibrate_gantry import (
     DeckOriginCalibrationResult,
     _interactive_jog_to_reference,
     _opposite_pull_off_delta,
@@ -381,12 +381,6 @@ def test_run_calibration_sets_xy_then_z_and_measures_home(tmp_path):
         ("set_serial_timeout", 1.0),
         ("get_coordinates",),
         ("configure_soft_limits_from_spans", 398.5, 299.25, 96.75, 0.25),
-        ("set_serial_timeout", 10.0),
-        ("home",),
-        ("set_serial_timeout", 1.0),
-        ("activate_work_coordinate_system", "G54"),
-        ("set_work_coordinates", 398.5, 299.25, 96.75),
-        ("get_coordinates",),
         ("set_serial_timeout", 0.05),
         ("disconnect",),
     ]
@@ -469,8 +463,8 @@ instruments:
     assert isinstance(result, DeckOriginCalibrationResult)
     output_text = "\n".join(messages)
     assert "Full gantry YAML to copy/paste:" in output_text
-    assert "dir_invert_mask: 1" in output_text
-    assert "steps_per_mm_x: 400.0" in output_text
+    assert "dir_invert_mask: 1" not in output_text
+    assert "steps_per_mm_x: 400.0" not in output_text
     assert "soft_limits: true" in output_text
     assert "homing_enable: true" in output_text
     assert "max_travel_x: 398.5" in output_text

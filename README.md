@@ -147,27 +147,24 @@ Optional per-instrument extras pull in vendor SDKs only when you need them:
 pip install -e ".[potentiostat]"
 ```
 
-Calibrate the deck-origin work frame before trusting real motion. For a
-single-instrument setup:
+Calibrate the deck-origin work frame before trusting real motion. The wrapper
+below chooses the single-instrument or multi-instrument calibration flow from
+the number of mounted instruments in the seed YAML, then writes a calibrated
+gantry YAML:
 
 ```bash
-PYTHONPATH=src python setup/calibrate_deck_origin.py \
-  --gantry configs/gantry/cub_xl_asmi.yaml \
-  --instrument asmi
+PYTHONPATH=src python setup/calibrate_gantry.py \
+  --seed configs/gantry/seeds/cub_xl_asmi.yaml \
+  --output-gantry configs/gantry/cub_xl_asmi.yaml
 ```
 
-For a multi-instrument gantry config, use the guided board calibration. It
-prompts you to explicitly pick the left-most reference instrument and lowest
-instrument by number, then uses a calibration block near deck center. It starts
-from the homed BRT pose and does not make an automatic center move. It sets G54
-WPos X/Y first, then sets WPos Z to the calibration block height from the lowest
-instrument, then records each instrument's `offset_x`, `offset_y`, and `depth`
-from the shared block point:
-
-```bash
-PYTHONPATH=src python setup/calibrate_multi_instrument_board.py \
-  --gantry configs/gantry/cub_xl_multi.yaml
-```
+For a multi-instrument gantry config, the guided board calibration prompts you
+to explicitly pick the left-most reference instrument and lowest instrument by
+number, then uses a calibration block near deck center. It starts from the homed
+BRT pose and does not make an automatic center move. It sets G54 WPos X/Y first,
+then sets WPos Z to the calibration block height from the lowest instrument,
+then records each instrument's `offset_x`, `offset_y`, and `depth` from the
+shared block point.
 
 See the docs for the full operator tutorial:
 

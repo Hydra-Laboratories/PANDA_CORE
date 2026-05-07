@@ -1,5 +1,5 @@
 # FIRST-TIME CALIBRATION SEED for Cub Filmetrics.
-# Instrument offsets/depths are placeholders; run setup/calibrate_multi_instrument_board.py
+# Instrument offsets/depths are placeholders; run setup/calibrate_gantry.py
 # and write the calibrated output to configs/gantry/cub_filmetrics.yaml.
 
 serial_port: /dev/ttyUSB0

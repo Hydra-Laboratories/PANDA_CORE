@@ -1,6 +1,6 @@
 # FIRST-TIME CALIBRATION SEED for Cub XL Sterling three-instrument setup.
 # Mounted instruments: ASMI force sensor, Admiral potentiostat, and Opentrons pipette.
-# Instrument offsets/depths are placeholders; run setup/calibrate_multi_instrument_board.py
+# Instrument offsets/depths are placeholders; run setup/calibrate_gantry.py
 # and write the calibrated output to configs/gantry/cub_xl_sterling_3_instrument.yaml.
 
 serial_port: /dev/ttyUSB0

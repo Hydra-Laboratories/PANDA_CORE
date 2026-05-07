@@ -50,42 +50,19 @@ prints PASS/FAIL.
 
 ## Calibration
 
-For a real setup, calibrate the persistent deck-origin WPos frame before
-running protocols:
+For a real setup, calibrate from a seed YAML before running protocols:
 
 ```bash
-PYTHONPATH=src python setup/calibrate_deck_origin.py \
-  --gantry configs/gantry/cub_xl_asmi.yaml \
-  --instrument asmi
+PYTHONPATH=src python setup/calibrate_gantry.py \
+  --seed configs/gantry/seeds/cub_xl_asmi.yaml \
+  --output-gantry configs/gantry/cub_xl_asmi.yaml
 ```
 
-The calibration script homes the gantry, clears transient `G92` offsets, prompts
-you to jog the active TCP to the front-left lower-reach origin, assigns X/Y, and
-then assigns Z by bottom contact or a ruler-measured gap.
-
-Use bottom mode when the TCP can safely touch true deck bottom:
-
-```bash
-PYTHONPATH=src python setup/calibrate_deck_origin.py \
-  --gantry configs/gantry/cub_xl_asmi.yaml \
-  --z-reference-mode bottom \
-  --instrument asmi
-```
-
-Use ruler-gap mode when the TCP stops above deck bottom:
-
-```bash
-PYTHONPATH=src python setup/calibrate_deck_origin.py \
-  --gantry configs/gantry/cub_filmetrics.yaml \
-  --z-reference-mode ruler-gap \
-  --tip-gap-mm 5 \
-  --instrument filmetrics
-```
-
-For one-instrument configs, use the measured lower-reach Z as
-`working_volume.z_min`. For example, a TCP that stops 5 mm above deck and homes
-to `Z=105` should use `z_min: 5.0`, `z_max: 105.0`. Multi-instrument configs
-need per-instrument lower-reach limits instead of one global Z minimum.
+The calibration script counts mounted instruments in the seed and chooses the
+single- or multi-instrument flow. Single-instrument calibration uses a
+calibration block at the front-left origin point and assigns X/Y/Z at the same
+physical pose. Multi-instrument calibration uses a shared block point to compute
+per-instrument `offset_x`, `offset_y`, and `depth`.
 
 ## Interactive Jog Test
 

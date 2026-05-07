@@ -5,8 +5,8 @@ These YAML files are first-time calibration inputs. They answer the chicken-and-
 Use a seed when creating or recalibrating a setup:
 
 ```bash
-python setup/calibrate_multi_instrument_board.py \
-  --gantry configs/gantry/seeds/<seed>.yaml \
+python setup/calibrate_gantry.py \
+  --seed configs/gantry/seeds/<seed>.yaml \
   --output-gantry configs/gantry/<calibrated>.yaml
 ```
 

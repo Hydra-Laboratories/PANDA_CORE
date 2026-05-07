@@ -1,4 +1,4 @@
-"""Offline tests for setup/calibrate_multi_instrument_board.py."""
+"""Offline tests for setup.calibrate_gantry multi-instrument helpers."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from setup.calibrate_multi_instrument_board import (
+from setup.calibrate_gantry import (
     MultiInstrumentCalibrationResult,
     _retract_up_after_contact,
     compute_relative_instrument_calibrations,
@@ -243,7 +243,7 @@ def test_compute_relative_instrument_calibrations_uses_shared_block_point():
 
 def test_dry_run_prompts_for_only_operator_choices(tmp_path):
     path = _write_multi_gantry(tmp_path / "gantry.yaml")
-    inputs = iter(["", "1"])
+    inputs = iter(["", "1", "y"])
     prompts: list[str] = []
     messages: list[str] = []
 
@@ -262,11 +262,12 @@ def test_dry_run_prompts_for_only_operator_choices(tmp_path):
     assert prompts == [
         "Pick the number for the first/left-most tool for front-left origin: ",
         "Pick the number for the first/left-most tool for front-left origin: ",
+        "You selected #1 left_probe. Continue? [y/N]: ",
     ]
     assert any("Pick which numbered tool" in message for message in messages)
     assert any("Available instruments" in message for message in messages)
-    assert any("  1. left_probe" in message for message in messages)
-    assert any("  2. camera" in message for message in messages)
+    assert any("  1. left_probe (asmi)" in message for message in messages)
+    assert any("  2. camera (uv_curing)" in message for message in messages)
     assert any("Dry run only" in message for message in messages)
 
 
@@ -443,9 +444,14 @@ def test_multi_instrument_calibration_sets_xy_before_z_and_updates_yaml(tmp_path
         "z_max": 96.0,
     }
     assert written["cnc"]["total_z_height"] == 96.0
-    assert written["grbl_settings"]["max_travel_x"] == 398.0
-    assert written["grbl_settings"]["max_travel_y"] == 299.0
-    assert written["grbl_settings"]["max_travel_z"] == 96.0
+    assert written["grbl_settings"] == {
+        "status_report": 0,
+        "soft_limits": True,
+        "homing_enable": True,
+        "max_travel_x": 398.0,
+        "max_travel_y": 299.0,
+        "max_travel_z": 96.0,
+    }
     assert written["instruments"]["camera"]["measurement_height"] == 20.0
     assert written["instruments"]["camera"]["offset_x"] == -15.0
     assert written["instruments"]["camera"]["offset_y"] == -7.0
