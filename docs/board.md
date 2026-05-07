@@ -17,7 +17,6 @@ instruments:
     offset_x: 0.0
     offset_y: 0.0
     depth: 0.0
-    measurement_height: 0.0
     force_threshold: -50
     sensor_channels: [1]
 ```
@@ -39,8 +38,12 @@ Common optional fields are:
 
 - `offset_x` and `offset_y` - XY offset from the gantry head reference point
 - `depth` - positive tool depth below the gantry head reference point; in the +Z-up deck frame, gantry Z is computed as target/tool Z plus `depth`
-- `measurement_height` - absolute deck-frame action Z used by measurement commands when no protocol-level override is supplied
-- `safe_approach_height` - absolute deck-frame XY travel Z used by `Board.move_to_labware`; it defaults to `measurement_height` and must be at or above it
+
+Instrument blocks carry only physical mounting state. Labware-relative
+motion heights (`measurement_height`, `safe_approach_height`) are
+first-class arguments to the protocol command, not fields on the
+instrument config. `Board.move_to_labware` travels XY at the gantry-level
+`safe_z` (absolute deck-frame Z, set on `cnc.safe_z`).
 
 Driver-specific fields, such as serial ports, DLL paths, pipette models, or sensor channels, are passed through to the instrument driver constructor. Unknown gantry-root keys are rejected.
 
@@ -88,7 +91,7 @@ Vernier GoDirect force sensor for indentation measurements.
 | Method | Description |
 |--------|-------------|
 | `measure(n_samples)` | Take force readings. |
-| `indentation(gantry, indentation_limit, step_size, force_limit, measurement_height, baseline_samples, measure_with_return=False)` | Step-by-step indentation: descend in Z steps, reading force at each step until force limit or indentation limit. Pass `measure_with_return=True` to also record upward return samples; every measurement carries a `direction` tag (`"down"` or `"up"`). |
+| `indentation(gantry, indentation_limit, step_size, force_limit, measurement_height, baseline_samples, measure_with_return=False)` | Step-by-step indentation. ``indentation_limit`` is a sign-agnostic *magnitude* — the descent distance below the action plane (``measurement_height``). Descend in Z steps, reading force at each step until force limit or magnitude is reached. Pass `measure_with_return=True` to also record upward return samples; every measurement carries a `direction` tag (`"down"` or `"up"`). |
 | `get_force_reading()` | Single instantaneous force reading. |
 | `get_baseline_force(samples)` | Average force over N samples (returns mean and std). |
 | `get_status()` | Return sensor state. |

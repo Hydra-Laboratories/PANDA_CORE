@@ -87,6 +87,7 @@ def build_board_from_instrument_configs(
     *,
     expected_grbl_settings: dict[str, float] | None = None,
     mock_mode: bool = False,
+    safe_z: float | None = None,
 ) -> Board:
     """Build a Board from parsed instrument config entries."""
     return Board(
@@ -96,6 +97,7 @@ def build_board_from_instrument_configs(
             mock_mode=mock_mode,
         ),
         expected_grbl_settings=expected_grbl_settings,
+        safe_z=safe_z,
     )
 
 
@@ -112,11 +114,13 @@ def load_board_from_gantry_config(
             "the top-level 'instruments' key."
         )
     expected_grbl_settings = getattr(config, "expected_grbl_settings", None)
+    safe_z = getattr(config, "resolved_safe_z", None)
     return build_board_from_instrument_configs(
         instrument_configs,
         gantry,
         expected_grbl_settings=expected_grbl_settings,
         mock_mode=mock_mode,
+        safe_z=safe_z,
     )
 
 

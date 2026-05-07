@@ -48,36 +48,34 @@ class ASMI(BaseInstrument):
         offset_x: float = 0.0,
         offset_y: float = 0.0,
         depth: float = 0.0,
-        measurement_height: float = 0.0,
-        safe_approach_height: Optional[float] = None,
         offline: bool = False,  # passed through to BaseInstrument
         default_force: float = 0.0,
         force_threshold: float = _DEFAULT_FORCE_THRESHOLD,
         sensor_channels: Optional[list[int]] = None,
-        z_target: float = -17.0,
+        default_indentation_limit: float = 0.5,
         step_size: float = 0.01,
         force_limit: float = 15.0,
         baseline_samples: int = 10,
         idle_timeout: float = 10.0,
-        well_top_z: float | None = None,
-        safe_z: float | None = None,
     ):
         super().__init__(
             name=name, offset_x=offset_x, offset_y=offset_y,
-            depth=depth, measurement_height=measurement_height,
-            safe_approach_height=safe_approach_height,
-            offline=offline,
+            depth=depth, offline=offline,
         )
         self._default_force = default_force
         self._force_threshold = force_threshold
         self._sensor_channels = sensor_channels or list(_DEFAULT_SENSOR_CHANNELS)
-        self._z_target = z_target
+        # Sign-agnostic *magnitude* of the descent below the action plane,
+        # used when ``indentation()`` is called without an explicit
+        # ``indentation_limit`` (e.g. via ``measure``). Renamed from the
+        # legacy ``z_target`` (which encoded an absolute deck-frame Z) so
+        # the new magnitude semantics aren't a silent reinterpretation of
+        # an existing constructor field.
+        self._default_indentation_limit = default_indentation_limit
         self._step_size = step_size
         self._force_limit = force_limit
         self._baseline_samples = baseline_samples
         self._idle_timeout = idle_timeout
-        self._well_top_z = well_top_z
-        self._safe_z = safe_z
         self._godirect = None
         self._device = None
         self._sensor = None
@@ -237,15 +235,20 @@ class ASMI(BaseInstrument):
     @staticmethod
     def _validate_indentation_parameters(
         measurement_height: float,
-        indentation_limit: float,
+        indentation_limit_magnitude: float,
         step_size: float,
     ) -> None:
+        """Validate indentation parameters.
+
+        ``indentation_limit_magnitude`` is the absolute distance the probe
+        descends below ``measurement_height``; sign-agnostic at the API.
+        """
         if step_size <= 0:
             raise ValueError(f"step_size must be positive, got {step_size}")
-        if indentation_limit >= measurement_height:
+        if indentation_limit_magnitude <= 0:
             raise ValueError(
-                "indentation_limit must be less than measurement_height under the "
-                "deck-origin +Z-up ASMI convention."
+                f"indentation_limit must have a positive magnitude, "
+                f"got {indentation_limit_magnitude}."
             )
 
     def indentation(
@@ -291,16 +294,29 @@ class ASMI(BaseInstrument):
             ``measurements`` includes a ``direction`` field.
         """
         # Allow protocol method kwargs to override instance defaults.
-        resolved_limit = indentation_limit
-        _z_target = resolved_limit if resolved_limit is not None else self._z_target
+        resolved_limit = (
+            indentation_limit
+            if indentation_limit is not None
+            else self._default_indentation_limit
+        )
+        # ``indentation_limit`` is sign-agnostic: the descent magnitude.
+        _limit_magnitude = abs(resolved_limit)
         _step_size = step_size if step_size is not None else self._step_size
         _force_limit = force_limit if force_limit is not None else self._force_limit
-        _well_top_z = measurement_height if measurement_height is not None else (
-            self._well_top_z if self._well_top_z is not None else self.measurement_height
-        )
+        if measurement_height is None:
+            raise ValueError(
+                "ASMI indentation requires measurement_height — supply it on "
+                "the protocol scan/measure command. (Note: it's the resolved "
+                "absolute deck-frame Z to start the indent from, not a "
+                "labware-relative offset; engaging commands inject this "
+                "automatically.)"
+            )
+        _well_top_z = measurement_height
         _baseline_samples = baseline_samples if baseline_samples is not None else self._baseline_samples
+        # In +Z-up: deepest absolute Z is the well top minus the descent magnitude.
+        _z_target = _well_top_z - _limit_magnitude
 
-        self._validate_indentation_parameters(_well_top_z, _z_target, _step_size)
+        self._validate_indentation_parameters(_well_top_z, _limit_magnitude, _step_size)
 
         if self._offline:
             return self._offline_indentation(

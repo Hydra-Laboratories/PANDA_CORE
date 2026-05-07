@@ -43,17 +43,12 @@ class CncYaml(BaseModel):
     homing_strategy: Literal["standard"]
     total_z_height: float
     y_axis_motion: Literal["head", "bed"] = "head"
-    structure_clearance_z: Optional[float] = None
+    safe_z: Optional[float] = None
 
     @model_validator(mode="after")
     def _validate_total_z_height_positive(self) -> "CncYaml":
         if self.total_z_height <= 0:
             raise ValueError("total_z_height must be > 0.")
-        if (
-            self.structure_clearance_z is not None
-            and self.structure_clearance_z < 0
-        ):
-            raise ValueError("structure_clearance_z must be >= 0.")
         return self
 
 
@@ -79,3 +74,28 @@ class GantryYamlSchema(BaseModel):
                 "cnc.total_z_height must be >= working_volume.z_max."
             )
         return self
+
+    @model_validator(mode="after")
+    def _validate_safe_z_within_working_volume(self) -> "GantryYamlSchema":
+        if self.cnc.safe_z is None:
+            return self
+        if not (
+            self.working_volume.z_min
+            <= self.cnc.safe_z
+            <= self.working_volume.z_max
+        ):
+            raise ValueError(
+                f"cnc.safe_z ({self.cnc.safe_z}) must be within "
+                f"[{self.working_volume.z_min}, {self.working_volume.z_max}]."
+            )
+        return self
+
+    @property
+    def safe_z(self) -> float:
+        """Resolved absolute deck-frame safe travel Z.
+
+        Defaults to ``working_volume.z_max`` when ``cnc.safe_z`` is omitted.
+        """
+        if self.cnc.safe_z is not None:
+            return self.cnc.safe_z
+        return self.working_volume.z_max

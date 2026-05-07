@@ -52,7 +52,6 @@ instruments:
     offset_x: 5.0
     offset_y: 0.0
     depth: 0.0
-    measurement_height: 0.0
 """
 
 DECK_YAML = """\
@@ -302,7 +301,6 @@ instruments:
     offset_x: -5.0
     offset_y: 0.0
     depth: 0.0
-    measurement_height: 0.0
 """)
         with _TempYamlFiles(gantry=gantry_yaml) as f:
             _, context = setup_protocol(
@@ -347,7 +345,6 @@ instruments:
     offset_x: -5.0
     offset_y: 0.0
     depth: 0.0
-    measurement_height: 0.0
 """)
         with _TempYamlFiles(gantry=gantry_yaml) as f:
             results = run_protocol(
