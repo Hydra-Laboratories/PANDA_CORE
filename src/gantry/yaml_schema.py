@@ -68,7 +68,7 @@ class GantryYamlSchema(BaseModel):
     instruments: Dict[str, InstrumentYamlEntry] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _validate_total_height_covers_working_z(self) -> "GantryYamlSchema":
+    def _validate_total_z_range_covers_working_z(self) -> "GantryYamlSchema":
         if self.cnc.total_z_range < self.working_volume.z_max:
             raise ValueError(
                 "cnc.total_z_range must be >= working_volume.z_max."

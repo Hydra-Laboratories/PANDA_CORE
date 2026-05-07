@@ -71,7 +71,7 @@ def _scan(interwell_scan_height: float, measurement_height: float = -1.0) -> Pro
                 "method": "indentation",
                 "measurement_height": measurement_height,
                 "interwell_scan_height": interwell_scan_height,
-                "indentation_limit": 5.0,
+                "indentation_limit_height": -5.0,
                 "method_kwargs": {"step_size": 0.1},
             },
         )

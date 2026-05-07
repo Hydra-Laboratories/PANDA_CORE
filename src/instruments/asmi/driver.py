@@ -233,14 +233,16 @@ class ASMI(BaseInstrument):
         """Validate indentation parameters.
 
         ``measurement_z`` and ``target_z`` are absolute deck-frame Z
-        values (+Z up). ``target_z`` must be at or below
-        ``measurement_z`` for the descent to make sense.
+        values (+Z up). ``target_z`` must be at or below ``measurement_z``;
+        equality is legal (a zero-descent indentation collects baseline
+        force samples and returns) and matches the inclusive ``≤`` spec
+        used by the engine and validator.
         """
         if step_size <= 0:
             raise ValueError(f"step_size must be positive, got {step_size}")
-        if target_z >= measurement_z:
+        if target_z > measurement_z:
             raise ValueError(
-                f"target_z ({target_z}) must be below measurement_z "
+                f"target_z ({target_z}) must be at or below measurement_z "
                 f"({measurement_z}) — indentation descends in -Z."
             )
 

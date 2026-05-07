@@ -86,12 +86,17 @@ assembly notes, and 3D-printable STEP/STL files where applicable.
 
 ## Z Coordinates
 
-Labware positions can define Z in either of two ways:
+The labware-surface deck-frame Z is carried by the calibration anchor:
 
-- Provide explicit `z` values on calibration or location points.
-- Provide `height` on the labware entry. Under the CubOS deck-origin frame, `height` is used directly as the absolute deck-frame Z value.
+- Well plates / tip racks / holders — `calibration.a1.z` (and
+  `calibration.a2.z` matching).
+- Vials — `location.z`.
+- Holders — `location.z`.
 
-If `height` is not used, explicit Z coordinates are required.
+`height` on a labware entry is the *physical outer dimension* of the
+fixture (rim → underside), not a Z coordinate. The legacy shorthand of
+using `height` as the absolute Z was removed when the dimensional field
+took over the name; calibration-anchor `z` is the only source.
 
 ## Well Plate Calibration
 

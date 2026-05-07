@@ -18,7 +18,7 @@ Gantry YAML defines:
 
 - serial port
 - CNC homing strategy
-- total Z reference height
+- total Z reference range
 - Y-axis motion mode
 - working volume
 - optional absolute `safe_z` plane (inter-labware travel)

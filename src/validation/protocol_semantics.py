@@ -3,14 +3,14 @@
 The protocol model:
 
 * ``measurement_height`` and ``interwell_scan_height`` are *labware-relative*
-  offsets (mm above the labware's ``height`` surface; negative = below)
+  offsets (mm above the well's calibrated surface Z; negative = below)
   and are first-class arguments to the protocol commands that use them.
 * ``measurement_height`` is required on ``measure`` and ``scan``.
 * ``interwell_scan_height`` is required on ``scan``.
 * Instruments do not declare these heights.
 * ``gantry.safe_z`` is the absolute deck-frame Z used for inter-labware
   travel and the entry approach for the first well of a scan. Resolved
-  approach planes must satisfy ``height + interwell_scan_height <= safe_z``.
+  approach planes must satisfy ``well.z + interwell_scan_height <= safe_z``.
 """
 
 from __future__ import annotations
@@ -250,6 +250,7 @@ def _validate_scan_command(
         ref_z=ref_z,
         relative_action=relative_action,
         normalized=normalized,
+        board=board,
         gantry=gantry,
     ))
     indentation_limit_height = args.get("indentation_limit_height")
@@ -411,6 +412,7 @@ def _validate_asmi_indentation(
     ref_z: float,
     relative_action: float,
     normalized: NormalizedScanArguments,
+    board: Board,
     gantry: GantryConfig | None,
 ) -> list[ProtocolSemanticViolation]:
     """Bounds-check ASMI indentation against the working volume.
@@ -420,8 +422,19 @@ def _validate_asmi_indentation(
     deepest absolute Z reached during the descent is
     ``ref_z + indentation_limit_height``.
     """
+    # Match by *type* (not by the user-chosen instrument key) so a force
+    # sensor named e.g. ``force_sensor`` or ``asmi_main`` still goes
+    # through the depth-bound check. The deepest-Z bound is the only thing
+    # protecting against driving the gantry through the deck.
+    from instruments.asmi.driver import ASMI
+
     violations: list[ProtocolSemanticViolation] = []
-    if args.get("instrument") != "asmi" or args.get("method") != "indentation":
+    instrument = args.get("instrument")
+    if (
+        instrument not in board.instruments
+        or not isinstance(board.instruments[instrument], ASMI)
+        or args.get("method") != "indentation"
+    ):
         return violations
 
     indentation_limit_height = args.get("indentation_limit_height")

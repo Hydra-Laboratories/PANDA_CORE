@@ -47,7 +47,7 @@ class Gantry:
 
     @property
     def total_z_range(self) -> Optional[float]:
-        """Return configured total Z height in user space, if available."""
+        """Return configured total Z range in user space, if available."""
         if isinstance(self.config, dict):
             cnc = self.config.get("cnc", {})
             if isinstance(cnc, dict) and "total_z_range" in cnc:

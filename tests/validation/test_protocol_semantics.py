@@ -34,11 +34,16 @@ def _plate() -> WellPlate:
 
 
 def _instrument(name: str = "asmi"):
-    instr = MagicMock()
-    instr.name = name
-    instr.offset_x = 0.0
-    instr.offset_y = 0.0
-    instr.depth = 0.0
+    """Return an offline ASMI instance.
+
+    A real subclass (not a MagicMock) is needed because
+    ``_validate_asmi_indentation`` matches by type — the depth-bound
+    check should fire whether the user names this instrument ``asmi``,
+    ``force_sensor``, or anything else.
+    """
+    from instruments.asmi.driver import ASMI
+
+    instr = ASMI(name=name, offline=True)
     return instr
 
 
@@ -138,6 +143,32 @@ def test_asmi_indentation_below_z_min_violates():
     board, deck = _board_and_deck()
     gantry = _gantry_config(z_max=100.0)
     protocol = _protocol(_scan_args(indentation_limit_height=-20.0))
+
+    violations = validate_protocol_semantics(protocol, board, deck, gantry)
+
+    assert any("indentation deepest" in v.message for v in violations)
+
+
+def test_asmi_indentation_depth_bound_matches_by_instrument_type_not_name():
+    """A user-named ASMI (e.g. 'force_sensor') still triggers the
+    depth-bound check — the validator matches on the driver type, not
+    the instrument key in the board config. This is the only thing
+    protecting against driving the gantry through the deck on a
+    misconfigured ASMI scan."""
+    instrument = _instrument(name="force_sensor")
+    board = Board(gantry=MagicMock(), instruments={"force_sensor": instrument})
+    deck = Deck({"plate": _plate()})
+    gantry = _gantry_config(z_max=100.0)
+
+    protocol = _protocol({
+        "plate": "plate",
+        "instrument": "force_sensor",
+        "method": "indentation",
+        "measurement_height": -1.0,
+        "interwell_scan_height": 10.0,
+        "indentation_limit_height": -20.0,
+        "method_kwargs": {"step_size": 0.01},
+    })
 
     violations = validate_protocol_semantics(protocol, board, deck, gantry)
 

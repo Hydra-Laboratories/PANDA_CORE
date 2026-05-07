@@ -121,15 +121,19 @@ def test_forwards_measurement_z_into_method_when_declared():
     assert kwargs["gantry"] is sentinel
 
 
-def test_does_not_forward_target_z_when_method_does_not_declare_it():
+def test_does_not_forward_target_z_when_method_does_not_declare_it_and_caller_omits_it():
+    """The `target_z` is engine-injected only when both (a) the method
+    declares it and (b) the caller supplied a value. A method without
+    `target_z` and a caller that doesn't supply one should leave the
+    kwarg out — that's the open-loop case (e.g. `measure`)."""
     instr = _ClosedLoopInstrument()
     ctx = _ctx()
 
     kwargs = inject_runtime_args(
-        instr.indentation, {}, ctx, measurement_z=27.0, target_z=22.0,
+        instr.indentation, {}, ctx, measurement_z=27.0,
     )
 
-    assert "measurement_z" not in kwargs
+    assert "measurement_z" not in kwargs  # method doesn't declare it either
     assert "target_z" not in kwargs
 
 
@@ -197,6 +201,46 @@ def test_rejects_non_finite_target_z(bad_value):
     with pytest.raises(ProtocolExecutionError, match="target_z"):
         inject_runtime_args(
             instr.indentation, {}, ctx, measurement_z=10.0, target_z=bad_value,
+        )
+
+
+def test_required_target_z_missing_raises_actionable_error():
+    """If a method requires `target_z` (no default) and the engine has no
+    value to inject, surface a `ProtocolExecutionError` naming the
+    user-facing field. The bare Python `TypeError` from a missing-required
+    keyword call is unactionable mid-protocol."""
+    instr = _MethodWithAbsoluteZs()
+    ctx = _ctx(gantry=object())
+
+    # Build a method whose `target_z` is required (no default).
+    class _Required(BaseInstrument):
+        def __init__(self) -> None:
+            super().__init__(name="x", offset_x=0.0, offset_y=0.0, depth=0.0)
+        def connect(self) -> None: ...
+        def disconnect(self) -> None: ...
+        def health_check(self) -> bool: return True
+        def indentation(self, gantry, *, measurement_z: float, target_z: float) -> dict:
+            return {"target_z": target_z}
+
+    required = _Required()
+    with pytest.raises(ProtocolExecutionError, match="indentation_limit_height"):
+        inject_runtime_args(
+            required.indentation, {}, ctx, measurement_z=10.0,
+        )
+
+
+def test_target_z_supplied_to_method_without_target_z_raises():
+    """If the user supplies `indentation_limit_height` but the chosen
+    method does not consume `target_z`, refusing the dispatch beats
+    silently dropping the depth bound — a typo like `method: indent`
+    (vs `indentation`) would otherwise sail through."""
+    instr = _ClosedLoopInstrument()  # indentation(self, gantry, step_size=...)
+    ctx = _ctx()
+
+    with pytest.raises(ProtocolExecutionError, match="silently ignored"):
+        inject_runtime_args(
+            instr.indentation, {}, ctx,
+            measurement_z=10.0, target_z=5.0,
         )
 
 

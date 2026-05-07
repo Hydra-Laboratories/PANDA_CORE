@@ -94,6 +94,34 @@ def inject_runtime_args(
         kwargs["gantry"] = context.board.gantry
     if "measurement_z" in sig.parameters:
         kwargs["measurement_z"] = measurement_z
-    if target_z is not None and "target_z" in sig.parameters:
+    method_takes_target_z = "target_z" in sig.parameters
+    if target_z is not None and method_takes_target_z:
         kwargs["target_z"] = target_z
+    elif target_z is not None and not method_takes_target_z:
+        # The engine has a resolved deepest-Z (from `indentation_limit_height`)
+        # but the method doesn't consume one. Silently dropping it would let
+        # a typo like `method: indent` (instead of `indentation`) bypass the
+        # depth bound entirely.
+        raise ProtocolExecutionError(
+            f"Method {callable_method.__qualname__!r} does not declare a "
+            "`target_z` parameter, but `indentation_limit_height` was "
+            "supplied — the resolved deepest-Z would be silently ignored. "
+            "Either drop `indentation_limit_height` from the scan command "
+            "or use a method that consumes it (e.g. ASMI `indentation`)."
+        )
+    if (
+        "target_z" in sig.parameters
+        and target_z is None
+        and sig.parameters["target_z"].default is inspect.Parameter.empty
+    ):
+        # Method declares `target_z` as required but the engine has no value
+        # to inject. Surface this as an actionable command-boundary error
+        # rather than letting Python raise a bare TypeError when the engine
+        # calls the method without the required keyword.
+        raise ProtocolExecutionError(
+            f"Method {callable_method.__qualname__!r} requires a `target_z`, "
+            "which the engine resolves from `indentation_limit_height`. Add "
+            "`indentation_limit_height` (signed labware-relative offset; "
+            "negative = below the well surface) to the scan command."
+        )
     return kwargs

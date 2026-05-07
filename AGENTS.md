@@ -50,9 +50,10 @@ Two kinds of Z fields coexist:
   Z must be ≤ `safe_z`. Defaults to `working_volume.z_max` when omitted.
 - **Labware-relative offsets** (`measurement_height`,
   `interwell_scan_height` on `scan`/`measure`). Positive = above the
-  labware's `height` surface; negative = below. Resolved at command
+  labware's calibrated surface Z; negative = below. Resolved at command
   time as `well.z + relative_offset`, where `well.z` is the calibrated
-  deck-frame surface Z.
+  deck-frame surface Z. The labware's `height` is the *physical outer
+  dimension*, not a Z reference.
 
 These offsets live on the protocol command, never on instruments. `scan`
 requires both `measurement_height` and `interwell_scan_height`; `measure`

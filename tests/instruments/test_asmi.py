@@ -187,16 +187,31 @@ class TestASMIOffline(unittest.TestCase):
                 gantry, measurement_z=10.0, target_z=8.0, step_size=0.0,
             )
 
-    def test_indentation_rejects_target_z_at_or_above_measurement_z(self):
-        """``target_z`` must be strictly below ``measurement_z``: a
-        descent that doesn't descend is meaningless."""
+    def test_indentation_rejects_target_z_above_measurement_z(self):
+        """``target_z`` must be at or below ``measurement_z``: descending
+        through the well surface is fine, but a target *above* the start
+        plane would mean the descent goes up — meaningless."""
         from gantry.gantry import Gantry
         gantry = Gantry(offline=True)
 
         with self.assertRaises(ValueError, msg="target_z"):
             self.asmi.indentation(
-                gantry, measurement_z=10.0, target_z=10.0, step_size=0.1,
+                gantry, measurement_z=10.0, target_z=10.5, step_size=0.1,
             )
+
+    def test_indentation_target_z_equal_to_measurement_z_is_legal(self):
+        """A zero-descent indentation is the inclusive boundary — the spec
+        is `indentation_limit_height ≤ measurement_height`. The engine and
+        validator both accept equality, so the driver does too. The motion
+        loop runs zero descent steps and the return loop is a no-op."""
+        from gantry.gantry import Gantry
+        gantry = Gantry(offline=True)
+
+        result = self.asmi.indentation(
+            gantry, measurement_z=10.0, target_z=10.0, step_size=0.1,
+        )
+
+        assert result["data_points"] == 0
 
 
 class _FakeOnlineGantry:
@@ -263,7 +278,7 @@ class TestASMIOnlineIndentation(unittest.TestCase):
                 pass
 
         gantry = StalledGantry(start_z=10.0)
-        # Prime descent by letting z reach indentation_limit on the first real move; we
+        # Prime descent by letting z reach target_z on the first real move; we
         # only need _some_ descent measurement to trigger the return block.
         original_move = _FakeOnlineGantry.move_to
         call_count = {"n": 0}
@@ -271,7 +286,7 @@ class TestASMIOnlineIndentation(unittest.TestCase):
         def move_once_then_stall(self, x, y, z):
             call_count["n"] += 1
             if call_count["n"] == 1:
-                original_move(self, x, y, z)  # initial descend to measurement_height
+                original_move(self, x, y, z)  # initial descend to measurement_z
             elif call_count["n"] == 2:
                 original_move(self, x, y, z)  # one descent step
             # subsequent moves no-op → stall during return
