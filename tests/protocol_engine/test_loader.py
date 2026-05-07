@@ -44,7 +44,7 @@ protocol:
       instrument: uvvis
       method: measure
       measurement_height: 0.0
-      safe_approach_height: 10.0
+      interwell_scan_height: 10.0
 """
 
 
@@ -120,7 +120,7 @@ def test_scan_accepts_new_height_names():
             "instrument": "uvvis",
             "method": "measure",
             "measurement_height": 0.0,
-            "safe_approach_height": 10.0,
+            "interwell_scan_height": 10.0,
         }
     finally:
         Path(path).unlink(missing_ok=True)
@@ -136,7 +136,7 @@ protocol:
       plate: plate_1
       instrument: uvvis
       method: measure
-      safe_approach_height: 10.0
+      interwell_scan_height: 10.0
 """
     path = _write_yaml(yaml)
     try:
@@ -146,7 +146,7 @@ protocol:
         Path(path).unlink(missing_ok=True)
 
 
-def test_scan_rejects_yaml_missing_safe_approach_height():
+def test_scan_rejects_yaml_missing_interwell_scan_height():
     yaml = """
 protocol:
   - scan:
@@ -157,7 +157,7 @@ protocol:
 """
     path = _write_yaml(yaml)
     try:
-        with pytest.raises(Exception, match="safe_approach_height"):
+        with pytest.raises(Exception, match="interwell_scan_height"):
             load_protocol_from_yaml(path)
     finally:
         Path(path).unlink(missing_ok=True)
@@ -186,7 +186,7 @@ protocol:
       instrument: uvvis
       method: measure
       measurement_height: 0.0
-      safe_approach_height: 10.0
+      interwell_scan_height: 10.0
       entry_travel_z: 10.0
 """
     path = _write_yaml(yaml)

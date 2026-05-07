@@ -11,14 +11,14 @@ treatment of measurement and approach heights with a clean split:
   calibrated well/labware surface Z, +Z up). First-class arg to the
   protocol command: required on `measure` and `scan`. Removed from
   instrument YAML and `BaseInstrument.__init__`.
-- **`safe_approach_height`**: labware-relative. First-class arg to `scan`,
+- **`interwell_scan_height`**: labware-relative. First-class arg to `scan`,
   required. Must be at or above `measurement_height`. Removed from
   instrument YAML.
-- **`WellPlate.height_mm`** restored to its documented meaning: the
+- **`WellPlate.height`** restored to its documented meaning: the
   plate's *physical outer dimension* (rim → underside). The deck-frame Z
   of the plate surface lives on each well's calibrated `Coordinate3D.z`.
   Motion code derives `ref_z` from the resolved well coordinate, not
-  from `height_mm`.
+  from `height`.
 - ASMI: `well_top_z` is the resolved absolute action Z (`well.z +
   measurement_height`), injected at the dispatch boundary. The legacy
   constructor field `z_target` (an absolute deck-frame Z default) is
@@ -34,7 +34,7 @@ treatment of measurement and approach heights with a clean split:
 
 Earlier iterations let `measurement_height` live on either the instrument
 config or the command (with a dual-source matcher), and `scan` accepted
-only `safe_approach_height`. The dual-source rule was a constant source
+only `interwell_scan_height`. The dual-source rule was a constant source
 of confusion (which side was authoritative when both differed?), and the
 asymmetry between scan and measure made protocol authoring error-prone.
 Pinning both heights as required command args removes both problems:
@@ -51,15 +51,15 @@ motion runs:
 
 1. Required-fields validator: `measure` rejects missing
    `measurement_height`; `scan` rejects missing `measurement_height` or
-   `safe_approach_height`.
+   `interwell_scan_height`.
 2. Calibrated well/labware surface Z presence check (via the resolved
    coordinate) on every measure/scan target.
 3. Bounds check: resolved absolute Z within `[z_min, z_max]`.
-4. Scan-only: `safe_approach_height >= measurement_height` and
-   `height_mm + safe_approach_height <= safe_z`.
+4. Scan-only: `interwell_scan_height >= measurement_height` and
+   `height + interwell_scan_height <= safe_z`.
 5. Legacy field rejector: `interwell_travel_height`,
    `entry_travel_height`, ASMI `z_limit` are explicit semantic
-   violations. `measurement_height`/`safe_approach_height` are also
+   violations. `measurement_height`/`interwell_scan_height` are also
    rejected inside `method_kwargs` and on the instrument YAML — both
    places where they used to be silently swallowed or overwritten.
 
@@ -71,7 +71,7 @@ motion runs:
 ## Files touched (high level)
 
 - `src/instruments/{base_instrument,asmi,filmetrics,pipette,potentiostat,uv_curing,uvvis_ccs}/`
-  drivers — strip `measurement_height`/`safe_approach_height` kwargs.
+  drivers — strip `measurement_height`/`interwell_scan_height` kwargs.
 - `src/instruments/yaml_schema.py` — drop both fields from
   `InstrumentYamlEntry`.
 - `src/protocol_engine/commands/{_movement,measure,scan,pipette}.py` —

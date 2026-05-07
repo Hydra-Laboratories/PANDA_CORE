@@ -185,7 +185,7 @@ def _updated_gantry_yaml_text(
     max_travel: dict[str, float] | None = None,
 ) -> str:
     updated = copy.deepcopy(raw_config)
-    updated.setdefault("cnc", {})["total_z_height"] = _round_mm(measured_coords["z"])
+    updated.setdefault("cnc", {})["total_z_range"] = _round_mm(measured_coords["z"])
     updated["working_volume"] = {
         "x_min": 0.0,
         "x_max": _round_mm(measured_coords["x"]),
@@ -347,8 +347,8 @@ def _print_config_patch(
     output(f"    z_min: {z_min_mm:.3f}")
     output(f"    z_max: {z_max:.3f}")
     output("")
-    output("Also set cnc.total_z_height to:")
-    output(f"  total_z_height: {z_max:.3f}")
+    output("Also set cnc.total_z_range to:")
+    output(f"  total_z_range: {z_max:.3f}")
     output("")
     output("Z reference point after XY origining:")
     output(

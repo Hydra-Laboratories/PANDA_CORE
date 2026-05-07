@@ -179,7 +179,7 @@ def _updated_yaml_text(
     max_travel: dict[str, float],
 ) -> str:
     updated = copy.deepcopy(raw_config)
-    updated.setdefault("cnc", {})["total_z_height"] = _round_mm(measured_coords["z"])
+    updated.setdefault("cnc", {})["total_z_range"] = _round_mm(measured_coords["z"])
     updated["working_volume"] = {
         "x_min": 0.0,
         "x_max": _round_mm(measured_coords["x"]),

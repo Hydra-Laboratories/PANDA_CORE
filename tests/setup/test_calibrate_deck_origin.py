@@ -22,7 +22,7 @@ def _write_gantry(path: Path, *, x_min: float = 0.0) -> Path:
 serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
-  total_z_height: 100.0
+  total_z_range: 100.0
   y_axis_motion: head
   safe_z: 85.0
 working_volume:
@@ -330,7 +330,7 @@ def test_run_calibration_prints_full_gantry_yaml_with_grbl_settings(tmp_path):
 serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
-  total_z_height: 100.0
+  total_z_range: 100.0
   y_axis_motion: head
   safe_z: 85.0
 working_volume:

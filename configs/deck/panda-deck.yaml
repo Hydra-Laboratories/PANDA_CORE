@@ -1,0 +1,16 @@
+labware:
+  plate:
+    load_name: sbs_96_wellplate
+    name: asmi_96_well
+    model_name: asmi_96_well
+    calibration:
+      a1:
+        x: 49.7
+        y: 236.8
+        z: 50
+      a2:
+        x: 58.7
+        y: 236.8
+        z: 50
+    x_offset: 9
+    type: well_plate

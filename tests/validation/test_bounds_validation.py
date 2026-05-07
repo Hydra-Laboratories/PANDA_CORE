@@ -24,12 +24,12 @@ def _make_gantry(
     y_max: float = 200.0,
     z_min: float = 0.0,
     z_max: float = 80.0,
-    total_z_height: float = 90.0,
+    total_z_range: float = 90.0,
 ) -> GantryConfig:
     return GantryConfig(
         serial_port="/dev/ttyUSB0",
         homing_strategy=HomingStrategy.STANDARD,
-        total_z_height=total_z_height,
+        total_z_range=total_z_range,
         working_volume=WorkingVolume(
             x_min=x_min, x_max=x_max,
             y_min=y_min, y_max=y_max,
@@ -47,8 +47,8 @@ def _make_vial(
     return Vial(
         name=name,
         model_name="standard_vial",
-        height_mm=66.75,
-        diameter_mm=28.0,
+        height=66.75,
+        diameter=28.0,
         location=Coordinate3D(x=x, y=y, z=z),
         capacity_ul=1500.0,
         working_volume_ul=1200.0,
@@ -79,9 +79,9 @@ def _make_plate(
     return WellPlate(
         name=name,
         model_name="test_plate_model",
-        length_mm=50.0,
-        width_mm=30.0,
-        height_mm=14.0,
+        length=50.0,
+        width=30.0,
+        height=14.0,
         rows=rows,
         columns=columns,
         wells=wells,

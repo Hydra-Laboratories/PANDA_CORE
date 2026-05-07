@@ -49,17 +49,18 @@ Two kinds of Z fields coexist:
   targets). `safe_z` is the travel ceiling: every resolved approach/action
   Z must be ≤ `safe_z`. Defaults to `working_volume.z_max` when omitted.
 - **Labware-relative offsets** (`measurement_height`,
-  `safe_approach_height` on `scan`/`measure`). Positive = above the
-  labware's `height_mm` surface; negative = below. Resolved at command
+  `interwell_scan_height` on `scan`/`measure`). Positive = above the
+  labware's `height` surface; negative = below. Resolved at command
   time as `well.z + relative_offset`, where `well.z` is the calibrated
   deck-frame surface Z.
 
 These offsets live on the protocol command, never on instruments. `scan`
-requires both `measurement_height` and `safe_approach_height`; `measure`
+requires both `measurement_height` and `interwell_scan_height`; `measure`
 requires `measurement_height`. Pipette commands engage at the labware
 reference Z (`measurement_height = 0` implicitly). ASMI
-`indentation_limit` is a sign-agnostic magnitude (descent distance below
-the action plane).
+`indentation_limit_height` is a signed labware-relative offset (mm above
+the well surface; negative = below); must be at or below
+`measurement_height`.
 
 ## Where to Look
 

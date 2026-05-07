@@ -33,7 +33,7 @@ GANTRY_YAML = """\
 serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
-  total_z_height: 90.0
+  total_z_range: 90.0
   safe_z: 70.0
 working_volume:
   x_min: 0.0
@@ -59,9 +59,9 @@ labware:
     model_name: test_96_well
     rows: 2
     columns: 3
-    length_mm: 50.0
-    width_mm: 30.0
-    height_mm: 14.0
+    length: 50.0
+    width: 30.0
+    height: 14.0
     calibration:
       a1:
         x: 100.0
@@ -71,16 +71,16 @@ labware:
         x: 109.0
         y: 100.0
         z: 15.0
-    x_offset_mm: 9.0
-    y_offset_mm: 9.0
+    x_offset: 9.0
+    y_offset: 9.0
     capacity_ul: 200.0
     working_volume_ul: 150.0
   waste_vial:
     type: vial
     name: waste
     model_name: waste_container
-    height_mm: 100.0
-    diameter_mm: 50.0
+    height: 100.0
+    diameter: 50.0
     location:
       x: 250.0
       y: 150.0
@@ -150,8 +150,8 @@ labware:
     type: vial
     name: far_away
     model_name: far_vial
-    height_mm: 50.0
-    diameter_mm: 20.0
+    height: 50.0
+    diameter: 20.0
     location:
           x: 500.0
           y: 40.0
@@ -181,8 +181,8 @@ labware:
     type: vial
     name: edge
     model_name: edge_vial
-    height_mm: 50.0
-    diameter_mm: 20.0
+    height: 50.0
+    diameter: 20.0
     location:
           x: 1.0
           y: 40.0
@@ -210,7 +210,7 @@ labware:
 serial_port: /dev/ttyUSB0
 cnc:
   homing_strategy: standard
-  total_z_height: 90.0
+  total_z_range: 90.0
 working_volume:
   x_min: 0.0
   x_max: 50.0

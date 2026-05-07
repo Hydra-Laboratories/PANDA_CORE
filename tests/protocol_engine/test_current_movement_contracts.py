@@ -6,7 +6,7 @@ agree on the same motion primitives:
 * ``Board.move_to_labware`` travels XY at the gantry's ``safe_z``
   (absolute deck-frame).
 * Engaging commands take ``measurement_height`` as a first-class command
-  argument and descend to ``labware.height_mm + measurement_height``
+  argument and descend to ``labware.height + measurement_height``
   (relative). Pipette commands engage at the labware reference Z (i.e.
   ``measurement_height = 0``).
 """
@@ -39,9 +39,9 @@ def _plate() -> WellPlate:
     return WellPlate(
         name="plate_1",
         model_name="test_plate",
-        length_mm=127.71,
-        width_mm=85.43,
-        height_mm=HEIGHT_MM,
+        length=127.71,
+        width=85.43,
+        height=HEIGHT_MM,
         rows=1,
         columns=2,
         wells={
@@ -72,7 +72,7 @@ def test_board_move_to_labware_uses_absolute_safe_z():
     gantry.move_to.assert_called_once_with(10.0, 20.0, 20.0, travel_z=20.0)
 
 
-def test_measure_descends_to_height_mm_plus_relative_offset():
+def test_measure_descends_to_height_plus_relative_offset():
     from protocol_engine.commands.measure import measure
 
     instr = _instrument(name="uvvis")
@@ -85,7 +85,7 @@ def test_measure_descends_to_height_mm_plus_relative_offset():
     ctx.board.move.assert_called_once_with("uvvis", (10.0, 20.0, HEIGHT_MM + 2.0))
 
 
-def test_scan_first_well_descends_to_height_mm_plus_relative_offset():
+def test_scan_first_well_descends_to_height_plus_relative_offset():
     from protocol_engine.commands.scan import scan
 
     instr = _instrument(name="uvvis")
@@ -98,7 +98,7 @@ def test_scan_first_well_descends_to_height_mm_plus_relative_offset():
         instrument="uvvis",
         method="measure",
         measurement_height=1.0,
-        safe_approach_height=10.0,
+        interwell_scan_height=10.0,
     )
 
     move_calls = ctx.board.move.call_args_list

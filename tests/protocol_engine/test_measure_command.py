@@ -24,20 +24,20 @@ def _mock_instr():
     return instr
 
 
-def _ctx(instr, well_coord=None, height_mm=HEIGHT_MM):
-    well_coord = well_coord or Coordinate3D(x=10.0, y=20.0, z=height_mm or 0.0)
+def _ctx(instr, well_coord=None, height=HEIGHT_MM):
+    well_coord = well_coord or Coordinate3D(x=10.0, y=20.0, z=height or 0.0)
     board = MagicMock()
     board.instruments = {"uvvis": instr}
     deck = MagicMock()
     deck.resolve = MagicMock(return_value=well_coord)
-    labware = MagicMock(height_mm=height_mm)
+    labware = MagicMock(height=height)
     deck.__getitem__ = MagicMock(return_value=labware)
     return ProtocolContext(board=board, deck=deck)
 
 
 def test_measure_travels_at_safe_z_then_descends():
     """measure: move_to_labware (XY at safe_z), then descend to
-    height_mm + measurement_height, then call the method."""
+    height + measurement_height, then call the method."""
     instr = _mock_instr()
     coord = Coordinate3D(x=10.0, y=20.0, z=HEIGHT_MM)
     ctx = _ctx(instr, well_coord=coord)

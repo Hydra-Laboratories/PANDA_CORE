@@ -118,7 +118,7 @@ Map the result into gantry YAML as follows:
 
 ```yaml
 cnc:
-  total_z_height: <measured_z_max>
+  total_z_range: <measured_z_max>
 
 working_volume:
   x_min: 0.0

@@ -109,13 +109,13 @@ class TestGantryConfig:
         config = GantryConfig(
             serial_port="/dev/ttyUSB0",
             homing_strategy=HomingStrategy.STANDARD,
-            total_z_height=90.0,
+            total_z_range=90.0,
             working_volume=vol,
             safe_z=75.0,
         )
         assert config.serial_port == "/dev/ttyUSB0"
         assert config.homing_strategy == HomingStrategy.STANDARD
-        assert config.total_z_height == 90.0
+        assert config.total_z_range == 90.0
         assert config.working_volume is vol
         assert config.safe_z == 75.0
 
@@ -123,7 +123,7 @@ class TestGantryConfig:
         config = GantryConfig(
             serial_port="/dev/ttyUSB0",
             homing_strategy=HomingStrategy.STANDARD,
-            total_z_height=90.0,
+            total_z_range=90.0,
             working_volume=_make_volume(),
         )
         assert isinstance(config.homing_strategy, HomingStrategy)
@@ -133,7 +133,7 @@ class TestGantryConfig:
         config = GantryConfig(
             serial_port="/dev/ttyUSB0",
             homing_strategy=HomingStrategy.STANDARD,
-            total_z_height=90.0,
+            total_z_range=90.0,
             working_volume=_make_volume(),
         )
         try:
@@ -142,21 +142,21 @@ class TestGantryConfig:
         except AttributeError:
             pass
 
-    def test_rejects_negative_total_z_height(self):
-        with pytest.raises(ValueError, match="total_z_height"):
+    def test_rejects_negative_total_z_range(self):
+        with pytest.raises(ValueError, match="total_z_range"):
             GantryConfig(
                 serial_port="/dev/ttyUSB0",
                 homing_strategy=HomingStrategy.STANDARD,
-                total_z_height=-10.0,
+                total_z_range=-10.0,
                 working_volume=_make_volume(),
             )
 
-    def test_rejects_zero_total_z_height(self):
-        with pytest.raises(ValueError, match="total_z_height"):
+    def test_rejects_zero_total_z_range(self):
+        with pytest.raises(ValueError, match="total_z_range"):
             GantryConfig(
                 serial_port="/dev/ttyUSB0",
                 homing_strategy=HomingStrategy.STANDARD,
-                total_z_height=0.0,
+                total_z_range=0.0,
                 working_volume=_make_volume(),
             )
 
@@ -165,7 +165,7 @@ class TestGantryConfig:
             GantryConfig(
                 serial_port="/dev/ttyUSB0",
                 homing_strategy=HomingStrategy.STANDARD,
-                total_z_height=90.0,
+                total_z_range=90.0,
                 working_volume=_make_volume(z_min=0.0, z_max=80.0),
                 safe_z=85.0,
             )

@@ -64,6 +64,6 @@ def measure(
     callable_method = getattr(instr, method)
     kwargs = inject_runtime_args(
         callable_method, method_kwargs, context,
-        measurement_height=action_z,
+        measurement_z=action_z,
     )
     return callable_method(**kwargs)

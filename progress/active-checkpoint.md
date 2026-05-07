@@ -7,7 +7,7 @@
 
 ## Non-negotiable contracts
 - Deck frame is front-left-bottom origin with `+X` right, `+Y` back/away, `+Z` up.
-- Travel/action heights are absolute deck-frame Z planes (`measurement_height`, `entry_travel_height`, `interwell_travel_height`, `safe_approach_height` when present).
+- Travel/action heights are absolute deck-frame Z planes (`measurement_height`, `entry_travel_height`, `interwell_travel_height`, `interwell_scan_height` when present).
 - Runtime must not recompute action Z using `labware_z ± height`.
 - ASMI indentation downward motion must decrease Z.
 

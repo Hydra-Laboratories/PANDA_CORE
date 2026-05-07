@@ -35,8 +35,8 @@ def scan(
     instrument: str,
     method: str,
     measurement_height: float,
-    safe_approach_height: float,
-    indentation_limit: float | None = None,
+    interwell_scan_height: float,
+    indentation_limit_height: float | None = None,
     delay_s: float = 0.0,
     method_kwargs: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
@@ -48,9 +48,9 @@ def scan(
     (the plate-surface Z, set by calibration):
 
     * **First well of the plate.** Travel at the gantry's ``safe_z``
-      (absolute) → descend to ``ref_z + safe_approach_height`` →
+      (absolute) → descend to ``ref_z + interwell_scan_height`` →
       descend to ``ref_z + measurement_height`` → act.
-    * **Subsequent wells.** Rise to ``ref_z + safe_approach_height`` at
+    * **Subsequent wells.** Rise to ``ref_z + interwell_scan_height`` at
       the current XY → travel XY at that height → descend to
       ``ref_z + measurement_height`` → act.
 
@@ -62,11 +62,18 @@ def scan(
         measurement_height:   Required labware-relative offset for the
                               action plane (mm above the well-surface Z;
                               negative = below).
-        safe_approach_height: Required labware-relative offset for
+        interwell_scan_height: Required labware-relative offset for
                               between-wells XY travel (mm above the
                               well-surface Z). Must be at or above
                               ``measurement_height`` in +Z-up.
-        indentation_limit:    ASMI indentation stopping bound (magnitude).
+        indentation_limit_height:
+                              ASMI indentation deepest plane, as a
+                              labware-relative offset (mm above the
+                              well-surface Z; negative = below). Must be
+                              at or below ``measurement_height``. The
+                              engine resolves this to an absolute
+                              ``target_z`` and forwards it to the
+                              instrument method.
         delay_s:              Seconds to pause between wells (default 0.0).
         method_kwargs:        Keyword arguments passed per well.
 
@@ -95,7 +102,7 @@ def scan(
 
     try:
         normalized = normalize_scan_arguments(
-            indentation_limit=indentation_limit,
+            indentation_limit_height=indentation_limit_height,
             method_kwargs=method_kwargs,
         )
         _assert_finite_number(
@@ -103,7 +110,7 @@ def scan(
             source="scan",
         )
         _assert_finite_number(
-            safe_approach_height, field_name="safe_approach_height",
+            interwell_scan_height, field_name="interwell_scan_height",
             source="scan",
         )
     except ValueError as exc:
@@ -114,13 +121,25 @@ def scan(
     ref_z = plate_obj.get_well_center("A1").z
 
     action_z = ref_z + measurement_height
-    approach_z = ref_z + safe_approach_height
+    approach_z = ref_z + interwell_scan_height
+    target_z: float | None = (
+        ref_z + indentation_limit_height
+        if indentation_limit_height is not None
+        else None
+    )
 
     if approach_z < action_z:
         raise ProtocolExecutionError(
-            f"scan: safe_approach_height ({safe_approach_height}) resolves "
+            f"scan: interwell_scan_height ({interwell_scan_height}) resolves "
             f"below measurement_height ({measurement_height}) for plate "
             f"'{plate}'. Approach must be at or above the action plane."
+        )
+    if target_z is not None and target_z > action_z:
+        raise ProtocolExecutionError(
+            f"scan: indentation_limit_height ({indentation_limit_height}) "
+            f"resolves above measurement_height ({measurement_height}) for "
+            f"plate '{plate}'. The deepest descent plane must be at or below "
+            "the action plane in +Z-up."
         )
 
     results: Dict[str, Any] = {}
@@ -146,7 +165,7 @@ def scan(
         # as `measure`, instead of scan reimplementing them inline.
         kwargs = inject_runtime_args(
             callable_method, normalized.method_kwargs, context,
-            measurement_height=action_z,
+            measurement_z=action_z, target_z=target_z,
         )
         result = callable_method(**kwargs)
         results[well_id] = result

@@ -26,7 +26,7 @@ def test_home_preserves_calibrated_wpos_for_deck_origin_config():
     config = GantryConfig(
         serial_port="/dev/ttyUSB0",
         homing_strategy=HomingStrategy.STANDARD,
-        total_z_height=100.0,
+        total_z_range=100.0,
         working_volume=WorkingVolume(
             x_min=0.0,
             x_max=400.0,
@@ -51,7 +51,7 @@ def test_home_preserves_calibrated_wpos_for_one_instrument_nonzero_z_min():
     config = GantryConfig(
         serial_port="/dev/ttyUSB0",
         homing_strategy=HomingStrategy.STANDARD,
-        total_z_height=105.0,
+        total_z_range=105.0,
         working_volume=WorkingVolume(
             x_min=0.0,
             x_max=400.0,
@@ -74,7 +74,7 @@ def test_home_preserves_calibrated_wpos_for_negative_space_config():
     config = GantryConfig(
         serial_port="/dev/ttyUSB0",
         homing_strategy=HomingStrategy.STANDARD,
-        total_z_height=100.0,
+        total_z_range=100.0,
         working_volume=WorkingVolume(
             x_min=-400.0,
             x_max=-0.01,
@@ -97,7 +97,7 @@ def test_home_preserves_calibrated_wpos_for_zero_minimum_config():
     config = GantryConfig(
         serial_port="/dev/ttyUSB0",
         homing_strategy=HomingStrategy.STANDARD,
-        total_z_height=100.0,
+        total_z_range=100.0,
         working_volume=WorkingVolume(
             x_min=0.0,
             x_max=400.0,

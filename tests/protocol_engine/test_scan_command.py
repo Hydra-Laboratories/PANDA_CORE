@@ -3,12 +3,12 @@
 The scan command's per-well motion under the labware-relative model is:
 
 * **First well of the plate**: ``move_to_labware`` (travels XY at gantry
-  ``safe_z``) → raw move to ``height_mm + safe_approach_height`` →
-  raw move to ``height_mm + measurement_height`` → call instrument method.
-* **Subsequent wells**: raw move to ``height_mm + safe_approach_height``
+  ``safe_z``) → raw move to ``height + interwell_scan_height`` →
+  raw move to ``height + measurement_height`` → call instrument method.
+* **Subsequent wells**: raw move to ``height + interwell_scan_height``
   with ``travel_z`` set so XY travel happens at that height → raw move to
   the action plane → call instrument method.
-* **End of scan**: raw move that lifts back to ``height_mm + safe_approach_height``.
+* **End of scan**: raw move that lifts back to ``height + interwell_scan_height``.
 """
 
 from __future__ import annotations
@@ -38,9 +38,9 @@ def _make_2x2_plate() -> WellPlate:
     return WellPlate(
         name="plate_1",
         model_name="test_96",
-        length_mm=127.71,
-        width_mm=85.43,
-        height_mm=HEIGHT_MM,
+        length=127.71,
+        width=85.43,
+        height=HEIGHT_MM,
         rows=2,
         columns=2,
         wells={
@@ -58,9 +58,9 @@ def _make_2x3_plate() -> WellPlate:
     return WellPlate(
         name="plate_2",
         model_name="test_model",
-        length_mm=127.71,
-        width_mm=85.43,
-        height_mm=HEIGHT_MM,
+        length=127.71,
+        width=85.43,
+        height=HEIGHT_MM,
         rows=2,
         columns=3,
         wells={
@@ -97,14 +97,14 @@ class _FakeSensor(BaseInstrument):
 
     def indentation(
         self,
-        measurement_height: float | None = None,
-        indentation_limit: float | None = None,
+        measurement_z: float | None = None,
+        target_z: float | None = None,
         gantry=None,
     ) -> dict:
         self.call_count += 1
         return {
-            "measurement_height": measurement_height,
-            "indentation_limit": indentation_limit,
+            "measurement_z": measurement_z,
+            "target_z": target_z,
             "gantry": gantry,
         }
 
@@ -141,7 +141,7 @@ def _scan_args(**overrides):
         "instrument": "uvvis",
         "method": "measure",
         "measurement_height": MEASUREMENT,
-        "safe_approach_height": SAFE_APPROACH,
+        "interwell_scan_height": SAFE_APPROACH,
     }
     args.update(overrides)
     return args
@@ -165,7 +165,7 @@ class TestScanCommand:
         ctx = _mock_context(plate=plate)
 
         scan(ctx, plate="plate_2", instrument="uvvis", method="measure",
-             measurement_height=MEASUREMENT, safe_approach_height=SAFE_APPROACH)
+             measurement_height=MEASUREMENT, interwell_scan_height=SAFE_APPROACH)
 
         action_zs = [
             c for c in ctx.board.move.call_args_list
@@ -238,7 +238,7 @@ class TestScanCommand:
         assert last_move.kwargs.get("travel_z") == APPROACH_ABS
 
     def test_measurement_height_from_command_arg_drives_action_z(self):
-        """Action plane is `plate.height_mm + scan.measurement_height`."""
+        """Action plane is `plate.height + scan.measurement_height`."""
         from protocol_engine.commands.scan import scan
 
         ctx = _mock_context()
@@ -261,14 +261,14 @@ class TestScanCommand:
         with pytest.raises(TypeError, match="measurement_height"):
             scan(ctx, **args)
 
-    def test_missing_safe_approach_height_rejected(self):
+    def test_missing_interwell_scan_height_rejected(self):
         from protocol_engine.commands.scan import scan
 
         ctx = _mock_context()
 
         args = _scan_args()
-        args.pop("safe_approach_height")
-        with pytest.raises(TypeError, match="safe_approach_height"):
+        args.pop("interwell_scan_height")
+        with pytest.raises(TypeError, match="interwell_scan_height"):
             scan(ctx, **args)
 
     def test_safe_approach_below_measurement_rejected(self):
@@ -277,11 +277,12 @@ class TestScanCommand:
         ctx = _mock_context()
 
         with pytest.raises(ProtocolExecutionError, match="Approach must be at or above"):
-            scan(ctx, **_scan_args(measurement_height=5.0, safe_approach_height=2.0))
+            scan(ctx, **_scan_args(measurement_height=5.0, interwell_scan_height=2.0))
 
-    def test_measurement_height_passed_to_method_when_supported(self):
-        """When the method signature has ``measurement_height``, the
-        resolved absolute action Z is forwarded into method_kwargs."""
+    def test_absolute_z_values_passed_to_method_when_supported(self):
+        """When the method signature has ``measurement_z``/``target_z``,
+        the engine resolves both relative offsets to absolute deck-frame
+        Z values and forwards them."""
         from protocol_engine.commands.scan import scan
 
         ctx = _mock_context()
@@ -290,13 +291,13 @@ class TestScanCommand:
         results = scan(
             ctx, plate="plate_1", instrument="uvvis", method="indentation",
             measurement_height=2.0,
-            safe_approach_height=SAFE_APPROACH,
-            indentation_limit=5.0,
+            interwell_scan_height=SAFE_APPROACH,
+            indentation_limit_height=-5.0,   # 5 mm into the well at deepest
         )
 
         for r in results.values():
-            assert r["measurement_height"] == HEIGHT_MM + 2.0
-            assert r["indentation_limit"] == 5.0
+            assert r["measurement_z"] == HEIGHT_MM + 2.0
+            assert r["target_z"] == HEIGHT_MM + (-5.0)
 
     def test_legacy_z_limit_rejected_at_runtime(self):
         from protocol_engine.commands.scan import scan
@@ -307,7 +308,7 @@ class TestScanCommand:
             scan(
                 ctx, plate="plate_1", instrument="uvvis", method="indentation",
                 measurement_height=MEASUREMENT,
-                safe_approach_height=SAFE_APPROACH,
+                interwell_scan_height=SAFE_APPROACH,
                 method_kwargs={"z_limit": 5.0},
             )
 
@@ -320,7 +321,7 @@ class TestScanCommand:
             scan(
                 ctx, plate="plate_1", instrument="uvvis", method="measure",
                 measurement_height=MEASUREMENT,
-                safe_approach_height=SAFE_APPROACH,
+                interwell_scan_height=SAFE_APPROACH,
                 method_kwargs={"interwell_travel_height": 5.0},
             )
 
@@ -363,7 +364,7 @@ class TestScanCommand:
 
         with pytest.raises(ProtocolExecutionError, match="WellPlate"):
             scan(ctx, plate="vial_1", instrument="uvvis", method="measure",
-                 measurement_height=MEASUREMENT, safe_approach_height=SAFE_APPROACH)
+                 measurement_height=MEASUREMENT, interwell_scan_height=SAFE_APPROACH)
 
     def test_unknown_instrument_raises(self):
         from protocol_engine.commands.scan import scan
@@ -372,7 +373,7 @@ class TestScanCommand:
 
         with pytest.raises(ProtocolExecutionError, match="instrument"):
             scan(ctx, plate="plate_1", instrument="nonexistent", method="measure",
-                 measurement_height=MEASUREMENT, safe_approach_height=SAFE_APPROACH)
+                 measurement_height=MEASUREMENT, interwell_scan_height=SAFE_APPROACH)
 
     def test_unknown_method_raises(self):
         from protocol_engine.commands.scan import scan
@@ -381,7 +382,7 @@ class TestScanCommand:
 
         with pytest.raises(ProtocolExecutionError, match="method"):
             scan(ctx, plate="plate_1", instrument="uvvis", method="nonexistent",
-                 measurement_height=MEASUREMENT, safe_approach_height=SAFE_APPROACH)
+                 measurement_height=MEASUREMENT, interwell_scan_height=SAFE_APPROACH)
 
     def test_logs_normalized_instrument_measurement(self):
         from protocol_engine.commands.scan import scan
