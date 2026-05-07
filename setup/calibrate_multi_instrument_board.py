@@ -268,18 +268,7 @@ def _prompt_z_reference_height_mm(
     output: Callable[[str], None],
 ) -> float:
     output("")
-    output("Z reference contact:")
-    output("  y = the lowest instrument is touching the deck/reference Z=0 surface")
-    output("  n = it is touching the top of a calibration block; enter block height")
-    while True:
-        raw = input_reader(
-            "Is the lowest instrument touching the true Z=0 surface? [y/N]: "
-        ).strip().lower()
-        if raw in ("y", "yes"):
-            return 0.0
-        if raw in ("", "n", "no", "u", "unsure"):
-            break
-        output("Enter y for true Z=0 contact, or n/Enter for block-height mode.")
+    output("Z reference: use a calibration block. The lowest instrument should touch the block top.")
     while True:
         raw = input_reader("Calibration block height in mm: ").strip()
         try:
@@ -288,7 +277,7 @@ def _prompt_z_reference_height_mm(
             output("Enter a numeric block height in millimeters.")
             continue
         if value <= 0:
-            output("Calibration block height must be > 0 mm. Use contact mode for Z=0.")
+            output("Calibration block height must be > 0 mm.")
             continue
         return value
 
@@ -417,9 +406,8 @@ def run_multi_instrument_calibration(
     output("  instrument board is attached and the lowest mounted tool touches the reference point.")
     output("")
     reference_instrument = reference_instrument or _prompt_instrument_name(
-        "First/left-most tool for front-left origin",
+        "Pick the number for the first/left-most tool for front-left origin",
         available_instruments,
-        default=available_instruments[0],
         input_reader=input_reader,
         output=output,
     )
@@ -445,17 +433,14 @@ def run_multi_instrument_calibration(
         output("  $H and read X/Y bounds")
         output("  move to measured X/Y center for calibration-block work")
         output("  attach all instruments and jog lowest instrument to the shared Z/block point")
-        output("  ask whether this is true Z=0 contact or a calibration-block height")
-        output("  G10 L20 P1 Z<reference_height>")
+        output("  enter the calibration block height")
+        output("  G10 L20 P1 Z<block_height>")
         output("  record the lowest instrument's X/Y/Z block coordinate immediately")
         output("  jog each remaining instrument to that same block point and compute offsets/depths")
         output("  $H and read final working-volume maxima")
         return None
 
     output("Preflight:")
-    output("  - GRBL $3 axis directions and $23 homing corner must be normalized.")
-    output("  - $H must home to back-right-top (BRT).")
-    output("  - Positive jogs must move from FLB toward +X right, +Y back, +Z up.")
     output("  - Keep E-stop reachable; calibration can move mounted tools and changes G54 WPos.")
     output(f"  - First/left-most tool for front-left origin: {reference_instrument}")
     if lowest_instrument is None:
@@ -539,9 +524,8 @@ def run_multi_instrument_calibration(
         )
         if lowest_instrument is None:
             lowest_instrument = _prompt_instrument_name(
-                "Which mounted tool reaches lowest / will touch the Z reference first?",
+                "Pick the number for the lowest mounted tool / first Z-reference touch",
                 available_instruments,
-                default=reference_instrument,
                 input_reader=input_reader,
                 output=output,
             )
@@ -736,19 +720,19 @@ def _prompt_instrument_name(
     label: str,
     available: Sequence[str],
     *,
-    default: str,
     input_reader: Callable[[str], str],
     output: Callable[[str], None],
 ) -> str:
-    default_index = available.index(default) + 1 if default in available else 1
     output("Available instruments:")
     for index, name in enumerate(available, start=1):
         output(f"  {index}. {name}")
     while True:
-        raw = input_reader(f"{label} [{default_index}]: ").strip()
-        value = raw or str(default_index)
+        raw = input_reader(f"{label}: ").strip()
+        if not raw:
+            output(f"Pick which numbered tool to use: enter 1 to {len(available)}.")
+            continue
         try:
-            selected_index = int(value)
+            selected_index = int(raw)
         except ValueError:
             output(f"Enter a number from 1 to {len(available)}.")
             continue

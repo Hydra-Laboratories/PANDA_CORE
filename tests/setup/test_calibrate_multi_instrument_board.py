@@ -243,17 +243,27 @@ def test_compute_relative_instrument_calibrations_uses_shared_block_point():
 
 def test_dry_run_prompts_for_only_operator_choices(tmp_path):
     path = _write_multi_gantry(tmp_path / "gantry.yaml")
-    inputs = iter(["", ""])
+    inputs = iter(["", "1"])
+    prompts: list[str] = []
     messages: list[str] = []
+
+    def input_reader(prompt: str) -> str:
+        prompts.append(prompt)
+        return next(inputs)
 
     result = run_multi_instrument_calibration(
         path,
         dry_run=True,
         output=messages.append,
-        input_reader=lambda _prompt: next(inputs),
+        input_reader=input_reader,
     )
 
     assert result is None
+    assert prompts == [
+        "Pick the number for the first/left-most tool for front-left origin: ",
+        "Pick the number for the first/left-most tool for front-left origin: ",
+    ]
+    assert any("Pick which numbered tool" in message for message in messages)
     assert any("Available instruments" in message for message in messages)
     assert any("  1. left_probe" in message for message in messages)
     assert any("  2. camera" in message for message in messages)
@@ -271,7 +281,7 @@ def test_multi_instrument_calibration_reconnects_once_if_serial_drops_during_hom
         instruments_to_calibrate=("left_probe",),
         skip_soft_limit_config=True,
         output=messages.append,
-        input_reader=lambda _prompt: "y",
+        input_reader=lambda _prompt: "12.5",
         gantry_factory=_SerialDropOnFirstHomeFakeGantry,
         key_reader=_key_reader(
             [
@@ -302,7 +312,7 @@ def test_multi_instrument_calibration_disables_stale_soft_limits_during_jogs(tmp
         instruments_to_calibrate=("left_probe",),
         skip_soft_limit_config=True,
         output=messages.append,
-        input_reader=lambda _prompt: "y",
+        input_reader=lambda _prompt: "12.5",
         gantry_factory=_SoftLimitEnabledFakeGantry,
         key_reader=_key_reader(
             [
@@ -324,7 +334,7 @@ def test_multi_instrument_calibration_disables_stale_soft_limits_during_jogs(tmp
         ("set_work_coordinates", 0.0, 0.0, None)
     )
     assert calls.index(restore_call) > calls.index(
-        ("set_work_coordinates", None, None, 0.0)
+        ("set_work_coordinates", None, None, 12.5)
     )
     assert any("Temporarily disabling GRBL soft limits" in m for m in messages)
 
@@ -332,7 +342,7 @@ def test_multi_instrument_calibration_disables_stale_soft_limits_during_jogs(tmp
 def test_multi_instrument_calibration_accepts_block_height_for_z_reference(tmp_path):
     path = _write_multi_gantry(tmp_path / "gantry.yaml")
     messages: list[str] = []
-    inputs = iter(["n", "12.5"])
+    inputs = iter(["12.5"])
 
     result = run_multi_instrument_calibration(
         path,
@@ -365,6 +375,7 @@ def test_multi_instrument_calibration_sets_xy_before_z_and_updates_yaml(tmp_path
     path = _write_multi_gantry(tmp_path / "gantry.yaml")
     out_path = tmp_path / "calibrated.yaml"
     messages: list[str] = []
+    inputs = iter(["12.5", "y"])
 
     result = run_multi_instrument_calibration(
         path,
@@ -375,7 +386,7 @@ def test_multi_instrument_calibration_sets_xy_before_z_and_updates_yaml(tmp_path
         output_gantry_path=out_path,
         write_gantry_yaml=True,
         output=messages.append,
-        input_reader=lambda _prompt: "y",
+        input_reader=lambda _prompt: next(inputs),
         gantry_factory=_FakeGantry,
         key_reader=_key_reader(
             [
@@ -395,7 +406,7 @@ def test_multi_instrument_calibration_sets_xy_before_z_and_updates_yaml(tmp_path
 
     assert isinstance(result, MultiInstrumentCalibrationResult)
     assert result.xy_origin_verification == (0.0, 0.0, 0.0)
-    assert result.z_origin_verification == (199.0, 149.5, 0.0)
+    assert result.z_origin_verification == (199.0, 149.5, 12.5)
     assert result.measured_working_volume == (398.0, 299.0, 96.0)
     assert result.instrument_calibrations["left_probe"] == {
         "offset_x": 0.0,
@@ -412,7 +423,7 @@ def test_multi_instrument_calibration_sets_xy_before_z_and_updates_yaml(tmp_path
         call for call in _FakeGantry.instance.calls if call[0] == "set_work_coordinates"
     ]
     assert set_wpos_calls[0] == ("set_work_coordinates", 0.0, 0.0, None)
-    assert set_wpos_calls[1] == ("set_work_coordinates", None, None, 0.0)
+    assert set_wpos_calls[1] == ("set_work_coordinates", None, None, 12.5)
 
     move_calls = [call for call in _FakeGantry.instance.calls if call[0] == "move_to"]
     assert move_calls == [("move_to", 199.0, 149.5, 88.0, None)]

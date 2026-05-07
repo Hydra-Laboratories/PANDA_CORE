@@ -6,9 +6,9 @@ cnc:
   structure_clearance_z: 85.0
 working_volume:
   x_min: 0.0
-  x_max: 305.0
+  x_max: 307.0
   y_min: 0.0
-  y_max: 303.0
+  y_max: 300.0
   z_min: 0.0
   z_max: 129.0
 grbl_settings:
@@ -19,8 +19,8 @@ grbl_settings:
   steps_per_mm_x: 400.0
   steps_per_mm_y: 400.0
   steps_per_mm_z: 400.0
-  max_travel_x: 305.0
-  max_travel_y: 303.0
+  max_travel_x: 307.0
+  max_travel_y: 300.0
   max_travel_z: 129.0
   soft_limits: true
 instruments:
@@ -32,7 +32,7 @@ instruments:
     offline: true
     offset_x: 0.0
     offset_y: 0.0
-    depth: -11.0
+    depth: -10.0
     measurement_height: 0.0
     safe_approach_height: 35.0
   pipette:
@@ -42,8 +42,8 @@ instruments:
     port: ''
     baud_rate: 115200
     offline: true
-    offset_x: 189.0
-    offset_y: -30.0
+    offset_x: 180.0
+    offset_y: -25.0
     depth: 0.0
     measurement_height: 0.0
     safe_approach_height: 35.0

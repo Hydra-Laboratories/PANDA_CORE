@@ -157,11 +157,12 @@ PYTHONPATH=src python setup/calibrate_deck_origin.py \
 ```
 
 For a multi-instrument gantry config, use the guided board calibration. It
-prompts for the left-most reference instrument, the lowest instrument, and the
-known artifact/block point. It starts from the homed BRT pose and does not make
-an automatic center move. It sets G54 WPos X/Y first, then sets WPos Z=0 from
-the lowest instrument, then records each instrument's `offset_x`, `offset_y`,
-and `depth` from the artifact point:
+prompts you to explicitly pick the left-most reference instrument and lowest
+instrument by number, then uses a calibration block near deck center. It starts
+from the homed BRT pose and does not make an automatic center move. It sets G54
+WPos X/Y first, then sets WPos Z to the calibration block height from the lowest
+instrument, then records each instrument's `offset_x`, `offset_y`, and `depth`
+from the shared block point:
 
 ```bash
 PYTHONPATH=src python setup/calibrate_multi_instrument_board.py \

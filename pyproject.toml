@@ -32,8 +32,18 @@ include = ["board", "board.*", "data", "data.*", "deck", "deck.*",
 
 [tool.setuptools.package-data]
 "instruments" = ["registry.yaml"]
-"deck.labware.definitions" = ["registry.yaml", "*/*.yaml"]
 "gantry.gantry_driver" = ["*.json"]
+# Deck labware definitions: registry.yaml at the package root + each
+# definition's config YAML in a non-package subdir. Without these the
+# `load_name:` deck-yaml feature breaks under `pip install` because the
+# YAMLs don't get copied to site-packages.
+"deck.labware.definitions" = [
+    "registry.yaml",
+    "*/*.yaml",
+    "*/*.glb",
+    "*/*.stl",
+    "*/*.step",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]

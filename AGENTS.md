@@ -57,13 +57,13 @@ Use `docs/agent-index.md` for exact files/tests. Common entrypoints:
 - `setup/calibrate_deck_origin.py`: single-instrument deck-origin calibration.
 - `setup/calibrate_multi_instrument_board.py`: guided multi-instrument board calibration.
   - CLI: `python setup/calibrate_multi_instrument_board.py --gantry <gantry.yaml>`
-  - Prompts for reference instrument, lowest instrument, and artifact/block XYZ.
+  - Prompts the operator to explicitly choose the reference and lowest instruments by number; blank input is not accepted.
   - Starts guided jogging from the homed BRT pose; it does not make an automatic center move.
-  - Sets XY with `G10 L20 P1 X0 Y0` only, then later sets Z with `G10 L20 P1 Z0` using the lowest instrument.
-  - Per-instrument calibration uses inverse `Board.move()` math:
-    - `offset_x = artifact_x - gantry_x`
-    - `offset_y = artifact_y - gantry_y`
-    - `depth = gantry_z - artifact_z`
+  - Sets XY with `G10 L20 P1 X0 Y0` only, then later sets Z to the calibration block height with `G10 L20 P1 Z<block_height>` using the lowest instrument.
+  - Per-instrument calibration uses inverse `Board.move()` math against the same physical block point:
+    - `offset_x = reference_gantry_x - gantry_x`
+    - `offset_y = reference_gantry_y - gantry_y`
+    - `depth = gantry_z - lowest_gantry_z`
 
 ## Debugging Mode
 
@@ -85,8 +85,8 @@ When the task is complete, either delete the temporary checkpoint after promotin
     - **Bottom contact**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --z-reference-mode bottom`
     - **Dry run**: `python setup/calibrate_deck_origin.py --gantry <gantry.yaml> --dry-run`
     - **Safety**: only use with deck-origin gantry configs whose X/Y working-volume minima are `0.0` and whose Z minimum is non-negative; pre-cutover or negative-space configs are rejected.
-- **`calibrate_multi_instrument_board.py`**: Guided multi-instrument calibration utility. Preconditions: GRBL `$3` axis directions and `$23` homing corner must be configured so `$H` homes to back-right-top and positive jog directions match the CubOS FLB deck frame. The flow homes, prompts the operator to attach/jog the left-most/reference instrument from the homed BRT pose to the front-left XY artifact, and sets only `G10 L20 P1 X0 Y0`. It intentionally does not make an automatic center move before the initial XY origining. It temporarily disables stale GRBL soft limits during the calibration jog flow, then re-homes for machine-derived X/Y bounds, moves to the measured XY center for calibration-block work, prompts the operator to jog the lowest mounted instrument to the deck/reference Z point, asks whether the TCP is touching true Z=0 or a calibration block of known height, sets `G10 L20 P1 Z<reference_height>`, re-homes for final Z max, moves back to the measured XY center, and records each instrument's `offset_x`, `offset_y`, and `depth` by having every instrument touch the same physical block point. The block's deck-frame X/Y/Z coordinates do not need to be known; place it near center where all instruments can reach and do not move it until calibration is complete.
-    - **Guided usage**: `python setup/calibrate_multi_instrument_board.py --gantry <gantry.yaml>`; the operator is prompted for the reference instrument and lowest instrument.
+- **`calibrate_multi_instrument_board.py`**: Guided multi-instrument calibration utility. Preconditions: GRBL `$3` axis directions and `$23` homing corner must be configured so `$H` homes to back-right-top and positive jog directions match the CubOS FLB deck frame. The flow homes, prompts the operator to explicitly pick the left-most/reference instrument by number, asks the operator to attach/jog it from the homed BRT pose to the front-left XY artifact, and sets only `G10 L20 P1 X0 Y0`. It intentionally does not make an automatic center move before the initial XY origining. It temporarily disables stale GRBL soft limits during the calibration jog flow, then re-homes for machine-derived X/Y bounds, moves to the measured XY center for calibration-block work, prompts the operator to explicitly pick and jog the lowest mounted instrument to the calibration block top, asks for the calibration block height, sets `G10 L20 P1 Z<block_height>`, re-homes for final Z max, moves back to the measured XY center, and records each instrument's `offset_x`, `offset_y`, and `depth` by having every instrument touch the same physical block point. The block's deck-frame X/Y/Z coordinates do not need to be known; place it near center where all instruments can reach and do not move it until calibration is complete.
+    - **Guided usage**: `python setup/calibrate_multi_instrument_board.py --gantry <gantry.yaml>`; the operator is prompted for the reference instrument and lowest instrument, and blank instrument selections are rejected.
     - **Optional scripting flags**: `--reference-instrument` and `--lowest-instrument` can pre-fill prompts for tests or repeatable scripted runs.
     - **Subset instruments**: repeat `--instrument <name>` to calibrate only selected instruments; otherwise all instruments in the gantry YAML are calibrated.
     - **Output**: calibrated YAML is printed; use `--output-gantry <path>` or `--write-gantry-yaml` to write it after confirmation.
