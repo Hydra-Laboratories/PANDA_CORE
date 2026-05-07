@@ -179,7 +179,7 @@ def test_sterling_candidate_validates_with_park_protocol():
         CONFIGS / "deck/sterling_deck.yaml",
         CONFIGS / "protocol/sterling_park.yaml",
     )
-    assert context.board.instruments["asmi"]._offline is True
+    assert context.board.instruments["potentiostat"]._offline is True
 
 
 def test_sterling_vial_scan_visits_vials_in_alternating_order():
@@ -207,4 +207,4 @@ def test_sterling_vial_scan_visits_vials_in_alternating_order():
         "vial_5_scan",
         "park_position",
     ]
-    assert context.board.instruments["asmi"]._offline is True
+    assert context.board.instruments["potentiostat"]._offline is True
