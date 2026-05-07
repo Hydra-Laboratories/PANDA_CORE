@@ -66,7 +66,7 @@ Use this file when:
 
 CubOS is cut over to the deck-origin frame. Protocol `home` runs GRBL homing
 and preserves the persistent G54 work-coordinate frame established by
-`setup/calibrate_deck_origin.py`; it does not zero WPos after homing. Protocol
+`setup/calibrate_gantry.py`; it does not zero WPos after homing. Protocol
 setup rejects gantry configs whose X/Y minima are not `0.0` or whose Z minimum
 is negative.
 

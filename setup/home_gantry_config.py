@@ -1,7 +1,7 @@
 """One-shot gantry homing from a gantry YAML file.
 
 This script homes the controller only. It does not assign or rewrite work
-coordinates; use ``setup/calibrate_deck_origin.py`` for deck-origin WPos
+coordinates; use ``setup/calibrate_gantry.py`` for deck-origin WPos
 calibration.
 
 Loads a gantry config, connects, runs the configured standard GRBL homing

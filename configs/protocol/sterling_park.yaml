@@ -11,7 +11,7 @@ protocol:
   - home:
 
   - move:
-      instrument: asmi
+      instrument: potentiostat
       position: park_position
       travel_z: 85.0
 

@@ -90,4 +90,4 @@ Offline setup validation is useful for schema, bounds, and protocol semantics,
 but it does not prove safe real motion. Before running any hardware protocol,
 verify GRBL `$3`, `$10`, `$20`, `$22`, `$23`, `$130`, `$131`, and `$132`, home
 to the expected back-right-top corner, jog each positive axis, and run
-`setup/calibrate_deck_origin.py` for the active machine/TCP.
+`setup/calibrate_gantry.py` for the active machine/TCP.
