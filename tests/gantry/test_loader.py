@@ -40,6 +40,18 @@ instruments:
     sensor_channels: [1]
 """
 
+GANTRY_WITH_MACHINE_STRUCTURES_YAML = VALID_GANTRY_YAML + """\
+machine_structures:
+  right_x_max_rail:
+    type: box
+    x_min: 480.0
+    x_max: 540.0
+    y_min: 0.0
+    y_max: 300.0
+    z_min: 0.0
+    z_max: 100.0
+"""
+
 
 def _write_temp_yaml(content: str) -> str:
     f = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
@@ -97,6 +109,17 @@ class TestLoadGantryFromYaml:
             assert config.expected_grbl_settings == {"$10": 0.0, "$22": 1.0}
             assert config.instruments["asmi"]["type"] == "asmi"
             assert config.instruments["asmi"]["sensor_channels"] == [1]
+        finally:
+            os.unlink(path)
+
+    def test_loaded_gantry_has_machine_structures(self):
+        path = _write_temp_yaml(GANTRY_WITH_MACHINE_STRUCTURES_YAML)
+        try:
+            config = load_gantry_from_yaml(path)
+            rail = config.machine_structures["right_x_max_rail"]
+            assert rail.x_min == 480.0
+            assert rail.y_max == 300.0
+            assert rail.z_max == 100.0
         finally:
             os.unlink(path)
 

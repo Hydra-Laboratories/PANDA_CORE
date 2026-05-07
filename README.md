@@ -10,8 +10,9 @@ Three YAML files define a runnable experiment:
 ### 1. Gantry (`configs/gantry/*.yaml`)
 
 Defines the controller serial port, homing strategy, working volume, optional
-structure-clearance plane, optional GRBL expectations, `cnc.total_z_height`,
-and the instruments mounted on that machine.
+structure-clearance plane, fixed machine structures, optional GRBL
+expectations, `cnc.total_z_height`, and the instruments mounted on that
+machine.
 
 Coordinate convention:
 
@@ -35,6 +36,16 @@ working_volume:
   y_max: 280.0
   z_min: 0.0
   z_max: 87.0
+
+machine_structures:
+  right_x_max_rail:
+    type: box
+    x_min: 480.0
+    x_max: 540.0
+    y_min: 0.0
+    y_max: 300.0
+    z_min: 0.0
+    z_max: 100.0
 
 instruments:
   asmi:
@@ -87,6 +98,10 @@ Instrument Z semantics live in the gantry YAML:
   and must be at or above `measurement_height`.
 - These fields are used by generic deck-target motion such as `move` to a deck
   target, `measure`, `scan`, and pipette commands.
+
+`machine_structures` are fixed gantry-level safety obstacles, not deck labware.
+They can live outside `working_volume`; protocol validation rejects commanded
+instrument points and known travel segments that intersect a structure box.
 
 ### 3. Protocol (`configs/protocol/*.yaml`)
 

@@ -22,6 +22,7 @@ Gantry YAML defines:
 - Y-axis motion mode
 - working volume
 - optional structure-clearance Z
+- fixed machine structures such as rails
 - optional GRBL settings expectations
 - mounted instruments, offsets, reach depths, action heights, and driver-specific settings
 
@@ -42,6 +43,16 @@ working_volume:
   y_max: 280.0
   z_min: 0.0
   z_max: 87.0
+
+machine_structures:
+  right_x_max_rail:
+    type: box
+    x_min: 480.0
+    x_max: 540.0
+    y_min: 0.0
+    y_max: 300.0
+    z_min: 0.0
+    z_max: 100.0
 
 instruments:
   asmi:
@@ -67,6 +78,12 @@ and preserves the persistent G54 work-coordinate frame established by
 `setup/calibrate_deck_origin.py`; it does not zero WPos after homing. Protocol
 setup rejects gantry configs whose X/Y minima are not `0.0` or whose Z minimum
 is negative.
+
+Use top-level `machine_structures` for fixed machine hardware that should not
+be represented as deck labware. Structure boxes are CubOS deck-frame AABBs and
+may extend beyond `working_volume`; validation checks commanded instrument
+points and known travel segments against them separately from working-volume
+bounds.
 
 Run [Calibrate Deck Origin](calibration.md) before trusting measured working
 volume values on real hardware. Use [Gantry Bring-Up](admin/gantry-bring-up.md)

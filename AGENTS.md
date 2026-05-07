@@ -52,6 +52,10 @@ Use `docs/agent-index.md` for exact files/tests. Common entrypoints:
 - Instruments: `src/instruments/<instrument>/`
 - Persistence: `data/data_store.py`, `src/protocol_engine/measurements.py`
 
+Gantry YAML can include top-level `machine_structures` for fixed AABB safety
+obstacles such as rails. These are machine structure, not deck labware, and are
+validated separately from `working_volume`.
+
 ## Calibration Scripts
 
 - `setup/calibrate_deck_origin.py`: single-instrument deck-origin calibration.

@@ -133,6 +133,44 @@ class TestGantryYamlSchema:
         with pytest.raises(ValidationError, match="structure_clearance_z"):
             GantryYamlSchema.model_validate(data)
 
+    def test_machine_structure_box_is_optional_and_parsed(self):
+        data = _valid_gantry_dict()
+        data["machine_structures"] = {
+            "right_x_max_rail": {
+                "type": "box",
+                "x_min": 480.0,
+                "x_max": 540.0,
+                "y_min": 0.0,
+                "y_max": 300.0,
+                "z_min": 0.0,
+                "z_max": 100.0,
+            }
+        }
+
+        schema = GantryYamlSchema.model_validate(data)
+
+        rail = schema.machine_structures["right_x_max_rail"]
+        assert rail.type == "box"
+        assert rail.x_min == 480.0
+        assert rail.z_max == 100.0
+
+    def test_machine_structure_box_requires_ordered_bounds(self):
+        data = _valid_gantry_dict()
+        data["machine_structures"] = {
+            "right_x_max_rail": {
+                "type": "box",
+                "x_min": 540.0,
+                "x_max": 480.0,
+                "y_min": 0.0,
+                "y_max": 300.0,
+                "z_min": 0.0,
+                "z_max": 100.0,
+            }
+        }
+
+        with pytest.raises(ValidationError, match="x_min"):
+            GantryYamlSchema.model_validate(data)
+
     def test_extra_top_level_key_rejected(self):
         data = _valid_gantry_dict()
         data["unknown_field"] = "value"

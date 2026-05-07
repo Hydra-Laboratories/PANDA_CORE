@@ -16,6 +16,18 @@ working_volume:
   z_min: 24.0
   z_max: 139.0
 
+machine_structures:
+  # Fixed right X-max rail guard in deck-frame coordinates. This is machine
+  # structure, not deck labware, and may sit outside normal working_volume.
+  right_x_max_rail:
+    type: box
+    x_min: 480.0
+    x_max: 540.0
+    y_min: 0.0
+    y_max: 300.0
+    z_min: 0.0
+    z_max: 100.0
+
 grbl_settings:
   dir_invert_mask: 1
   status_report: 0

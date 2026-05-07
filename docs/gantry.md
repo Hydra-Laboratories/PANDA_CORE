@@ -30,6 +30,7 @@ Gantry YAML defines:
 - Y-axis motion mode
 - working volume
 - optional `structure_clearance_z`
+- optional fixed `machine_structures`
 - optional GRBL settings expectations
 - mounted instruments, offsets, reach depths, action heights, and driver settings
 
@@ -50,6 +51,16 @@ working_volume:
   y_max: 280.0
   z_min: 0.0
   z_max: 87.0
+
+machine_structures:
+  right_x_max_rail:
+    type: box
+    x_min: 480.0
+    x_max: 540.0
+    y_min: 0.0
+    y_max: 300.0
+    z_min: 0.0
+    z_max: 100.0
 
 grbl_settings:
   dir_invert_mask: 1
@@ -91,6 +102,14 @@ head moves along Y, and `bed` when the machine bed moves along Y.
 `structure_clearance_z` is optional. When set, validation requires first-entry
 scan travel and explicit named/literal move `travel_z` values to meet or exceed
 that absolute Z plane before entering home/park/edge-risk regions.
+
+`machine_structures` is optional. Use it for fixed gantry-level hardware, such
+as the Cub XL right X-max rail, that must be forbidden during protocol setup
+validation but is not deck labware. Each entry is a `type: box` AABB in the
+CubOS deck frame. These boxes may sit outside normal `working_volume`; they are
+checked separately against commanded instrument points and known travel
+segments. A pose over the rail is valid only when its instrument point is above
+the box `z_max`.
 
 ## Working Volume
 

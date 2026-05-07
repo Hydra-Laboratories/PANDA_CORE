@@ -5,6 +5,7 @@ from .gantry import Gantry
 from .gantry_config import (
     GantryConfig,
     HomingStrategy,
+    MachineStructureBox,
     WorkingVolume,
 )
 from .loader import load_gantry_from_yaml, load_gantry_from_yaml_safe
@@ -14,6 +15,7 @@ __all__ = [
     "GantryConfig",
     "GantryLoaderError",
     "HomingStrategy",
+    "MachineStructureBox",
     "WorkingVolume",
     "load_gantry_from_yaml",
     "load_gantry_from_yaml_safe",

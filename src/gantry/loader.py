@@ -11,6 +11,7 @@ from .errors import GantryLoaderError
 from .gantry_config import (
     GantryConfig,
     HomingStrategy,
+    MachineStructureBox,
     WorkingVolume,
     YAxisMotion,
 )
@@ -31,7 +32,7 @@ def _format_loader_exception(path: Path, error: Exception) -> str:
         if "missing" in error_type or "Field required" in detail:
             guidance = "Add the missing required YAML field shown in the error location."
         elif "extra_forbidden" in error_type or "Extra inputs are not permitted" in detail:
-            guidance = "Remove unknown YAML fields; only 'serial_port', 'cnc', 'working_volume', 'grbl_settings', and 'instruments' are allowed at root."
+            guidance = "Remove unknown YAML fields; only 'serial_port', 'cnc', 'working_volume', 'grbl_settings', 'machine_structures', and 'instruments' are allowed at root."
         else:
             guidance = "Review the YAML values against the gantry schema."
 
@@ -77,6 +78,17 @@ def load_gantry_from_yaml(path: str | Path) -> GantryConfig:
         name: entry.model_dump()
         for name, entry in schema.instruments.items()
     }
+    machine_structures = {
+        name: MachineStructureBox(
+            x_min=entry.x_min,
+            x_max=entry.x_max,
+            y_min=entry.y_min,
+            y_max=entry.y_max,
+            z_min=entry.z_min,
+            z_max=entry.z_max,
+        )
+        for name, entry in schema.machine_structures.items()
+    }
 
     return GantryConfig(
         serial_port=schema.serial_port,
@@ -94,6 +106,7 @@ def load_gantry_from_yaml(path: str | Path) -> GantryConfig:
         y_axis_motion=YAxisMotion(schema.cnc.y_axis_motion),
         expected_grbl_settings=expected_grbl,
         instruments=instruments,
+        machine_structures=machine_structures,
     )
 
 
