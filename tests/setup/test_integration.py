@@ -31,6 +31,7 @@ def _ensure_commands_registered():
 
 GANTRY_YAML = """\
 serial_port: /dev/ttyUSB0
+gantry_type: cub_xl
 cnc:
   homing_strategy: standard
   total_z_range: 90.0
@@ -208,6 +209,7 @@ labware:
     def test_setup_with_tight_bounds_validates_all_well_positions(self):
         tight_gantry = """\
 serial_port: /dev/ttyUSB0
+gantry_type: cub_xl
 cnc:
   homing_strategy: standard
   total_z_range: 90.0

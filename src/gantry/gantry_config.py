@@ -20,6 +20,13 @@ class YAxisMotion(str, Enum):
     BED = "bed"
 
 
+class GantryType(str, Enum):
+    """Supported physical gantry families."""
+
+    CUB = "cub"
+    CUB_XL = "cub_xl"
+
+
 @dataclass(frozen=True)
 class WorkingVolume:
     """Gantry working volume bounds in millimeters.
@@ -58,6 +65,7 @@ class GantryConfig:
     """Loaded gantry configuration."""
 
     serial_port: str
+    gantry_type: GantryType
     homing_strategy: HomingStrategy
     total_z_range: float
     working_volume: WorkingVolume
@@ -67,6 +75,12 @@ class GantryConfig:
     instruments: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        try:
+            object.__setattr__(self, "gantry_type", GantryType(self.gantry_type))
+        except ValueError as exc:
+            raise ValueError(
+                f"Unsupported gantry_type {self.gantry_type!r}."
+            ) from exc
         if self.total_z_range <= 0:
             raise ValueError(
                 f"total_z_range ({self.total_z_range}) must be > 0"

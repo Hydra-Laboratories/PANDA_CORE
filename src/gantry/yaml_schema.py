@@ -62,6 +62,7 @@ class GantryYamlSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     serial_port: str
+    gantry_type: Literal["cub", "cub_xl"]
     cnc: CncYaml
     working_volume: WorkingVolumeYaml
     grbl_settings: Optional[GrblSettingsYaml] = None

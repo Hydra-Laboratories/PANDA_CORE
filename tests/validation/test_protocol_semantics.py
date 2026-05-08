@@ -11,7 +11,7 @@ from board.board import Board
 from deck.deck import Deck
 from deck.labware.labware import Coordinate3D
 from deck.labware.well_plate import WellPlate
-from gantry.gantry_config import GantryConfig, HomingStrategy, WorkingVolume
+from gantry.gantry_config import GantryConfig, GantryType, HomingStrategy, WorkingVolume
 from protocol_engine.protocol import Protocol, ProtocolStep
 from validation.protocol_semantics import validate_protocol_semantics
 
@@ -67,6 +67,7 @@ def _gantry_config(
 ) -> GantryConfig:
     return GantryConfig(
         serial_port="/dev/null",
+        gantry_type=GantryType.CUB_XL,
         homing_strategy=HomingStrategy.STANDARD,
         total_z_range=z_max,
         working_volume=WorkingVolume(

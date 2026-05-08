@@ -109,6 +109,7 @@ def run_validation(
 
     vol = gantry_config.working_volume
     out(f"  OK: {gantry_path}")
+    out(f"  Gantry type: {gantry_config.gantry_type.value}")
     out(f"  Working volume: X[{vol.x_min}, {vol.x_max}]  "
         f"Y[{vol.y_min}, {vol.y_max}]  Z[{vol.z_min}, {vol.z_max}]")
     out(f"  Homing strategy: {gantry_config.homing_strategy}")

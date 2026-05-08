@@ -6,6 +6,7 @@
 # before running on hardware.
 
 serial_port: /dev/ttyUSB0
+gantry_type: cub
 
 cnc:
   homing_strategy: standard

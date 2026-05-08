@@ -9,10 +9,10 @@ Three YAML files define a runnable experiment:
 
 ### 1. Gantry (`configs/gantry/*.yaml`)
 
-Defines the controller serial port, homing strategy, working volume, optional
-absolute `safe_z` plane (used for inter-labware travel), optional GRBL
-expectations, `cnc.total_z_range`, and the instruments mounted on that
-machine.
+Defines the controller serial port, `gantry_type`, homing strategy, working
+volume, optional absolute `safe_z` plane (used for inter-labware travel),
+optional GRBL expectations, `cnc.total_z_range`, and the instruments mounted
+on that machine.
 
 Coordinate convention:
 
@@ -24,6 +24,7 @@ Coordinate convention:
 
 ```yaml
 serial_port: /dev/ttyUSB0
+gantry_type: cub_xl
 cnc:
   homing_strategy: standard
   total_z_range: 87.0
@@ -87,6 +88,11 @@ hardware-specific config). Labware-relative motion heights
 command — see the Protocol section below. Inter-labware travel uses the
 gantry-level `safe_z`, not any instrument field.
 
+`gantry_type` selects built-in machine-family validation. For `cub_xl`, setup
+validation rejects protocols whose commanded instrument points or known travel
+segments would hit the fixed right X-max rail. That rail is machine structure,
+not deck labware, and is not represented in YAML.
+
 ### 3. Protocol (`configs/protocol/*.yaml`)
 
 Defines the experiment as a sequence of commands. Positions can reference
@@ -149,26 +155,30 @@ Optional per-instrument extras pull in vendor SDKs only when you need them:
 pip install -e ".[potentiostat]"
 ```
 
-Calibrate the deck-origin work frame before trusting real motion. For a
-single-instrument setup:
+Calibrate the deck-origin work frame before trusting real motion. The wrapper
+below chooses the single-instrument or multi-instrument calibration flow from
+the number of mounted instruments in the gantry YAML. With only an input path,
+it prompts before overwriting that file:
 
 ```bash
-PYTHONPATH=src python setup/calibrate_deck_origin.py \
-  --gantry configs/gantry/cub_xl_asmi.yaml \
-  --instrument asmi
+PYTHONPATH=src python setup/calibrate_gantry.py configs/gantry/cub_xl_asmi.yaml
 ```
 
-For a multi-instrument gantry config, use the guided board calibration. It
-prompts for the left-most reference instrument, the lowest instrument, and the
-known artifact/block point. It starts from the homed BRT pose and does not make
-an automatic center move. It sets G54 WPos X/Y first, then sets WPos Z=0 from
-the lowest instrument, then records each instrument's `offset_x`, `offset_y`,
-and `depth` from the artifact point:
+To write a calibrated copy instead, provide `--output-gantry`:
 
 ```bash
-PYTHONPATH=src python setup/calibrate_multi_instrument_board.py \
-  --gantry configs/gantry/cub_xl_multi.yaml
+PYTHONPATH=src python setup/calibrate_gantry.py \
+  configs/gantry/cub_xl_asmi.yaml \
+  --output-gantry configs/gantry/cub_xl_asmi_calibrated.yaml
 ```
+
+For a multi-instrument gantry config, the guided board calibration prompts you
+to explicitly pick the left-most reference instrument and lowest instrument by
+number, then uses a calibration block near deck center. It starts from the homed
+BRT pose and does not make an automatic center move. It sets G54 WPos X/Y first,
+then sets WPos Z to the calibration block height from the lowest instrument,
+then records each instrument's `offset_x`, `offset_y`, and `depth` from the
+shared block point.
 
 See the docs for the full operator tutorial:
 

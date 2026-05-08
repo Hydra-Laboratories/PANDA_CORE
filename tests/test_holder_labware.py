@@ -16,13 +16,14 @@ from deck import (
     WellPlateHolder,
 )
 from deck.loader import load_deck_from_yaml
-from gantry.gantry_config import GantryConfig, HomingStrategy, WorkingVolume
+from gantry.gantry_config import GantryConfig, GantryType, HomingStrategy, WorkingVolume
 from validation.bounds import validate_deck_positions
 
 
 def _make_gantry() -> GantryConfig:
     return GantryConfig(
         serial_port="/dev/ttyUSB0",
+        gantry_type=GantryType.CUB_XL,
         homing_strategy=HomingStrategy.STANDARD,
         total_z_range=90.0,
         working_volume=WorkingVolume(

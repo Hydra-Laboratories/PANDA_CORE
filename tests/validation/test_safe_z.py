@@ -14,7 +14,7 @@ from board.board import Board
 from deck.deck import Deck
 from deck.labware.labware import Coordinate3D
 from deck.labware.well_plate import WellPlate
-from gantry.gantry_config import GantryConfig, HomingStrategy, WorkingVolume
+from gantry.gantry_config import GantryConfig, GantryType, HomingStrategy, WorkingVolume
 from protocol_engine.protocol import Protocol, ProtocolStep
 from validation.protocol_semantics import validate_protocol_semantics
 
@@ -22,6 +22,7 @@ from validation.protocol_semantics import validate_protocol_semantics
 def _gantry(safe_z: float = 85.0) -> GantryConfig:
     return GantryConfig(
         serial_port="/dev/ttyUSB0",
+        gantry_type=GantryType.CUB_XL,
         homing_strategy=HomingStrategy.STANDARD,
         total_z_range=100.0,
         working_volume=WorkingVolume(
@@ -100,6 +101,7 @@ def test_scan_passes_when_safe_z_unconfigured():
     """Without a configured safe_z, the ceiling check is skipped."""
     gantry = GantryConfig(
         serial_port="/dev/ttyUSB0",
+        gantry_type=GantryType.CUB_XL,
         homing_strategy=HomingStrategy.STANDARD,
         total_z_range=100.0,
         working_volume=WorkingVolume(

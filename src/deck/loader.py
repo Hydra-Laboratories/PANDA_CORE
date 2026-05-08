@@ -99,7 +99,7 @@ def _resolve_user_z(
     The deck YAML's calibration anchor (`a1.z` or `location.z`) is the
     single source of truth for the labware-surface deck-frame Z. The
     legacy ``height`` z-hint shorthand was removed when the dimensional
-    field was renamed from ``height_mm`` to ``height`` — the z-hint and
+    field was renamed from ``height`` to ``height`` — the z-hint and
     the dimension can no longer share the same field name.
     """
     if explicit_z is None:

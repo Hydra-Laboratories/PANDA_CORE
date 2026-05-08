@@ -205,6 +205,7 @@ class TestLoadBoardFromGantryConfig:
     def test_loads_instruments_embedded_in_gantry_yaml(self, tmp_path):
         gantry_path = _write_gantry_yaml(tmp_path, """\
             serial_port: /dev/ttyUSB0
+            gantry_type: cub_xl
             cnc:
               homing_strategy: standard
               total_z_range: 90.0
@@ -237,6 +238,7 @@ class TestLoadBoardFromGantryConfig:
     def test_loads_directly_from_gantry_yaml(self, tmp_path):
         gantry_path = _write_gantry_yaml(tmp_path, """\
             serial_port: /dev/ttyUSB0
+            gantry_type: cub_xl
             cnc:
               homing_strategy: standard
               total_z_range: 90.0
@@ -258,6 +260,7 @@ class TestLoadBoardFromGantryConfig:
     def test_requires_embedded_instruments(self, tmp_path):
         gantry_path = _write_gantry_yaml(tmp_path, """\
             serial_port: /dev/ttyUSB0
+            gantry_type: cub_xl
             cnc:
               homing_strategy: standard
               total_z_range: 90.0

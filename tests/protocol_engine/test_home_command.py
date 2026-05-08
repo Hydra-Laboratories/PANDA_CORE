@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 from gantry.gantry_config import (
     GantryConfig,
+    GantryType,
     HomingStrategy,
     WorkingVolume,
 )
@@ -25,6 +26,7 @@ def _context(gantry_config: GantryConfig | None):
 def test_home_preserves_calibrated_wpos_for_deck_origin_config():
     config = GantryConfig(
         serial_port="/dev/ttyUSB0",
+        gantry_type=GantryType.CUB_XL,
         homing_strategy=HomingStrategy.STANDARD,
         total_z_range=100.0,
         working_volume=WorkingVolume(
@@ -50,6 +52,7 @@ def test_home_preserves_calibrated_wpos_for_deck_origin_config():
 def test_home_preserves_calibrated_wpos_for_one_instrument_nonzero_z_min():
     config = GantryConfig(
         serial_port="/dev/ttyUSB0",
+        gantry_type=GantryType.CUB_XL,
         homing_strategy=HomingStrategy.STANDARD,
         total_z_range=105.0,
         working_volume=WorkingVolume(
@@ -73,6 +76,7 @@ def test_home_preserves_calibrated_wpos_for_one_instrument_nonzero_z_min():
 def test_home_preserves_calibrated_wpos_for_negative_space_config():
     config = GantryConfig(
         serial_port="/dev/ttyUSB0",
+        gantry_type=GantryType.CUB_XL,
         homing_strategy=HomingStrategy.STANDARD,
         total_z_range=100.0,
         working_volume=WorkingVolume(
@@ -96,6 +100,7 @@ def test_home_preserves_calibrated_wpos_for_negative_space_config():
 def test_home_preserves_calibrated_wpos_for_zero_minimum_config():
     config = GantryConfig(
         serial_port="/dev/ttyUSB0",
+        gantry_type=GantryType.CUB_XL,
         homing_strategy=HomingStrategy.STANDARD,
         total_z_range=100.0,
         working_volume=WorkingVolume(

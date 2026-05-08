@@ -2,19 +2,16 @@ serial_port: /dev/ttyUSB0
 gantry_type: cub_xl
 cnc:
   homing_strategy: standard
-  total_z_range: 129.0
+  total_z_range: 104.0
   y_axis_motion: head
-  # Absolute deck-frame Z used for inter-labware travel and the entry
-  # approach to the first well of a scan.
   safe_z: 85.0
-
 working_volume:
   x_min: 0.0
-  x_max: 307.0
+  x_max: 305.0
   y_min: 0.0
-  y_max: 300.0
+  y_max: 302.0
   z_min: 0.0
-  z_max: 129.0
+  z_max: 104.0
 grbl_settings:
   dir_invert_mask: 1
   status_report: 0
@@ -23,11 +20,21 @@ grbl_settings:
   steps_per_mm_x: 400.0
   steps_per_mm_y: 400.0
   steps_per_mm_z: 400.0
-  max_travel_x: 307.0
-  max_travel_y: 300.0
-  max_travel_z: 129.0
+  max_travel_x: 305.0
+  max_travel_y: 302.0
+  max_travel_z: 104.0
   soft_limits: true
 instruments:
+  asmi:
+    type: asmi
+    vendor: vernier
+    offline: true
+    offset_x: 163.0
+    offset_y: -31.0
+    depth: -25.0
+    force_threshold: -50
+    sensor_channels:
+    - 1
   potentiostat:
     type: potentiostat
     vendor: admiral
@@ -36,7 +43,7 @@ instruments:
     offline: true
     offset_x: 0.0
     offset_y: 0.0
-    depth: -10.0
+    depth: -35.0
   pipette:
     type: pipette
     vendor: opentrons
@@ -44,10 +51,6 @@ instruments:
     port: ''
     baud_rate: 115200
     offline: true
-    offset_x: 180.0
-    offset_y: -25.0
+    offset_x: 210.0
+    offset_y: 3.0
     depth: 0.0
-    # Labware-relative motion heights live on the protocol scan/measure command.
-    force_threshold: -50
-    sensor_channels:
-      - 1
