@@ -14,9 +14,24 @@ class Vial(Labware):
 
     name: str = Field(..., description="Unique vial name.")
     model_name: str = Field("", description="Vial model identifier.")
-    height: float = Field(..., description="Z position of the vial (absolute WPos).")
+    height: float = Field(
+        ...,
+        description=(
+            "Vial outer height in millimeters (rim → underside). A physical "
+            "dimension used by ``BoundingBoxGeometry`` for collision and "
+            "visualization, not a Z coordinate. The deck-frame Z of the vial "
+            "rim lives on ``location.z``."
+        ),
+    )
     diameter: float = Field(..., description="Vial outer diameter in millimeters.")
-    location: Coordinate3D = Field(..., description="Absolute XYZ center of this vial.")
+    location: Coordinate3D = Field(
+        ...,
+        description=(
+            "Absolute XYZ center of this vial. ``location.z`` is the "
+            "deck-frame Z of the vial rim — the labware-surface reference "
+            "for protocol-command labware-relative heights."
+        ),
+    )
     capacity_ul: float = Field(..., description="Vial capacity in microliters.")
     working_volume_ul: float = Field(..., description="Working volume per vial in microliters.")
 

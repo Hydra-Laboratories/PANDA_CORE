@@ -32,9 +32,9 @@ class WellPlateYamlEntry(BaseModel):
     rows: int = Field(..., gt=0)
     columns: int = Field(..., gt=0)
     # Geometry — optional metadata, not used for well position computation.
-    length: Optional[float] = None
-    width: Optional[float] = None
-    height: Optional[float] = None
+    length: Optional[float] = Field(default=None, gt=0)
+    width: Optional[float] = Field(default=None, gt=0)
+    height: Optional[float] = Field(default=None, gt=0)
     # Inside well depth from rim (calibration anchor) to inside floor where
     # the sample sits. Distinct from `height` (outer plate height): outer
     # and inside depth differ by a few millimeters depending on well-bottom
@@ -142,9 +142,9 @@ class NestedWellPlateYamlEntry(BaseModel):
     model_name: str = ""
     rows: int = Field(..., gt=0)
     columns: int = Field(..., gt=0)
-    length: Optional[float] = None
-    width: Optional[float] = None
-    height: Optional[float] = None
+    length: Optional[float] = Field(default=None, gt=0)
+    width: Optional[float] = Field(default=None, gt=0)
+    height: Optional[float] = Field(default=None, gt=0)
     well_depth: Optional[float] = Field(default=None, gt=0)
     calibration: _YamlCalibrationPoints
     x_offset: float = Field(..., gt=0)

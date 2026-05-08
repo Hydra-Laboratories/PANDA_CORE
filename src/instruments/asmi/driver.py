@@ -260,12 +260,18 @@ class ASMI(BaseInstrument):
         """Perform step-by-step indentation at the current XY position.
 
         Coordinate convention (deck-origin, +Z up): ``measurement_z`` is
-        the absolute Z to start the indent; ``target_z`` must be lower
-        (deeper) and is the minimum Z the descent will reach. Each "down"
-        step DECREASES z by ``step_size``. Both Zs are absolute and are
-        injected by the engine — at the protocol layer, users supply
-        labware-relative ``measurement_height`` and
-        ``indentation_limit_height`` and the engine resolves them.
+        the absolute deck-frame Z to start the indent; ``target_z`` is
+        the absolute deck-frame Z at the deepest point of the descent.
+        Each "down" step DECREASES z by ``step_size``.
+
+        These parameters use the ``_z`` suffix because they hold *absolute*
+        deck-frame Z values (per the project convention `_z = absolute`,
+        `_height = labware-relative offset`). The protocol-layer command
+        accepts the labware-relative ``measurement_height`` and
+        ``indentation_limit_height`` from YAML and the engine resolves
+        them to absolute Z values before dispatch:
+        ``measurement_z = well.z + measurement_height`` and
+        ``target_z = well.z + indentation_limit_height``.
 
         The scan command positions the gantry at the well before calling
         this method. Indentation then:
@@ -276,10 +282,12 @@ class ASMI(BaseInstrument):
 
         Args:
             gantry:              Gantry instance for Z movement.
-            measurement_z:       Absolute Z to descend to before starting
-                                 (the action plane).
-            target_z:            Absolute deepest Z the descent will reach.
-                                 Must be < measurement_z.
+            measurement_z:       Absolute deck-frame Z to descend to before
+                                 starting (the action plane).
+            target_z:            Absolute deck-frame Z at the deepest point
+                                 of the descent. Must be ≤ ``measurement_z``;
+                                 equality is legal (zero-descent indentation
+                                 collects baseline samples and returns).
             step_size:           Z increment per step in mm (positive).
             force_limit:         Stop when corrected force exceeds this in N.
             baseline_samples:    Number of baseline force readings.

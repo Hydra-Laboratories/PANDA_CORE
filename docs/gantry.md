@@ -81,9 +81,11 @@ Use this file when:
 `homing_strategy` must be `standard`, which runs GRBL `$H`.
 
 `total_z_range` is required and must be greater than zero. It describes the
-configured vertical envelope. Deck labware can use a `height` field instead of
-explicit Z coordinates; under the deck-origin convention that `height` is used
-directly as the deck-frame Z value.
+configured vertical envelope. Deck labware deck-frame Z values come from
+calibration anchors only — `calibration.a1.z` (plates / holders / tip racks)
+or `location.z` (vials / holders). The labware `height` field is the
+*physical outer dimension* (rim → underside) and is not a Z shorthand;
+omitting an anchor `z` raises a load-time error.
 
 `y_axis_motion` is optional and defaults to `head`. Use `head` when the gantry
 head moves along Y, and `bed` when the machine bed moves along Y.
