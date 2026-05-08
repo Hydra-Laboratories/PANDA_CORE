@@ -29,7 +29,7 @@ After commit 1, `measure + method=indentation` still failed end-to-end:
 the deck floor before `indentation` started.
 
 Per the design call: `measure` is the per-position primitive, so it owns
-`measurement_height` (action Z); `safe_approach_height` stays scan-only since
+`measurement_height` (action Z); `interwell_scan_height` stays scan-only since
 only scan needs inter-well transit Z.
 
 This commit:
@@ -62,7 +62,7 @@ via `setuptools.build_meta` and asserts the registry plus a canary
 
 PR review flagged that scan's pre-existing top-level `measurement_height` and
 `indentation_limit` parameters violate the same architectural rule used to
-keep `safe_approach_height` off `measure`: scan owns multi-well orchestration,
+keep `interwell_scan_height` off `measure`: scan owns multi-well orchestration,
 not per-position concerns. Worse, the helper's caller-wins guard from
 commit 2 introduced a regression where YAML `method_kwargs.measurement_height`
 would silently override the protocol-level Z the gantry actually descended to.

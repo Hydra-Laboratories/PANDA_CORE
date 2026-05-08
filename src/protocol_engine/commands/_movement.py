@@ -2,12 +2,12 @@
 
 CubOS uses a +Z-up deck frame and labware-relative action heights.
 
-* ``measurement_height`` and ``safe_approach_height`` are *labware-relative*
+* ``measurement_height`` and ``interwell_scan_height`` are *labware-relative*
   offsets above (positive) or below (negative) the labware's surface
   reference Z (the deck-frame Z carried by the resolved well/labware
   coordinate). Both are first-class arguments to the protocol commands
   that use them (``measure`` and ``scan`` for ``measurement_height``,
-  ``scan`` for ``safe_approach_height``). Instruments do not carry them.
+  ``scan`` for ``interwell_scan_height``). Instruments do not carry them.
 * Inter-labware travel uses the gantry's absolute ``safe_z``, exposed on
   ``Board.safe_z``.
 
